@@ -1,0 +1,91 @@
+// Schedule Project
+// Live diagram: https://dbdiagram.io/embed#c=Ly8gU2NoZWR1bGUgUHJvamVjdAoKVGFibGUgVVNFUiB7CiAgdXNlcl9pZCBpbnRlZ2VyIFtwcmltYXJ5IGtleSwgaW5jcmVtZW50XQogIG5hbWUgdmFyY2hhciBbbm90IG51bGxdCiAgZW1haWwgdmFyY2hhciBbbm90IG51bGwsIHVuaXF1ZV0KICBwaG9uZSB2YXJjaGFyIFt1bmlxdWVdCiAgcGFzc3dvcmQgdmFyY2hhciBbbm90ZTogJ0VtcHR5IHdoZW4gYXV0aF9wcm92aWRlciBpcyBnb29nbGUnXQogIGF1dGhfcHJvdmlkZXIgdmFyY2hhciBbbm90IG51bGwsIG5vdGU6ICdlbWFpbCB8IHBob25lIHwgZ29vZ2xlJ10KICByb2xlIHZhcmNoYXIgW25vdCBudWxsLCBub3RlOiAncGF0aWVudCB8IGRvY3RvciddCiAgaXNfdmVyaWZpZWQgYm9vbGVhbiBbbm90IG51bGwsIGRlZmF1bHQ6IGZhbHNlXQoKICBOb3RlOiAnTG9naW4gYWNjb3VudC4gQSBwYXRpZW50IGlzIGEgdXNlciB3aXRoIHJvbGUgPSBwYXRpZW50LicKfQoKVGFibGUgUEFUSUVOVCB7CiAgcGF0aWVudF9pZCBpbnRlZ2VyIFtwcmltYXJ5IGtleSwgaW5jcmVtZW50XQogIHVzZXJfaWQgaW50ZWdlciBbbm90IG51bGwsIHVuaXF1ZSwgcmVmOiAtIFVTRVIudXNlcl9pZF0KICBkYXRlX29mX2JpcnRoIGRhdGUKICBnZW5kZXIgdmFyY2hhcgogIGFkZHJlc3MgdmFyY2hhcgoKICBOb3RlOiAnUHJvZmlsZSBmb3IgYSB1c2VyIHdob3NlIHJvbGUgaXMgcGF0aWVudC4gT25lIHVzZXIsIG9uZSBwYXRpZW50IHJvdy4nCn0KClRhYmxlIFNQRUNJQUxJWkFUSU9OIHsKICBzcGVjaWFsaXphdGlvbl9pZCBpbnRlZ2VyIFtwcmltYXJ5IGtleSwgaW5jcmVtZW50XQogIG5hbWUgdmFyY2hhciBbbm90IG51bGwsIHVuaXF1ZV0KfQoKVGFibGUgRE9DVE9SIHsKICBkb2N0b3JfaWQgaW50ZWdlciBbcHJpbWFyeSBrZXksIGluY3JlbWVudF0KICB1c2VyX2lkIGludGVnZXIgW25vdCBudWxsLCB1bmlxdWUsIHJlZjogLSBVU0VSLnVzZXJfaWRdCiAgc3BlY2lhbGl6YXRpb25faWQgaW50ZWdlciBbbm90IG51bGwsIHJlZjogPiBTUEVDSUFMSVpBVElPTi5zcGVjaWFsaXphdGlvbl9pZF0KICBleHBlcmllbmNlX3llYXJzIGludGVnZXIgW25vdCBudWxsLCBkZWZhdWx0OiAwXQogIGNvbnN1bHRhdGlvbl9mZWUgZGVjaW1hbAogIHJhdGluZyBkZWNpbWFsCiAgaXNfYXBwcm92ZWQgYm9vbGVhbiBbbm90IG51bGwsIGRlZmF1bHQ6IGZhbHNlXQoKICBOb3RlOiAnUHJvZmlsZSBmb3IgYSB1c2VyIHdob3NlIHJvbGUgaXMgZG9jdG9yLicKfQoKVGFibGUgQVZBSUxBQklMSVRZIHsKICBhdmFpbGFiaWxpdHlfaWQgaW50ZWdlciBbcHJpbWFyeSBrZXksIGluY3JlbWVudF0KICBkb2N0b3JfaWQgaW50ZWdlciBbbm90IG51bGwsIHJlZjogPiBET0NUT1IuZG9jdG9yX2lkXQogIGRheV9vZl93ZWVrIHZhcmNoYXIgW25vdCBudWxsLCBub3RlOiAnbW9uIHwgdHVlIHwgd2VkIHwgdGh1IHwgZnJpIHwgc2F0IHwgc3VuJ10KICBzdGFydF90aW1lIHRpbWUgW25vdCBudWxsXQogIGVuZF90aW1lIHRpbWUgW25vdCBudWxsXQogIHNjaGVkdWxpbmdfdHlwZSB2YXJjaGFyIFtub3QgbnVsbCwgbm90ZTogJ3dhdmUgfCBzdHJlYW0nXQogIHNsb3RfbWludXRlcyBpbnRlZ2VyIFtub3QgbnVsbCwgbm90ZTogJ1N0cmVhbSBnYXAsIGZvciBleGFtcGxlIDEwLiBXYXZlIHdpbmRvdyBsZW5ndGgsIGZvciBleGFtcGxlIDMwLiddCiAgbWF4X3BhdGllbnRzIGludGVnZXIgW25vdCBudWxsLCBkZWZhdWx0OiAxLCBub3RlOiAnV2F2ZSBjYXBhY2l0eS4gU3RyZWFtIGlzIDEuIEVsYXN0aWMgc2NoZWR1bGluZyByYWlzZXMgdGhpcy4nXQp9CgpUYWJsZSBTTE9UIHsKICBzbG90X2lkIGludGVnZXIgW3ByaW1hcnkga2V5LCBpbmNyZW1lbnRdCiAgZG9jdG9yX2lkIGludGVnZXIgW25vdCBudWxsLCByZWY6ID4gRE9DVE9SLmRvY3Rvcl9pZF0KICBhdmFpbGFiaWxpdHlfaWQgaW50ZWdlciBbbm90IG51bGwsIHJlZjogPiBBVkFJTEFCSUxJVFkuYXZhaWxhYmlsaXR5X2lkXQogIHNsb3RfZGF0ZSBkYXRlIFtub3QgbnVsbF0KICBzdGFydF90aW1lIHRpbWUgW25vdCBudWxsXQogIGVuZF90aW1lIHRpbWUgW25vdCBudWxsXQogIGNhcGFjaXR5IGludGVnZXIgW25vdCBudWxsLCBub3RlOiAnV2F2ZTogbWFueSBwYXRpZW50cy4gU3RyZWFtOiAxLiBFbGFzdGljOiBkb2N0b3IgY2FuIHJhaXNlIHRoaXMuJ10KICBib29rZWRfY291bnQgaW50ZWdlciBbbm90IG51bGwsIGRlZmF1bHQ6IDBdCiAgc3RhdHVzIHZhcmNoYXIgW25vdCBudWxsLCBkZWZhdWx0OiAnb3BlbicsIG5vdGU6ICdvcGVuIHwgZnVsbCB8IGJsb2NrZWQnXQoKICBpbmRleGVzIHsKICAgIChkb2N0b3JfaWQsIHNsb3RfZGF0ZSwgc3RhcnRfdGltZSkgW3VuaXF1ZV0KICB9Cn0KClRhYmxlIEFQUE9JTlRNRU5UIHsKICBhcHBvaW50bWVudF9pZCBpbnRlZ2VyIFtwcmltYXJ5IGtleSwgaW5jcmVtZW50XQogIHBhdGllbnRfaWQgaW50ZWdlciBbbm90IG51bGwsIHJlZjogPiBQQVRJRU5ULnBhdGllbnRfaWRdCiAgZG9jdG9yX2lkIGludGVnZXIgW25vdCBudWxsLCByZWY6ID4gRE9DVE9SLmRvY3Rvcl9pZF0KICBzbG90X2lkIGludGVnZXIgW25vdCBudWxsLCByZWY6ID4gU0xPVC5zbG90X2lkXQogIHN0YXR1cyB2YXJjaGFyIFtub3QgbnVsbCwgZGVmYXVsdDogJ2Jvb2tlZCcsIG5vdGU6ICdib29rZWQgfCBjb21wbGV0ZWQgfCBjYW5jZWxsZWQnXQogIHJlYXNvbiB2YXJjaGFyCiAgYm9va2VkX2F0IHRpbWVzdGFtcCBbbm90IG51bGwsIGRlZmF1bHQ6IGBub3coKWBdCgogIGluZGV4ZXMgewogICAgKHBhdGllbnRfaWQsIHNsb3RfaWQpIFt1bmlxdWUsIG5vdGU6ICdBIHBhdGllbnQgYm9va3MgYSBzbG90IG9ubHkgb25jZSddCiAgfQp9CgpUYWJsZSBSRVNDSEVEVUxFX0hJU1RPUlkgewogIHJlc2NoZWR1bGVfaWQgaW50ZWdlciBbcHJpbWFyeSBrZXksIGluY3JlbWVudF0KICBhcHBvaW50bWVudF9pZCBpbnRlZ2VyIFtub3QgbnVsbCwgcmVmOiA%2BIEFQUE9JTlRNRU5ULmFwcG9pbnRtZW50X2lkXQogIG9sZF9zbG90X2lkIGludGVnZXIgW25vdCBudWxsLCByZWY6ID4gU0xPVC5zbG90X2lkXQogIG5ld19zbG90X2lkIGludGVnZXIgW25vdCBudWxsLCByZWY6ID4gU0xPVC5zbG90X2lkXQogIHJlc2NoZWR1bGVkX2F0IHRpbWVzdGFtcCBbbm90IG51bGwsIGRlZmF1bHQ6IGBub3coKWBdCn0%3D
+
+Table USER {
+  user_id integer [primary key, increment]
+  name varchar [not null]
+  email varchar [not null, unique]
+  phone varchar [unique]
+  password varchar [note: 'Empty when auth_provider is google']
+  auth_provider varchar [not null, note: 'email | phone | google']
+  role varchar [not null, note: 'patient | doctor']
+  is_verified boolean [not null, default: false]
+
+  Note: 'Login account. A patient is a user with role = patient.'
+}
+
+Table PATIENT {
+  patient_id integer [primary key, increment]
+  user_id integer [not null, unique, ref: - USER.user_id]
+  date_of_birth date
+  gender varchar
+  address varchar
+
+  Note: 'Profile for a user whose role is patient. One user, one patient row.'
+}
+
+Table SPECIALIZATION {
+  specialization_id integer [primary key, increment]
+  name varchar [not null, unique]
+}
+
+Table DOCTOR {
+  doctor_id integer [primary key, increment]
+  user_id integer [not null, unique, ref: - USER.user_id]
+  specialization_id integer [not null, ref: > SPECIALIZATION.specialization_id]
+  experience_years integer [not null, default: 0]
+  consultation_fee decimal
+  rating decimal
+  is_approved boolean [not null, default: false]
+
+  Note: 'Profile for a user whose role is doctor.'
+}
+
+Table AVAILABILITY {
+  availability_id integer [primary key, increment]
+  doctor_id integer [not null, ref: > DOCTOR.doctor_id]
+  day_of_week varchar [not null, note: 'mon | tue | wed | thu | fri | sat | sun']
+  start_time time [not null]
+  end_time time [not null]
+  scheduling_type varchar [not null, note: 'wave | stream']
+  slot_minutes integer [not null, note: 'Stream gap, for example 10. Wave window length, for example 30.']
+  max_patients integer [not null, default: 1, note: 'Wave capacity. Stream is 1. Elastic scheduling raises this.']
+}
+
+Table SLOT {
+  slot_id integer [primary key, increment]
+  doctor_id integer [not null, ref: > DOCTOR.doctor_id]
+  availability_id integer [not null, ref: > AVAILABILITY.availability_id]
+  slot_date date [not null]
+  start_time time [not null]
+  end_time time [not null]
+  capacity integer [not null, note: 'Wave: many patients. Stream: 1. Elastic: doctor can raise this.']
+  booked_count integer [not null, default: 0]
+  status varchar [not null, default: 'open', note: 'open | full | blocked']
+
+  indexes {
+    (doctor_id, slot_date, start_time) [unique]
+  }
+}
+
+Table APPOINTMENT {
+  appointment_id integer [primary key, increment]
+  patient_id integer [not null, ref: > PATIENT.patient_id]
+  doctor_id integer [not null, ref: > DOCTOR.doctor_id]
+  slot_id integer [not null, ref: > SLOT.slot_id]
+  status varchar [not null, default: 'booked', note: 'booked | completed | cancelled']
+  reason varchar
+  booked_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (patient_id, slot_id) [unique, note: 'A patient books a slot only once']
+  }
+}
+
+Table RESCHEDULE_HISTORY {
+  reschedule_id integer [primary key, increment]
+  appointment_id integer [not null, ref: > APPOINTMENT.appointment_id]
+  old_slot_id integer [not null, ref: > SLOT.slot_id]
+  new_slot_id integer [not null, ref: > SLOT.slot_id]
+  rescheduled_at timestamp [not null, default: `now()`]
+}
