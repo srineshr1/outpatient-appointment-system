@@ -1,0 +1,155 @@
+import type { Slot } from "./data";
+import { EMPTY_FORM, type PatientForm } from "./validate";
+
+export interface Booking {
+  reference: string;
+  doctorId: string;
+  slot: Slot;
+  reasonId: string;
+  /** Held in memory only. Absent after a reload. */
+  patient?: PatientForm;
+}
+
+export interface BookingState {
+  /** The time the patient is holding while they fill in details. */
+  held: Slot | null;
+  /** Times booked (or found taken) during this session. */
+  takenIds: string[];
+  form: PatientForm;
+  booking: Booking | null;
+  /** A message to show on the schedule after a failed confirmation. */
+  flash: { doctorId: string; message: string } | null;
+}
+
+export type BookingAction =
+  | { type: "hydrate"; state: PersistedState }
+  | { type: "hold"; slot: Slot }
+  | { type: "release" }
+  | { type: "updateForm"; patch: Partial<PatientForm> }
+  | { type: "slotLost"; slot: Slot; message: string }
+  | { type: "confirmed"; booking: Booking }
+  | { type: "clearFlash" }
+  | { type: "startOver" };
+
+export const initialBookingState: BookingState = {
+  held: null,
+  takenIds: [],
+  form: EMPTY_FORM,
+  booking: null,
+  flash: null,
+};
+
+function addId(ids: string[], id: string): string[] {
+  return ids.includes(id) ? ids : [...ids, id];
+}
+
+export function bookingReducer(state: BookingState, action: BookingAction): BookingState {
+  switch (action.type) {
+    case "hydrate":
+      return {
+        ...state,
+        held: action.state.held ?? state.held,
+        takenIds: Array.from(new Set([...action.state.takenIds, ...state.takenIds])),
+        booking: state.booking ?? action.state.booking,
+        flash: action.state.flash ?? state.flash,
+      };
+    case "hold":
+      return { ...state, held: action.slot, flash: null };
+    case "release":
+      return { ...state, held: null };
+    case "updateForm":
+      return { ...state, form: { ...state.form, ...action.patch } };
+    case "slotLost":
+      return {
+        ...state,
+        held: null,
+        takenIds: addId(state.takenIds, action.slot.id),
+        flash: { doctorId: action.slot.doctorId, message: action.message },
+      };
+    case "confirmed":
+      return {
+        ...state,
+        held: null,
+        booking: action.booking,
+        takenIds: addId(state.takenIds, action.booking.slot.id),
+        flash: null,
+      };
+    case "clearFlash":
+      return state.flash ? { ...state, flash: null } : state;
+    case "startOver":
+      return { ...initialBookingState, takenIds: state.takenIds };
+  }
+}
+
+/* ---------- Session persistence ---------- */
+
+export const STORAGE_KEY = "halden.booking.v1";
+
+/** What survives a reload. Patient details are deliberately excluded. */
+export interface PersistedState {
+  held: Slot | null;
+  takenIds: string[];
+  booking: Omit<Booking, "patient"> | null;
+  flash: BookingState["flash"];
+}
+
+export function toPersisted(state: BookingState): PersistedState {
+  const booking = state.booking
+    ? {
+        reference: state.booking.reference,
+        doctorId: state.booking.doctorId,
+        slot: state.booking.slot,
+        reasonId: state.booking.reasonId,
+      }
+    : null;
+  return { held: state.held, takenIds: state.takenIds, booking, flash: state.flash };
+}
+
+function isSlot(value: unknown): value is Slot {
+  if (!value || typeof value !== "object") return false;
+  const slot = value as Record<string, unknown>;
+  return (
+    typeof slot.id === "string" &&
+    typeof slot.doctorId === "string" &&
+    typeof slot.date === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(slot.date) &&
+    typeof slot.time === "string" &&
+    /^\d{2}:\d{2}$/.test(slot.time)
+  );
+}
+
+/** Parse untrusted storage. Anything malformed is dropped rather than trusted. */
+export function parsePersisted(raw: string | null): PersistedState | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    const takenIds = Array.isArray(value.takenIds)
+      ? value.takenIds.filter((id): id is string => typeof id === "string").slice(0, 200)
+      : [];
+    const held = isSlot(value.held) ? value.held : null;
+    let booking: PersistedState["booking"] = null;
+    const candidate = value.booking as Record<string, unknown> | null;
+    if (
+      candidate &&
+      typeof candidate.reference === "string" &&
+      typeof candidate.doctorId === "string" &&
+      typeof candidate.reasonId === "string" &&
+      isSlot(candidate.slot)
+    ) {
+      booking = {
+        reference: candidate.reference,
+        doctorId: candidate.doctorId,
+        reasonId: candidate.reasonId,
+        slot: candidate.slot,
+      };
+    }
+    const flashValue = value.flash as Record<string, unknown> | null;
+    const flash =
+      flashValue && typeof flashValue.doctorId === "string" && typeof flashValue.message === "string"
+        ? { doctorId: flashValue.doctorId, message: flashValue.message }
+        : null;
+    return { held, takenIds, booking, flash };
+  } catch {
+    return null;
+  }
+}
