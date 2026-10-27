@@ -6,6 +6,7 @@ import { buttonClass } from "@/components/ui/button-styles";
 import { Notice } from "@/components/ui/Card";
 import { getDoctors } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 import { signOutAction } from "@/server/auth-actions";
 
 export const metadata: Metadata = {
@@ -28,9 +29,7 @@ export default async function DetailsPage() {
         </Notice>
         <form action={signOutAction} className="mt-6">
           <input type="hidden" name="next" value="/sign-in?next=%2Fbook%2Fdetails" />
-          <button type="submit" className={buttonClass("primary", "lg")}>
-            Sign out and switch account
-          </button>
+          <SignOutButton className={buttonClass("primary", "lg")}>Sign out and switch account</SignOutButton>
         </form>
       </div>
     );

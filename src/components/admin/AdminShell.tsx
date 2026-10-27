@@ -17,6 +17,7 @@ import type { NavCounts } from "@/lib/admin-data";
 import type { SessionUser } from "@/lib/clinic-types";
 import { practice } from "@/lib/data";
 import { monogram } from "@/lib/format";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 import { signOutAction } from "@/server/auth-actions";
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
@@ -112,9 +113,9 @@ function AccountFooter({ admin }: { admin: SessionUser }) {
           Practice website
         </Link>
         <form action={signOutAction}>
-          <button type="submit" className="flex min-h-9 w-full items-center rounded-md px-2.5 text-left text-sm text-ink hover:bg-black/5">
+          <SignOutButton className="flex min-h-9 w-full items-center rounded-md px-2.5 text-left text-sm text-ink hover:bg-black/5">
             Sign out
-          </button>
+          </SignOutButton>
         </form>
       </div>
     </div>

@@ -1,6 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { authenticate, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
 import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RESEND_AFTER_MS } from "@/lib/login-codes";
@@ -8,9 +10,9 @@ import { ownMailConfigured, sendLoginCode, showsCodeOnScreen } from "@/lib/maile
 import { normaliseEmail } from "@/lib/passwords";
 import { CODE_LENGTH, SUPABASE_CODE_LENGTH } from "@/lib/sign-in-config";
 import { SEND_FAILED, sendCodeErrorMessage } from "@/lib/sign-in-errors";
-import { destroySession, getCurrentUser, safeNext, startSession } from "@/lib/session";
+import { destroySession, getCurrentUser, safeNext, SESSION_COOKIE, startSession } from "@/lib/session";
 import { blockedSignIn, DISABLED_MESSAGE, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
-import { createSupabase, supabaseConfigured } from "@/lib/supabase";
+import { createSupabase, isAuthCookie, supabaseConfigured } from "@/lib/supabase";
 import { isDemoSignInEmail } from "@/lib/demo-accounts";
 
 /**
@@ -196,14 +198,35 @@ export async function signInFromDemo(formData: FormData): Promise<void> {
   redirect(destinationFor(result.user.role, nextPath));
 }
 
-export async function signOutAction(formData?: FormData): Promise<void> {
-  const leaving = await getCurrentUser().catch(() => null);
-  if (leaving) await signedOut(leaving);
-  if (supabaseConfigured()) {
-    const supabase = await createSupabase();
-    await supabase.auth.signOut();
+/** Expire our session cookie and every Supabase auth cookie (chunked or not) this browser sent. */
+async function clearAuthCookies(): Promise<void> {
+  const jar = await cookies();
+  for (const { name } of jar.getAll()) {
+    if (name === SESSION_COOKIE || isAuthCookie(name)) jar.delete(name);
   }
-  await destroySession();
+}
+
+export async function signOutAction(formData?: FormData): Promise<void> {
   const next = formData ? safeNext(String(formData.get("next") ?? "/")) : "/";
+  const leaving = await getCurrentUser().catch(() => null);
+  // Each step is best effort: a slow or failing Supabase or store call must never leave
+  // someone stuck signed in. The cookies are cleared below whatever happens here.
+  if (supabaseConfigured()) {
+    try {
+      const supabase = await createSupabase();
+      // "local" ends this browser's session without a call that can fail for other devices.
+      await supabase.auth.signOut({ scope: "local" });
+    } catch (error) {
+      console.error(`[sign-out] Supabase sign-out failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
+  }
+  try {
+    await destroySession();
+  } catch (error) {
+    console.error(`[sign-out] Could not end the stored session: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+  await clearAuthCookies();
+  // Writing the activity log can wait until the browser has its answer.
+  if (leaving) after(() => signedOut(leaving));
   redirect(next);
 }
