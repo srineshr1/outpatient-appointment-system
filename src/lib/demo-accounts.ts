@@ -12,6 +12,11 @@ export interface DemoAccount {
   mobile: string;
   dob: string;
   blurb: string;
+  /**
+   * An older seed linked this account to another doctor's book. If the stored account still
+   * carries that link, the seed moves it to `doctorId` once, without touching anything else.
+   */
+  previousDoctorId?: string;
 }
 
 export const demoAccounts: DemoAccount[] = [
@@ -40,10 +45,12 @@ export const demoAccounts: DemoAccount[] = [
     email: "rudraksha.srinesh@gmail.com",
     name: "Dr Rudraksha Srinesh",
     role: "doctor",
-    doctorId: "cho",
+    // Their own clinic book: listed for patients with a default full week of sessions.
+    doctorId: "user-rudraksha",
+    previousDoctorId: "cho",
     mobile: "",
     dob: "",
-    blurb: "Doctor. Shares Dr Cho’s clinic book while the admin console is being built.",
+    blurb: "Doctor. Has their own clinic book, which patients can book from the doctors list.",
   },
   {
     id: "user-adeyemi",

@@ -7,7 +7,10 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export async function seedDemoUsers(store: ClinicStore): Promise<void> {
   for (const account of demoAccounts) {
     const existing = await store.getUserByEmail(account.email);
-    if (existing) continue;
+    if (existing) {
+      await moveToOwnBook(store, account, existing);
+      continue;
+    }
     await store.createUser({
       id: account.id,
       email: account.email,
@@ -21,6 +24,33 @@ export async function seedDemoUsers(store: ClinicStore): Promise<void> {
     });
   }
   await bootstrapAdmins(store);
+}
+
+/**
+ * A seeded doctor whose stored account still points at the book an older seed gave it now gets
+ * its own book. Only the `doctorId` link changes: the role, name and visits stay as they are,
+ * and visits already booked with the other doctor stay on that doctor's book.
+ */
+async function moveToOwnBook(
+  store: ClinicStore,
+  account: (typeof demoAccounts)[number],
+  existing: { id: string; role: string; doctorId: string | null },
+): Promise<void> {
+  if (!account.previousDoctorId || account.doctorId !== account.id) return;
+  if (existing.role !== "doctor" || existing.doctorId !== account.previousDoctorId) return;
+  await store.updateUser(existing.id, { doctorId: existing.id });
+  await store.appendEvent({
+    id: crypto.randomUUID(),
+    at: new Date().toISOString(),
+    action: "role.changed",
+    actorId: null,
+    actorName: "Clinic setup",
+    actorRole: "system",
+    subjectType: "user",
+    subjectId: existing.id,
+    summary: `${account.name} · doctor (${account.previousDoctorId}'s book) → doctor (own book)`,
+    reason: "Gave the account its own clinic book.",
+  });
 }
 
 /** Emails in ADMIN_EMAILS (comma-separated). The first admin of a live practice comes from here. */
