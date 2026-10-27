@@ -1,9 +1,12 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { SessionUser } from "./clinic-types";
-import { createPatient, findUserByEmail } from "./accounts";
+import { createPatient } from "./accounts";
+import { describeDevice } from "./device";
+import { loadDoctors } from "./doctors";
 import { hashToken, newToken } from "./passwords";
 import { getStore } from "./store";
 import { createSupabase, supabaseConfigured } from "./supabase";
+import { revokedSession, sessionStartedAt } from "./supabase-session";
 
 export const SESSION_COOKIE = "hsp_session";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
@@ -27,6 +30,8 @@ async function readToken(): Promise<string | null> {
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
+  // Pages and actions look doctors up by id; make sure ones added in the admin console are known.
+  await loadDoctors();
   if (supabaseConfigured()) {
     try {
       const supabase = await createSupabase();
@@ -43,6 +48,10 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
           stored = await store.getUserByEmail(email);
         }
         if (!stored || stored.disabledAt) return null;
+        if (stored.sessionsRevokedAt) {
+          const { data: current } = await supabase.auth.getSession();
+          if (revokedSession(stored, sessionStartedAt(current.session?.access_token))) return null;
+        }
         const { passwordHash: _secret, ...profile } = stored;
         const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
         return { ...profile, expiresAt, sessionId: null };
@@ -63,15 +72,33 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     return null;
   }
   const user = await store.getUserById(session.userId);
-  if (!user) return null;
+  if (!user || user.disabledAt) return null;
   return { ...user, expiresAt: session.expiresAt, sessionId: session.id };
+}
+
+/** A turned-off account can't start a session. Callers check first and show a message. */
+export class AccountDisabledError extends Error {
+  constructor() {
+    super("This account is turned off.");
+    this.name = "AccountDisabledError";
+  }
+}
+
+async function deviceLabel(): Promise<string> {
+  try {
+    return describeDevice((await headers()).get("user-agent"));
+  } catch {
+    return "";
+  }
 }
 
 export async function startSession(userId: string): Promise<void> {
   const token = newToken();
   const store = await getStore();
+  const account = await store.getUserById(userId);
+  if (account?.disabledAt) throw new AccountDisabledError();
   const expiresAt = sessionExpiry();
-  await store.createSession(hashToken(token), userId, expiresAt);
+  await store.createSession(hashToken(token), userId, expiresAt, await deviceLabel());
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,

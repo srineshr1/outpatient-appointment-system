@@ -1,7 +1,11 @@
 @import "tailwindcss";
 
+/* Pinned bars only stay pinned when there's room for the page under them: a phone held
+   sideways or a zoomed-in window gets ordinary scrolling (WCAG technique C34). */
+@custom-variant tall (@media (min-height: 32rem));
+
 /*
- * Halden Street design tokens.
+ * Design tokens.
  * Contrast (WCAG 2.2): ink/ink-2/muted text are ≥4.5:1 on canvas and surface;
  * control borders are ≥3:1 on surface; accent is ≥4.5:1 with white text.
  */
@@ -77,12 +81,39 @@
 }
 
 @layer base {
+  :root {
+    /* Height of the sticky site header. Pinned bars sit directly under it. */
+    --header-h: 3.5rem;
+  }
+
+  @media (width >= 48rem) {
+    :root {
+      --header-h: 4rem;
+    }
+  }
+
   html {
     background: var(--color-canvas);
     color: var(--color-ink);
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
-    scroll-padding-top: 7rem;
+  }
+
+  /* Anything in the page that is focused or linked to stops clear of the sticky header
+     (WCAG 2.4.11, technique C43). A margin on the content rather than scroll-padding on html:
+     with padding, the header's own links counted as hidden behind the header, so tabbing into
+     it from far down the page scrolled all the way back to the top. */
+  main,
+  main :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
+    scroll-margin-top: calc(var(--header-h) + 1rem);
+  }
+
+  /* A pinned bar's own controls are always on screen while it's pinned. Without this, focusing
+     one would "reveal" it by scrolling the page until the bar came unstuck. */
+  @media (min-height: 32rem) {
+    [data-pinned-bar] :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
+      scroll-margin-top: 0;
+    }
   }
 
   body {
@@ -172,6 +203,23 @@
 
 @utility tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* A row you swipe sideways: still scrollable, without a scrollbar. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Content that scrolls under a pinned bar: anything focused stops below the header and the bar,
+   not under them. The bar publishes its height as --pin-h (0 when it isn't pinned). */
+@utility pin-clear {
+  & :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
+    scroll-margin-top: calc(var(--header-h) + var(--pin-h, 0px) + 1rem);
+  }
 }
 
 @utility field {

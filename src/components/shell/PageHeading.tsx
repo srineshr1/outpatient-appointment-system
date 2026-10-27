@@ -26,7 +26,7 @@ export function PageHeading({ children, className = "", id }: { children: ReactN
   }, [navigated]);
 
   return (
-    <h1 ref={ref} id={id} tabIndex={-1} className={`scroll-mt-32 outline-none ${className}`}>
+    <h1 ref={ref} id={id} tabIndex={-1} className={`outline-none ${className}`}>
       {children}
     </h1>
   );

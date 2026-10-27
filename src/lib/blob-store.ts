@@ -389,7 +389,7 @@ export class BlobClinicStore implements ClinicStore {
       const next = change(current);
       if (!next) return null;
       const kept = new Set(next.entries.map((entry) => entry.id));
-      if (current.entries.some((entry) => !kept.has(entry.id))) throw new Error("Payments can't be removed, only refunded.");
+      if (current.entries.some((entry) => !kept.has(entry.id))) throw new Error("Payments can’t be removed, only refunded.");
       return next;
     });
     return result?.value ?? null;

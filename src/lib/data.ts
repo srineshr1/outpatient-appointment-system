@@ -59,9 +59,9 @@ export interface Slot {
 }
 
 export const practice: Practice = {
-  name: "Halden Street Practice",
-  shortName: "Halden Street",
-  address: "14 Halden Street, Edinburgh EH8 9RL",
+  name: "Westbrook Medical Practice",
+  shortName: "Westbrook",
+  address: "14 Westbrook Place, Edinburgh EH8 9RL",
   phoneDisplay: "0131 496 0280",
   phoneHref: "tel:+441314960280",
   sameDayClose: "16:00",
@@ -207,6 +207,75 @@ const templates: Record<string, Template> = {
   },
 };
 
+/** A doctor added from the admin console: a full week, nothing booked by phone yet. */
+const STAFF_TEMPLATE: Template = { sessions: { 1: FULL_DAY, 2: FULL_DAY, 3: FULL_DAY, 4: FULL_DAY, 5: FULL_DAY }, busy: 0 };
+
+/* ---------- Doctors added in the admin console ---------- */
+
+/**
+ * A doctor account with its own clinic book has `doctorId` equal to its account id. Those
+ * doctors are listed alongside the practice's own. The server refreshes this list from the
+ * store (`loadDoctors` in `doctors.ts`) before it renders or changes anything.
+ */
+let staffDoctors: Doctor[] = [];
+
+export function setStaffDoctors(list: Doctor[]): void {
+  staffDoctors = list;
+}
+
+/** The practice's doctors, then those added in the admin console. */
+export function allDoctors(): Doctor[] {
+  return staffDoctors.length ? [...doctors, ...staffDoctors] : doctors;
+}
+
+export function findDoctor(id: string | null | undefined): Doctor | undefined {
+  if (!id) return undefined;
+  return doctors.find((doctor) => doctor.id === id) ?? staffDoctors.find((doctor) => doctor.id === id);
+}
+
+export function isPracticeDoctor(id: string): boolean {
+  return doctors.some((doctor) => doctor.id === id);
+}
+
+const PALETTE = {
+  background: ["#FFE6C7", "#DCEBFF", "#E3F6DA", "#EFE3FF", "#FFE2E2"],
+  skin: ["#7A4A2E", "#F1C6A4", "#EBC09A", "#A97450", "#F4CFB3", "#C68A5E"],
+  hair: ["#1C130F", "#B4572A", "#17171A", "#29201B", "#8A3A1C"],
+  hairStyle: ["short", "curly", "bob", "long", "bun"] as HairStyle[],
+  shirt: ["#2563EB", "#16A34A", "#DB2777", "#0F766E", "#7C3AED"],
+};
+
+function pick<T>(list: readonly T[], seed: string): T {
+  return list[Math.floor(unitHash(seed) * list.length)]!;
+}
+
+/** A listing for a doctor account that has its own book. */
+export function staffDoctorProfile(account: { id: string; name: string }): Doctor {
+  const clean = account.name.replace(/\s+/g, " ").trim() || "New doctor";
+  const name = /^dr\.?\s/i.test(clean) ? clean.replace(/^dr\.?\s+/i, "Dr ") : `Dr ${clean}`;
+  const surname = name.split(" ").slice(-1)[0] ?? clean;
+  return {
+    id: account.id,
+    name,
+    short: name.split(" ").length > 2 ? `Dr ${surname}` : name,
+    qualification: "MRCGP",
+    interest: "General practice",
+    years: 1,
+    note: "General practice.",
+    room: "Room 6",
+    bio: "Recently joined the practice. Happy to see anything, from a new worry to a long-running condition.",
+    languages: ["English"],
+    days: "Monday to Friday",
+    portrait: {
+      background: pick(PALETTE.background, `${account.id}#bg`),
+      skin: pick(PALETTE.skin, `${account.id}#skin`),
+      hair: pick(PALETTE.hair, `${account.id}#hair`),
+      hairStyle: pick(PALETTE.hairStyle, `${account.id}#style`),
+      shirt: pick(PALETTE.shirt, `${account.id}#shirt`),
+    },
+  };
+}
+
 /** Stable pseudo-random value in [0, 1) for a string (FNV-1a). */
 export function unitHash(input: string): number {
   let hash = 0x811c9dc5;
@@ -245,9 +314,8 @@ export function bookWindow(instant?: Date): BookWindow {
  */
 export function generateSlots(window: BookWindow): Slot[] {
   const slots: Slot[] = [];
-  for (const doctor of doctors) {
-    const template = templates[doctor.id];
-    if (!template) continue;
+  for (const doctor of allDoctors()) {
+    const template = templates[doctor.id] ?? STAFF_TEMPLATE;
     for (let offset = 0; offset < WEEKS_OPEN * 7; offset += 1) {
       const date = addDays(window.firstWeek, offset);
       const weekday = weekdayIndex(date) as 1 | 2 | 3 | 4 | 5;

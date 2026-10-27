@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { practice, reasons, type Doctor } from "@/lib/data";
 import { dayOfMonth } from "@/lib/clock";
+import { formatMoney } from "@/lib/fees";
 import { ageLabel, formatPhone, monthLong, weekdayLong } from "@/lib/format";
 import { downloadIcs } from "@/lib/ics";
 import { spring } from "@/lib/motion";
@@ -139,6 +140,13 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
               </Item>
             ) : null}
             <Item term="Visit">{reason.label}</Item>
+            {booking.payment && booking.payment.amountPence > 0 ? (
+              <Item term="Payment">
+                {booking.payment.paid
+                  ? `${formatMoney(booking.payment.amountPence)} paid with the demo card. No money was taken.`
+                  : `${formatMoney(booking.payment.amountPence)} to pay at the desk, by card or cash.`}
+              </Item>
+            ) : null}
             <Item term="Bring">
               {chi ? `Your CHI number (${chi}).` : "Your CHI number, if you have it."} Please arrive five minutes early.
             </Item>

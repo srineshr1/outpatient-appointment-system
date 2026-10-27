@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/providers/Providers";
 import { SiteFooter } from "@/components/shell/SiteFooter";
+import { SiteChrome } from "@/components/shell/SiteChrome";
 import { SiteHeader } from "@/components/shell/SiteHeader";
 import { now } from "@/lib/clock";
 import { practice } from "@/lib/data";
@@ -58,11 +59,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           Skip to main content
         </a>
         <Providers initialNow={initialNow}>
-          <SiteHeader user={user} />
+          <SiteChrome>
+            <SiteHeader user={user} />
+          </SiteChrome>
           <main id="main" tabIndex={-1} className="flex-1 outline-none">
             {children}
           </main>
-          <SiteFooter />
+          <SiteChrome>
+            <SiteFooter />
+          </SiteChrome>
         </Providers>
       </body>
     </html>

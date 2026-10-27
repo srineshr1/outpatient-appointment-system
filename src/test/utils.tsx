@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import { Providers } from "@/components/providers/Providers";
 import { setNow } from "@/lib/clock";
 
-export { router } from "./router";
+export { navigation, router } from "./router";
 
 /** Monday 26 October 2026, 13:40 in Edinburgh (GMT). */
 export const MONDAY_1340 = Date.UTC(2026, 9, 26, 13, 40);

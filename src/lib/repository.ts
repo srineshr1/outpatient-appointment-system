@@ -5,8 +5,12 @@
  * To connect a real practice system, replace the bodies of these functions with
  * API calls; every caller already treats them as asynchronous.
  */
+import { openCharge } from "./billing";
+import type { AppointmentRecord } from "./clinic-types";
 import { now } from "./clock";
-import { bookWindow, doctors, generateSlots, reasons, type BookWindow, type Doctor, type Slot } from "./data";
+import { bookWindow, findDoctor, generateSlots, reasons, type BookWindow, type Doctor, type Slot } from "./data";
+import { loadDoctors } from "./doctors";
+import { totals } from "./payments";
 import { slotStatus } from "./schedule";
 import { getStore } from "./store";
 
@@ -24,8 +28,10 @@ export class SlotUnavailableError extends Error {
 
 let cache: { key: string; slots: Slot[] } | null = null;
 
-function slotsForWindow(window: BookWindow): Slot[] {
-  if (cache?.key !== window.firstWeek) cache = { key: window.firstWeek, slots: generateSlots(window) };
+/** Call after `loadDoctors`: the cache is keyed by the week and the doctors listed. */
+function slotsForWindow(window: BookWindow, list: readonly Doctor[]): Slot[] {
+  const key = `${window.firstWeek}|${list.map((doctor) => doctor.id).join(",")}`;
+  if (cache?.key !== key) cache = { key, slots: generateSlots(window) };
   return cache.slots;
 }
 
@@ -34,15 +40,16 @@ export async function getWindow(): Promise<BookWindow> {
 }
 
 export async function getDoctors(): Promise<Doctor[]> {
-  return doctors;
+  return loadDoctors();
 }
 
 export async function getDoctor(id: string): Promise<Doctor | null> {
-  return doctors.find((doctor) => doctor.id === id) ?? null;
+  await loadDoctors();
+  return findDoctor(id) ?? null;
 }
 
 export async function getSlots(doctorId?: string): Promise<Slot[]> {
-  const all = slotsForWindow(bookWindow(now()));
+  const all = slotsForWindow(bookWindow(now()), await loadDoctors());
   const blocked = new Set(await (await getStore()).listBlockedSlotIds());
   const merged = all.map((slot) => (blocked.has(slot.id) && !slot.taken ? { ...slot, taken: true } : slot));
   return doctorId ? merged.filter((slot) => slot.doctorId === doctorId) : merged;
@@ -53,7 +60,7 @@ export async function getUpcoming(perDoctor = 12): Promise<Record<string, Slot[]
   const instant = now();
   const all = await getSlots();
   const result: Record<string, Slot[]> = {};
-  for (const doctor of doctors) {
+  for (const doctor of await loadDoctors()) {
     result[doctor.id] = all
       .filter((slot) => slot.doctorId === doctor.id && slotStatus(slot, [], instant) === "open")
       .slice(0, perDoctor);
@@ -70,6 +77,8 @@ export interface ConfirmInput {
   patientChi?: string;
   note?: string;
   patientUserId?: string | null;
+  /** Pay the fee now with the demo card. Otherwise it's paid at the desk. */
+  payNow?: boolean;
 }
 
 /** "HSP-482913": six random digits, checked against the book so no two visits share one. */
@@ -89,13 +98,17 @@ async function uniqueReference(store: Awaited<ReturnType<typeof getStore>>): Pro
 
 export interface ConfirmResult {
   reference: string;
+  /** The stored visit. */
+  visit: AppointmentRecord;
+  /** The visit's fee and whether it's paid. Null if the fee couldn't be recorded. */
+  payment: { amountPence: number; paid: boolean } | null;
 }
 
 export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<ConfirmResult> {
   if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
   if (!reasons.some((reason) => reason.id === input.reasonId)) throw new Error("Unknown visit reason.");
 
-  const current = slotsForWindow(bookWindow(now())).find((slot) => slot.id === input.slot.id);
+  const current = slotsForWindow(bookWindow(now()), await loadDoctors()).find((slot) => slot.id === input.slot.id);
   if (!current) throw new SlotUnavailableError(input.slot.id, "missing");
 
   const store = await getStore();
@@ -104,7 +117,7 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
   if (status !== "open") throw new SlotUnavailableError(current.id, status);
 
   const reference = await uniqueReference(store);
-  const outcome = await store.createAppointment({
+  const visit: AppointmentRecord = {
     id: crypto.randomUUID(),
     reference,
     slotId: current.id,
@@ -120,7 +133,15 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
     status: "booked",
     patientUserId: input.patientUserId ?? null,
     createdAt: new Date().toISOString(),
-  });
+  };
+  const outcome = await store.createAppointment(visit);
   if (outcome === "taken") throw new SlotUnavailableError(current.id, "taken");
-  return { reference };
+
+  // The visit is booked either way. A fee that fails to save shows as "No fee recorded" to staff.
+  const charge = await openCharge(visit, Boolean(input.payNow)).catch((error: unknown) => {
+    console.error(`[billing] Could not record the fee for ${reference}: ${error instanceof Error ? error.message : "unknown error"}`);
+    return null;
+  });
+  const payment = charge ? { amountPence: charge.amountPence, paid: totals(charge.entries).netPence >= charge.amountPence } : null;
+  return { reference, visit, payment };
 }

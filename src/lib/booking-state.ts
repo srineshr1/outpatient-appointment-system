@@ -1,11 +1,19 @@
 import type { Slot } from "./data";
 import { EMPTY_FORM, type PatientForm } from "./validate";
 
+export interface BookingPayment {
+  amountPence: number;
+  /** True when paid with the demo card at booking; otherwise it's paid at the desk. */
+  paid: boolean;
+}
+
 export interface Booking {
   reference: string;
   doctorId: string;
   slot: Slot;
   reasonId: string;
+  /** The visit's fee. Absent if it couldn't be recorded. */
+  payment?: BookingPayment;
   /** Held in memory only. Absent after a reload. */
   patient?: PatientForm;
 }
@@ -93,9 +101,21 @@ export function toPersisted(state: BookingState): PersistedState {
         doctorId: state.booking.doctorId,
         slot: state.booking.slot,
         reasonId: state.booking.reasonId,
+        ...(state.booking.payment ? { payment: state.booking.payment } : {}),
       }
     : null;
   return { held: state.held, booking, flash: state.flash };
+}
+
+function isPayment(value: unknown): value is BookingPayment {
+  if (!value || typeof value !== "object") return false;
+  const payment = value as Record<string, unknown>;
+  return (
+    typeof payment.amountPence === "number" &&
+    Number.isInteger(payment.amountPence) &&
+    payment.amountPence >= 0 &&
+    typeof payment.paid === "boolean"
+  );
 }
 
 function isSlot(value: unknown): value is Slot {
@@ -131,6 +151,7 @@ export function parsePersisted(raw: string | null): PersistedState | null {
         doctorId: candidate.doctorId,
         reasonId: candidate.reasonId,
         slot: candidate.slot,
+        ...(isPayment(candidate.payment) ? { payment: { amountPence: candidate.payment.amountPence, paid: candidate.payment.paid } } : {}),
       };
     }
     const flashValue = value.flash as Record<string, unknown> | null;

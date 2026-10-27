@@ -33,10 +33,7 @@ export default async function SignInPage({ searchParams }: Props) {
   const doctors = await getDoctors();
 
   return (
-    <div className="pt-10 pb-20 md:pt-16">
-      {/* A new key per mode resets the form when switching between patient and staff. */}
-      <SignInPanel key={mode} nextPath={nextPath} mode={mode} doctors={doctors} notice={notice} />
-
-    </div>
+    // A new key per mode resets the form when switching between patient and staff.
+    <SignInPanel key={mode} nextPath={nextPath} mode={mode} doctors={doctors} notice={notice} />
   );
 }

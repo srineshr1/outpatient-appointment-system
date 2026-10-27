@@ -7,7 +7,8 @@ import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RE
 import { devCodesAllowed, sendLoginCode } from "@/lib/mailer";
 import { normaliseEmail } from "@/lib/passwords";
 import { CODE_LENGTH } from "@/lib/sign-in-config";
-import { destroySession, safeNext, startSession } from "@/lib/session";
+import { destroySession, getCurrentUser, safeNext, startSession } from "@/lib/session";
+import { blockedSignIn, DISABLED_MESSAGE, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase";
 
 export type SignInMode = "patient" | "staff";
@@ -84,8 +85,15 @@ export async function verifyCode(input: {
   if (supabaseConfigured()) {
     const supabase = await createSupabase();
     const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
-    if (error || !data.user) return { ok: false, error: "That code isn’t right, or it has expired. Send a new one.", spent: true };
+    if (error || !data.user) {
+      await signInFailed(email, "wrong");
+      return { ok: false, error: "That code isn’t right, or it has expired. Send a new one.", spent: true };
+    }
     const existing = await findUserByEmail(email);
+    if (await blockedSignIn(existing, "Email code")) {
+      await supabase.auth.signOut();
+      return { ok: false, error: DISABLED_MESSAGE, spent: true };
+    }
     if (!existing) {
       if (input.mode === "staff") {
         await supabase.auth.signOut();
@@ -93,21 +101,27 @@ export async function verifyCode(input: {
       }
       const metaName = typeof data.user.user_metadata?.full_name === "string" ? data.user.user_metadata.full_name : "";
       if (!metaName) return { ok: true, needsName: true, signupToken: "supabase" };
-      await createPatient(email, metaName);
+      await patientSignedUp(await createPatient(email, metaName), "Email code");
     }
-    redirect(destinationFor((await findUserByEmail(email))?.role ?? "patient", safeNext(String(input.next ?? "/"))));
+    const signedInUser = await findUserByEmail(email);
+    if (signedInUser) await signedIn(signedInUser, "Email code");
+    redirect(destinationFor(signedInUser?.role ?? "patient", safeNext(String(input.next ?? "/"))));
   }
 
   const result = await checkCode(email, code);
   if (!result.ok) {
     if (result.reason === "wrong") {
+      await signInFailed(email, "wrong", result.attemptsLeft);
       return {
         ok: false,
         error: `That code isn’t right. ${result.attemptsLeft === 1 ? "1 try" : `${result.attemptsLeft} tries`} left.`,
       };
     }
     if (result.reason === "expired") return { ok: false, error: "That code has expired. Send a new one.", spent: true };
-    if (result.reason === "locked") return { ok: false, error: "Too many tries. Send a new code.", spent: true };
+    if (result.reason === "locked") {
+      await signInFailed(email, "locked");
+      return { ok: false, error: "Too many tries. Send a new code.", spent: true };
+    }
     return { ok: false, error: "That code has already been used. Send a new one.", spent: true };
   }
 
@@ -116,7 +130,9 @@ export async function verifyCode(input: {
     if (input.mode === "staff") return { ok: false, error: "That email isn’t a staff account.", spent: true };
     return { ok: true, needsName: true, signupToken: await issueSignupToken(email) };
   }
+  if (await blockedSignIn(user, "Email code")) return { ok: false, error: DISABLED_MESSAGE, spent: true };
   await startSession(user.id);
+  await signedIn(user, "Email code");
   redirect(destinationFor(user.role, safeNext(String(input.next ?? "/"))));
 }
 
@@ -133,8 +149,11 @@ export async function completeSignup(input: {
     return { ok: false, error: "This sign-in has timed out. Start again with your email.", spent: true };
   }
   const existing = await findUserByEmail(email);
+  if (await blockedSignIn(existing, "Email code")) return { ok: false, error: DISABLED_MESSAGE, spent: true };
   const user = existing ?? (await createPatient(email, String(input.name)));
+  if (!existing) await patientSignedUp(user, "Email code");
   await startSession(user.id);
+  await signedIn(user, "Email code");
   redirect(destinationFor(user.role, safeNext(String(input.next ?? "/"))));
 }
 
@@ -143,11 +162,15 @@ export async function signInFromDemo(formData: FormData): Promise<void> {
   const nextPath = safeNext(String(formData.get("next") ?? "/"));
   const result = await authenticate(String(formData.get("email") ?? ""), String(formData.get("password") ?? ""));
   if (!result.ok) redirect("/sign-in?as=staff");
+  if (await blockedSignIn(result.user, "Password")) redirect("/sign-in?as=staff");
   await startSession(result.user.id);
+  await signedIn(result.user, "Password");
   redirect(destinationFor(result.user.role, nextPath));
 }
 
 export async function signOutAction(formData?: FormData): Promise<void> {
+  const leaving = await getCurrentUser().catch(() => null);
+  if (leaving) await signedOut(leaving);
   if (supabaseConfigured()) {
     const supabase = await createSupabase();
     await supabase.auth.signOut();

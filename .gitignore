@@ -16,3 +16,5 @@ npm-debug.log*
 .playwright-mcp
 
 /.e2e
+.vercel
+.env*

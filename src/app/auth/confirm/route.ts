@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createPatient, findUserByEmail } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
 import { safeNext } from "@/lib/session";
+import { blockedSignIn, patientSignedUp, signedIn } from "@/lib/sign-in-events";
 import { createSupabase } from "@/lib/supabase";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
@@ -28,13 +29,21 @@ export async function GET(request: NextRequest) {
   const email = data.user?.email;
   if (email) {
     const existing = await findUserByEmail(email);
+    const method = code ? "Google" : "Supabase email link";
+    if (await blockedSignIn(existing, method)) {
+      await supabase.auth.signOut();
+      return NextResponse.redirect(new URL("/sign-in?error=google-failed", url.origin));
+    }
     if (!existing) {
       const metaName = typeof data.user?.user_metadata?.full_name === "string" ? data.user.user_metadata.full_name : "";
       const name = metaName || email.split("@")[0] || "Patient";
-      await createPatient(email, name);
+      await patientSignedUp(await createPatient(email, name), method);
     }
     const user = await findUserByEmail(email);
-    if (user) return NextResponse.redirect(new URL(destinationFor(user.role, next), url.origin));
+    if (user) {
+      await signedIn(user, method);
+      return NextResponse.redirect(new URL(destinationFor(user.role, next), url.origin));
+    }
   }
   return NextResponse.redirect(new URL(next, url.origin));
 }

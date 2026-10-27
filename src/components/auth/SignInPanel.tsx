@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -18,6 +17,7 @@ import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { buttonClass } from "@/components/ui/button-styles";
 import type { Doctor } from "@/lib/data";
+import { practice } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
 import { CODE_LENGTH } from "@/lib/sign-in-config";
 import { completeSignup, requestCode, verifyCode, type SignInMode } from "@/server/auth-actions";
@@ -37,8 +37,8 @@ interface Props {
 export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   const reduce = useReducedMotion();
   const [step, setStep] = useState<Step>("email");
-  const [filling, setFilling] = useState(false);
-  const [fromFill, setFromFill] = useState(false);
+  /** True when the code boxes should play the "email box splits in four" entrance. */
+  const [split, setSplit] = useState(false);
   const [email, setEmail] = useState("");
   const [digits, setDigits] = useState<string[]>(emptyDigits);
   const [name, setName] = useState("");
@@ -56,14 +56,9 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
     return () => clearInterval(timer);
   }, [step, resendAt]);
 
-  const showCode = useCallback(() => {
-    setFilling(false);
-    setStep("code");
-  }, []);
-
   function sendCode(event?: FormEvent) {
     event?.preventDefault();
-    if (pending || filling) return;
+    if (pending) return;
     startTransition(async () => {
       const result = await requestCode({ email, mode });
       if (!result.ok) {
@@ -76,10 +71,9 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
       setResendAt(Date.now() + result.resendInMs);
       setDigits(emptyDigits());
       if (step === "code") return;
-      // The circle floods the box, then the box splits into the code digits.
-      setFromFill(!reduce);
-      if (reduce) setStep("code");
-      else setFilling(true);
+      // The email box splits into the code boxes.
+      setSplit(!reduce);
+      setStep("code");
     });
   }
 
@@ -116,7 +110,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
 
   function changeEmail() {
     setError(null);
-    setFromFill(false);
+    setSplit(false);
     setStep("email");
   }
 
@@ -124,96 +118,110 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   const staff = mode === "staff";
   const googleHref = `/auth/google${nextPath === "/" ? "" : `?next=${encodeURIComponent(nextPath)}`}`;
 
+  const footerLink = staff ? (
+    <>
+      Not a doctor?{" "}
+      <a href={nextPath === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(nextPath)}`} className="font-medium text-accent">
+        Patient sign-in
+      </a>
+    </>
+  ) : (
+    <>
+      Doctor or reception?{" "}
+      <a
+        href={`/sign-in?as=staff${nextPath === "/" ? "" : `&next=${encodeURIComponent(nextPath)}`}`}
+        className="font-medium text-accent"
+      >
+        Sign in as a doctor
+      </a>
+    </>
+  );
+
+  const field =
+    step === "email" ? (
+      <EmailField
+        staff={staff}
+        email={email}
+        setEmail={setEmail}
+        error={error}
+        pending={pending}
+        onSubmit={sendCode}
+      />
+    ) : (
+      <CodeBoxes
+        email={email}
+        digits={digits}
+        setDigits={setDigits}
+        error={error}
+        pending={pending}
+        devCode={devCode}
+        resendIn={resendIn}
+        split={split}
+        onComplete={submitCode}
+        onResend={() => sendCode()}
+        onChangeEmail={changeEmail}
+      />
+    );
+
   return (
-    <div className="mx-auto grid w-full max-w-4xl gap-8 px-5 md:px-8 lg:min-h-[28rem] lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-center lg:gap-12">
-      {/* Left: the message */}
-      <div>
-        <PageHeading className="font-statement text-[2.75rem] leading-[1.08] font-bold tracking-[-0.025em] text-ink md:text-[4rem]">
-          {staff ? "Your clinic book is " : "Your next appointment is "}
-          <span className="text-accent">waiting.</span>
-        </PageHeading>
-        {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
-      </div>
+    <div className="grid min-h-dvh place-items-center bg-surface px-5 py-12">
+      <div className="grid w-full max-w-3xl items-center gap-10 md:grid-cols-2 md:gap-16">
+        {/* Left: the practice */}
+        <div className="text-center md:text-left">
+          <a
+            href="/"
+            aria-label={`${practice.name} home`}
+            className="inline-grid size-11 place-items-center rounded-xl bg-accent text-white"
+          >
+            <svg width="20" height="20" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+              <path d="M5 1h4v4h4v4H9v4H5V9H1V5h4z" />
+            </svg>
+          </a>
+          <PageHeading className="mt-6 font-statement text-title1 font-bold tracking-[-0.02em] text-ink">
+            Welcome to {practice.shortName}
+          </PageHeading>
+          <p className="mt-1 text-title3 font-normal text-muted">{staff ? "Clinic staff sign-in" : "Book your GP online"}</p>
+          {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
+        </div>
 
-      {/* Right: the form */}
-      <div className="rounded-sheet bg-surface p-5 shadow-card md:p-6">
-        <AnimatePresence mode="wait" initial={false}>
-          {step === "name" ? (
-            <motion.div
-              key="name"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2 }}
-            >
-              <NameStep name={name} setName={setName} error={error} pending={pending} onSubmit={submitName} />
-            </motion.div>
-          ) : (
-            <motion.div key="auth" exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
-              {step === "email" ? (
-                <EmailField
-                  staff={staff}
-                  email={email}
-                  setEmail={setEmail}
-                  error={error}
-                  pending={pending}
-                  filling={filling}
-                  onSubmit={sendCode}
-                  onFilled={showCode}
-                />
-              ) : (
-                <CodeBoxes
-                  email={email}
-                  digits={digits}
-                  setDigits={setDigits}
-                  error={error}
-                  pending={pending}
-                  devCode={devCode}
-                  resendIn={resendIn}
-                  fromFill={fromFill}
-                  onComplete={submitCode}
-                  onResend={() => sendCode()}
-                  onChangeEmail={changeEmail}
-                />
-              )}
-
-              {staff || step !== "email" ? null : (
-                <>
-                  <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
-                    <span className="h-px flex-1 bg-hairline" />
-                    or
-                    <span className="h-px flex-1 bg-hairline" />
-                  </div>
-                  <a
-                    href={googleHref}
-                    className="flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-control bg-surface px-6 text-body font-medium text-ink no-underline hover:bg-fill"
-                  >
-                    <GoogleMark />
-                    Sign in with Google
-                  </a>
-                </>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <p className="mt-5 text-center text-callout text-ink-2">
-          {staff ? (
-            <>
-              Not a doctor?{" "}
-              <a href={nextPath === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(nextPath)}`} className="font-semibold text-accent">
-                Patient sign-in
-              </a>
-            </>
-          ) : (
-            <>
-              Doctor or reception?{" "}
-              <a href={`/sign-in?as=staff${nextPath === "/" ? "" : `&next=${encodeURIComponent(nextPath)}`}`} className="font-semibold text-accent">
-                Sign in as a doctor
-              </a>
-            </>
-          )}
-        </p>
+        {/* Right: Google, or, email, stacked */}
+        <div className="w-full">
+          <AnimatePresence mode="wait" initial={false}>
+            {step === "name" ? (
+              <motion.div
+                key="name"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+              >
+                <NameStep name={name} setName={setName} error={error} pending={pending} onSubmit={submitName} />
+              </motion.div>
+            ) : (
+              <motion.div key="auth" exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
+                {/* Google only on the email step: once a code is on its way, it's just the code boxes. */}
+                {staff || step !== "email" ? null : (
+                  <>
+                    <a
+                      href={googleHref}
+                      className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-control bg-surface px-6 text-body font-medium text-ink no-underline hover:bg-fill"
+                    >
+                      <GoogleMark />
+                      Sign in with Google
+                    </a>
+                    <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
+                      <span className="h-px flex-1 bg-hairline" />
+                      OR
+                      <span className="h-px flex-1 bg-hairline" />
+                    </div>
+                  </>
+                )}
+                {field}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <p className="mt-8 text-center text-callout text-ink-2">{footerLink}</p>
+        </div>
       </div>
     </div>
   );
@@ -244,49 +252,21 @@ function EmailField({
   setEmail,
   error,
   pending,
-  filling,
   onSubmit,
-  onFilled,
 }: {
   staff: boolean;
   email: string;
   setEmail: (value: string) => void;
   error: string | null;
   pending: boolean;
-  filling: boolean;
   onSubmit: (event: FormEvent) => void;
-  onFilled: () => void;
 }) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const done = useRef(false);
-  const [fullWidth, setFullWidth] = useState(44);
-
-  useEffect(() => {
-    if (!filling) return;
-    done.current = false;
-    setFullWidth(Math.max(44, (boxRef.current?.offsetWidth ?? 0) - 12));
-    // Safety net: move on even if the animation can't report finishing.
-    const timer = setTimeout(() => {
-      if (!done.current) {
-        done.current = true;
-        onFilled();
-      }
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [filling, onFilled]);
-
-  function finished() {
-    if (done.current) return;
-    done.current = true;
-    onFilled();
-  }
-
   return (
     <form onSubmit={onSubmit} noValidate>
       <label htmlFor="email" className="sr-only">
         {staff ? "Practice email" : "Email"}
       </label>
-      <div ref={boxRef} className="relative">
+      <div className="relative">
         <input
           id="email"
           name="email"
@@ -295,36 +275,21 @@ function EmailField({
           autoComplete="email"
           spellCheck={false}
           autoFocus
-          readOnly={filling}
+          readOnly={pending}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder={staff ? "name@halden.example" : "Your email"}
+          placeholder={staff ? "name@halden.example" : "Enter your email"}
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={error ? "email-error" : undefined}
           className="field h-14 rounded-full! pr-16 pl-5"
         />
-        {/* The liquid: grows from the circle to fill the box, sloshing a little at the end. */}
-        {filling ? (
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
-            <motion.div
-              className="absolute top-1.5 right-1.5 bottom-1.5 rounded-full bg-accent"
-              initial={{ width: 44, scaleY: 1 }}
-              animate={{ width: fullWidth, scaleY: [1, 0.86, 1.04, 1] }}
-              transition={{
-                width: { type: "spring", duration: 0.6, bounce: 0.35 },
-                scaleY: { duration: 0.6, times: [0, 0.35, 0.7, 1] },
-              }}
-              onAnimationComplete={finished}
-            />
-          </div>
-        ) : null}
         <button
           type="submit"
           aria-label="Continue with email"
           aria-busy={pending || undefined}
           className="absolute top-1.5 right-1.5 grid size-11 place-items-center rounded-full bg-accent text-white transition-[background-color,transform] hover:bg-accent-hover active:scale-90"
         >
-          {pending || filling ? (
+          {pending ? (
             <Spinner />
           ) : (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
@@ -338,6 +303,23 @@ function EmailField({
   );
 }
 
+/** Where each code box starts so the four together look like the email pill. */
+function splitStart(index: number) {
+  const pill = 28;
+  const first = index === 0;
+  const last = index === CODE_LENGTH - 1;
+  // Close the 12px gaps: each box widens by 9px and slides toward the middle.
+  const offsets = [4.5, 1.5, -1.5, -4.5];
+  return {
+    x: offsets[index] ?? 0,
+    scaleX: 1.12,
+    borderTopLeftRadius: first ? pill : 0,
+    borderBottomLeftRadius: first ? pill : 0,
+    borderTopRightRadius: last ? pill : 0,
+    borderBottomRightRadius: last ? pill : 0,
+  };
+}
+
 function CodeBoxes({
   email,
   digits,
@@ -346,7 +328,7 @@ function CodeBoxes({
   pending,
   devCode,
   resendIn,
-  fromFill,
+  split,
   onComplete,
   onResend,
   onChangeEmail,
@@ -358,12 +340,14 @@ function CodeBoxes({
   pending: boolean;
   devCode: string | null;
   resendIn: number;
-  fromFill: boolean;
+  split: boolean;
   onComplete: (code: string) => void;
   onResend: () => void;
   onChangeEmail: () => void;
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+  // The fading copy of the email is removed once it has faded.
+  const [ghost, setGhost] = useState(split);
 
   // Start on the first box, and go back to it after a wrong code (the boxes are disabled while checking).
   useEffect(() => {
@@ -417,23 +401,33 @@ function CodeBoxes({
 
   return (
     <div>
-      <p className="px-2 text-callout text-ink-2">
-        Code sent to <span className="font-semibold break-all text-ink">{email}</span>{" "}
-        <button type="button" onClick={onChangeEmail} className="font-semibold text-accent hover:underline underline-offset-4">
-          Change
-        </button>
-      </p>
 
-      <div className="relative mt-3">
-        {/* The blue box from the email step, dissolving into the digits. */}
-        {fromFill ? (
+      <div className="relative">
+        {/* The email, still showing where it was typed, fades as the box splits apart. */}
+        {ghost ? (
           <motion.div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-full bg-accent"
-            initial={{ opacity: 1, scaleX: 1 }}
-            animate={{ opacity: 0, scaleX: 0.96 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-          />
+            onAnimationComplete={() => setGhost(false)}
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-between overflow-hidden rounded-full pr-1.5 pl-5"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.25, delay: 0.1 }}
+          >
+            <motion.span
+              className="truncate text-body text-ink"
+              initial={{ y: 0, filter: "blur(0px)" }}
+              animate={{ y: -10, filter: "blur(4px)" }}
+              transition={{ duration: 0.3 }}
+            >
+              {email}
+            </motion.span>
+            <motion.span
+              className="grid size-11 shrink-0 place-items-center rounded-full bg-accent"
+              initial={{ scale: 1 }}
+              animate={{ scale: 0 }}
+              transition={{ duration: 0.25 }}
+            />
+          </motion.div>
         ) : null}
         <div role="group" aria-labelledby="code-label" className="grid grid-cols-4 gap-3">
           {digits.map((digit, index) => (
@@ -454,9 +448,16 @@ function CodeBoxes({
               disabled={pending}
               aria-invalid={Boolean(error) || undefined}
               aria-describedby={error ? "code-error" : undefined}
-              initial={fromFill ? { scale: 0.5, opacity: 0, borderRadius: 999 } : false}
-              animate={{ scale: 1, opacity: 1, borderRadius: 16 }}
-              transition={{ type: "spring", duration: 0.5, bounce: 0.45, delay: fromFill ? 0.08 + index * 0.06 : 0 }}
+              initial={split ? splitStart(index) : false}
+              animate={{
+                x: 0,
+                scaleX: 1,
+                borderTopLeftRadius: 16,
+                borderBottomLeftRadius: 16,
+                borderTopRightRadius: 16,
+                borderBottomRightRadius: 16,
+              }}
+              transition={{ type: "spring", duration: 0.55, bounce: 0.4, delay: split ? 0.18 + Math.abs(index - 1.5) * 0.04 : 0 }}
               className="tabular h-14 w-full min-w-0 border border-control bg-surface text-center text-title2 font-semibold text-ink caret-accent transition-colors hover:border-ink-2 focus-visible:border-accent focus-visible:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent)_22%,transparent)] focus-visible:outline-none disabled:opacity-60 aria-invalid:border-danger"
             />
           ))}
@@ -467,9 +468,15 @@ function CodeBoxes({
       </span>
 
       <ErrorText id="code-error" message={error} />
+      <p className="mt-3 px-2 text-callout text-ink-2">
+        Code sent to <span className="font-semibold break-all text-ink">{email}</span>{" "}
+        <button type="button" onClick={onChangeEmail} className="font-semibold text-accent hover:underline underline-offset-4">
+          Change
+        </button>
+      </p>
       {devCode ? (
-        <p className="mt-3 px-2 text-callout text-muted">
-          Demo mode, no email is sent. Your code is <span className="tabular font-semibold text-ink">{devCode}</span>
+        <p className="mt-1 px-2 text-callout text-muted">
+          Demo code: <span className="tabular font-semibold text-ink">{devCode}</span>
         </p>
       ) : null}
 
@@ -511,7 +518,7 @@ function NameStep({
   useEffect(() => inputRef.current?.focus(), []);
   return (
     <>
-      <h2 className="px-2 text-title3 font-semibold text-ink">Welcome to Halden Street</h2>
+      <h2 className="px-2 text-title3 font-semibold text-ink">One last thing</h2>
       <p className="mt-1 px-2 text-callout text-ink-2">What’s your name? We’ll use it on your bookings.</p>
       <form onSubmit={onSubmit} noValidate className="mt-4">
         <label htmlFor="name" className="sr-only">
@@ -547,7 +554,7 @@ function HeldTime({ nextPath, doctors }: { nextPath: string; doctors: Doctor[] }
   const doctor = held ? doctors.find((item) => item.id === held.doctorId) : null;
   if (!ready || nextPath !== "/book/details" || !held || !doctor) return null;
   return (
-    <div className="mt-8 inline-flex items-center gap-3 rounded-card bg-surface p-3 pr-5 shadow-card">
+    <div className="mt-6 inline-flex items-center gap-3 rounded-card bg-canvas p-3 pr-5 text-left">
       <DoctorPortrait doctor={doctor} size={44} />
       <p className="text-callout">
         <span className="block font-semibold text-ink">Holding your time</span>

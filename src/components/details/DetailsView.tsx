@@ -15,6 +15,7 @@ import { Field } from "@/components/ui/Field";
 import { Switch } from "@/components/ui/Switch";
 import { mondayOf } from "@/lib/clock";
 import { practice, reasons, type Doctor } from "@/lib/data";
+import { feeFor, formatMoney } from "@/lib/fees";
 import { ageLabel, formatWhen } from "@/lib/format";
 import { spring } from "@/lib/motion";
 import { bookAppointment } from "@/server/booking-actions";
@@ -41,12 +42,15 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
   const [attempted, setAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /** Demo payments: pay now with a pretend card, or at the desk on the day. */
+  const [payNow, setPayNow] = useState(true);
   const leaving = useRef(false);
   const prefilled = useRef(false);
 
   const { held, form } = state;
   const doctor = held ? (doctors.find((item) => item.id === held.doctorId) ?? null) : null;
   const reason = reasons.find((item) => item.id === form.reasonId) ?? null;
+  const fee = reason ? feeFor(reason.id) : 0;
   const backHref = held ? `/doctors/${held.doctorId}?week=${mondayOf(held.date)}` : "/book";
 
   // Nothing held (fresh tab, or the booking just finished): start from the directory.
@@ -67,7 +71,8 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (event.key !== "Escape" || target?.closest("input, textarea, select")) return;
+      // An open header menu closes on Escape first, and marks the key as handled.
+      if (event.key !== "Escape" || event.defaultPrevented || target?.closest("input, textarea, select")) return;
       router.push(backHref);
     }
     globalThis.addEventListener("keydown", onKey);
@@ -116,6 +121,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
         patientMobile: form.mobile,
         patientChi: form.chi,
         note: form.note,
+        payNow,
       });
       if (!result.ok) {
         if (result.reason === "signed-out") {
@@ -144,6 +150,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
           slot: heldSlot,
           reasonId: form.reasonId,
           patient: form,
+          payment: result.payment ?? undefined,
         },
       });
       router.push("/book/confirmed");
@@ -167,7 +174,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
       </Notice>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-12 lg:gap-10">
-        <aside className="lg:sticky lg:top-32 lg:order-2 lg:col-span-5 lg:self-start">
+        <aside className="lg:sticky lg:top-[calc(var(--header-h)+1.5rem)] lg:order-2 lg:col-span-5 lg:self-start">
           <AppointmentSummary
             doctor={heldDoctor}
             slot={heldSlot}
@@ -303,7 +310,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
                 {reasons.map((item) => {
                   const checked = form.reasonId === item.id;
                   return (
-                    <label key={item.id} className="relative block cursor-pointer">
+                    <label key={item.id} className="group relative block cursor-pointer">
                       <input
                         id={`reason-${item.id}`}
                         type="radio"
@@ -324,7 +331,10 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
                       >
                         <span className="text-body text-ink">{item.label}</span>
                         <span className="flex items-center gap-3">
-                          <span className="tabular text-callout text-muted">{item.minutes} min</span>
+                          {/* Muted grey only on white: on the hover and selected tints it drops below 4.5:1. */}
+                          <span className={`tabular text-callout ${checked ? "text-ink-2" : "text-muted group-hover:text-ink-2"}`}>
+                            {item.minutes} min
+                          </span>
                           <span
                             aria-hidden="true"
                             className={`grid size-6 place-items-center rounded-full transition-colors duration-200 ${
@@ -387,6 +397,39 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
           </Card>
 
           <Card className="p-5 md:p-6">
+            <fieldset>
+              <legend className="text-title3 font-semibold text-ink">Payment</legend>
+              <p className="mt-1 text-callout text-ink-2">
+                {reason ? `${reason.label}: ${formatMoney(fee)}.` : "The fee depends on what the visit is for."} This is a
+                demonstration practice, so no card is charged and no money moves.
+              </p>
+              <div className="mt-4 grid gap-2">
+                {[
+                  { now: true, label: "Pay now with a demo card", hint: "Marked as paid straight away." },
+                  { now: false, label: "Pay at the desk", hint: "By card or cash when you arrive." },
+                ].map((option) => (
+                  <label
+                    key={option.label}
+                    className="flex min-h-13 cursor-pointer items-center gap-3 rounded-field px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-fill has-checked:bg-accent-soft has-checked:shadow-[inset_0_0_0_2px_var(--color-accent)]"
+                  >
+                    <input
+                      type="radio"
+                      name="payment"
+                      checked={payNow === option.now}
+                      onChange={() => setPayNow(option.now)}
+                      className="size-5 shrink-0 accent-accent"
+                    />
+                    <span>
+                      <span className="block text-body text-ink">{option.label}</span>
+                      <span className="block text-callout text-ink-2">{option.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </Card>
+
+          <Card className="p-5 md:p-6">
             <Switch
               checked={form.isNew}
               onChange={(isNew) => update({ isNew })}
@@ -424,7 +467,11 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
           <div className="flex flex-col-reverse gap-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="flex items-center gap-2 text-callout text-muted">
               <Lock size={18} />
-              NHS appointment. No charge.
+              {reason
+                ? payNow
+                  ? `${formatMoney(fee)} by demo card. No card is charged.`
+                  : `${formatMoney(fee)} to pay at the desk.`
+                : "Demo payments. No card is ever charged."}
             </p>
             <Button
               type="submit"

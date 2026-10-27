@@ -3,12 +3,12 @@ import { expect, test, type Page } from "@playwright/test";
 async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
   await page.locator("#email").fill(email);
   await page.getByRole("button", { name: "Continue with email" }).click();
-  const demo = page.getByText(/Demo mode/);
+  const demo = page.getByText(/Demo code/);
   await expect(demo).toBeVisible();
   const code = ((await demo.textContent()) ?? "").match(/\d{4}/)?.[0] ?? "";
   await page.getByLabel("Digit 1 of 4").fill(code);
   // New patients are asked their name once.
-  const welcome = page.getByRole("heading", { name: "Welcome to Halden Street" });
+  const welcome = page.getByRole("heading", { name: "One last thing" });
   const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
   await Promise.race([welcome.waitFor(), left]);
   if (await welcome.isVisible()) {
@@ -18,6 +18,13 @@ async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
   await left;
 }
 
+
+/** Sign-out lives in the account menu on desktop and in Menu on phones. */
+async function signOut(page: Page) {
+  const account = page.getByRole("button", { name: /, account$/ });
+  await ((await account.isVisible()) ? account : page.getByRole("button", { name: "Menu" })).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+}
 
 async function chooseFirstOpenTime(page: import("@playwright/test").Page) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -58,7 +65,7 @@ test("a patient booking appears on that doctor’s clinic book", async ({ page }
   await page.goto("/appointments");
   await expect(page.getByText(reference)).toBeVisible();
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOut(page);
   await expect(page).toHaveURL(/\/$/);
 
   await page.goto("/sign-in?as=staff");

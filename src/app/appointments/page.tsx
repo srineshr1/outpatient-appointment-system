@@ -6,6 +6,7 @@ import { PageHeading } from "@/components/shell/PageHeading";
 import { Notice } from "@/components/ui/Card";
 import { todayIso, now } from "@/lib/clock";
 import { getCurrentUser } from "@/lib/session";
+import { paymentLabels } from "@/lib/billing";
 import { visitsFor } from "@/lib/visits";
 
 export const metadata: Metadata = {
@@ -25,6 +26,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   const noticeKey = typeof query.notice === "string" ? query.notice : "";
   const notice = notices[noticeKey];
   const visits = await visitsFor({ ...user, role: "patient", doctorId: null });
+  const payments = await paymentLabels(visits);
   const today = todayIso(now());
 
   return (
@@ -58,7 +60,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
           {notice}
         </Notice>
       ) : null}
-      <VisitList visits={visits} today={today} mode="patient" returnTo="/appointments" />
+      <VisitList visits={visits} today={today} mode="patient" returnTo="/appointments" payments={payments} />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { createPatient, findUserByEmail } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
 import { finishGoogle, GOOGLE_STATE_COOKIE } from "@/lib/google";
 import { safeNext, startSession } from "@/lib/session";
+import { blockedSignIn, patientSignedUp, signedIn } from "@/lib/sign-in-events";
 
 function sameText(a: string, b: string): boolean {
   const left = Buffer.from(a);
@@ -42,7 +43,11 @@ export async function GET(request: NextRequest) {
   const profile = await finishGoogle(request.nextUrl.origin, code, saved.verifier).catch(() => null);
   if (!profile) backToSignIn("google-failed", next);
 
-  const user = (await findUserByEmail(profile.email)) ?? (await createPatient(profile.email, profile.name));
+  const existing = await findUserByEmail(profile.email);
+  if (await blockedSignIn(existing, "Google")) backToSignIn("google-failed", next);
+  const user = existing ?? (await createPatient(profile.email, profile.name));
+  if (!existing) await patientSignedUp(user, "Google");
   await startSession(user.id);
+  await signedIn(user, "Google");
   redirect(destinationFor(user.role, next));
 }

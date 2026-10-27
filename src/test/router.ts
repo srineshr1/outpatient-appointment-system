@@ -8,3 +8,6 @@ export const router = {
   refresh: vi.fn(),
   forward: vi.fn(),
 };
+
+/** What usePathname() returns in tests. Reset to "/" after each test. */
+export const navigation = { pathname: "/" };

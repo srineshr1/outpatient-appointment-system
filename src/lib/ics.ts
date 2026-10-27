@@ -46,7 +46,7 @@ export function buildIcs(event: IcsEvent, stamp: Date): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Halden Street Practice//Patient booking//EN",
+    `PRODID:-//${practice.name}//Patient booking//EN`,
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",

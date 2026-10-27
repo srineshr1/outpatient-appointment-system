@@ -82,7 +82,7 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
               )}
             </div>
             <ul className="mt-8 grid max-w-lg grid-cols-2 gap-x-6 gap-y-3 text-callout text-ink-2">
-              <Perk>NHS visits, no charge</Perk>
+              <Perk>Pay online or at the desk</Perk>
               <Perk>Book up to 4 weeks ahead</Perk>
               <Perk>Same day until {practice.sameDayClose}</Perk>
               <Perk>Cancel online any time</Perk>
@@ -142,7 +142,7 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
       </section>
 
       {/* ---------- How it works ---------- */}
-      <section aria-labelledby="how-title" className="mx-auto max-w-page px-5 pt-16 md:px-8 md:pt-20">
+      <section id="how-it-works" aria-labelledby="how-title" className="mx-auto max-w-page px-5 pt-16 md:px-8 md:pt-20">
         <p className="text-callout font-bold tracking-wide text-accent uppercase">How it works</p>
         <h2 id="how-title" className="mt-2 text-title1 font-bold text-ink">
           Four steps. That’s it.

@@ -54,12 +54,12 @@ async function signInAsSamplePatient(page: Page) {
 async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
   await page.locator("#email").fill(email);
   await page.getByRole("button", { name: "Continue with email" }).click();
-  const demo = page.getByText(/Demo mode/);
+  const demo = page.getByText(/Demo code/);
   await expect(demo).toBeVisible();
   const code = ((await demo.textContent()) ?? "").match(/\d{4}/)?.[0] ?? "";
   await page.getByLabel("Digit 1 of 4").fill(code);
   // New patients are asked their name once.
-  const welcome = page.getByRole("heading", { name: "Welcome to Halden Street" });
+  const welcome = page.getByRole("heading", { name: "One last thing" });
   const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
   await Promise.race([welcome.waitFor(), left]);
   if (await welcome.isVisible()) {
@@ -150,7 +150,7 @@ test("guards: booking needs sign-in, and a booking in progress", async ({ page }
 
 test("sign-in: email, then a code; wrong codes are explained", async ({ page }) => {
   await page.goto("/sign-in");
-  await expect(page.getByRole("heading", { level: 1, name: "Your next appointment is waiting." })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Welcome to Westbrook" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign in with Google" })).toBeVisible();
   await expectAccessible(page);
 
@@ -158,8 +158,9 @@ test("sign-in: email, then a code; wrong codes are explained", async ({ page }) 
   await page.getByRole("button", { name: "Continue with email" }).click();
   await expect(page.getByLabel("Digit 1 of 4")).toBeFocused();
   await expect(page.getByRole("textbox", { name: /Digit \d of 4/ })).toHaveCount(4);
+  await expect(page.getByRole("link", { name: "Sign in with Google" })).toHaveCount(0);
   await expectAccessible(page);
-  const code = ((await page.getByText(/Demo mode/).textContent()) ?? "").match(/\d{4}/)![0];
+  const code = ((await page.getByText(/Demo code/).textContent()) ?? "").match(/\d{4}/)![0];
   await page.getByLabel("Digit 1 of 4").fill(code === "0000" ? "1111" : "0000");
   await expect(page.getByRole("alert").filter({ hasText: "isn’t right" })).toBeVisible();
   await page.getByLabel("Digit 1 of 4").fill(code);
@@ -176,7 +177,7 @@ test("Google sign-in explains when it isn't set up", async ({ page }) => {
 test("doctor sign-in from the link at the bottom", async ({ page }) => {
   await page.goto("/sign-in");
   await page.getByRole("link", { name: "Sign in as a doctor" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Your clinic book is waiting." })).toBeVisible();
+  await expect(page.getByText("Clinic staff sign-in")).toBeVisible();
   await expectAccessible(page);
   await signInWithEmail(page, "helen.cho@halden.example");
   await expect(page).toHaveURL(/\/dashboard$/);

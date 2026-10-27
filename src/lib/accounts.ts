@@ -1,23 +1,17 @@
-import type { PublicUser, StoredUser } from "./clinic-types";
+import type { StoredUser, UserAccount } from "./clinic-types";
 import { hashPassword, normaliseEmail, verifyPassword } from "./passwords";
 import { getStore } from "./store";
 
 const DUMMY_HASH = hashPassword("not-a-real-password");
 
-function toPublic(user: StoredUser): PublicUser {
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    doctorId: user.doctorId,
-    mobile: user.mobile,
-    dob: user.dob,
-  };
+/** Everything but the password hash, including whether the account is turned off. */
+function toPublic(user: StoredUser): UserAccount {
+  const { passwordHash: _secret, ...account } = user;
+  return account;
 }
 
 /** Password check, used only by the one-tap sample staff accounts. */
-export async function authenticate(email: string, password: string): Promise<{ ok: true; user: PublicUser } | { ok: false }> {
+export async function authenticate(email: string, password: string): Promise<{ ok: true; user: UserAccount } | { ok: false }> {
   const store = await getStore();
   const user = await store.getUserByEmail(normaliseEmail(email));
   const matches = verifyPassword(password, user?.passwordHash || DUMMY_HASH);
@@ -25,7 +19,7 @@ export async function authenticate(email: string, password: string): Promise<{ o
   return { ok: true, user: toPublic(user) };
 }
 
-export async function findUserByEmail(email: string): Promise<PublicUser | null> {
+export async function findUserByEmail(email: string): Promise<UserAccount | null> {
   const user = await (await getStore()).getUserByEmail(normaliseEmail(email));
   return user ? toPublic(user) : null;
 }
@@ -41,7 +35,7 @@ export function nameError(raw: string): string | undefined {
  * Create a patient who signs in by email code or Google. There is no password: the stored
  * hash is empty, which never verifies. Mobile and date of birth are asked for at booking.
  */
-export async function createPatient(rawEmail: string, rawName: string): Promise<PublicUser> {
+export async function createPatient(rawEmail: string, rawName: string): Promise<UserAccount> {
   const email = normaliseEmail(rawEmail);
   const store = await getStore();
   const created = await store.createUser({

@@ -97,7 +97,8 @@ describe("buildIcs", () => {
   it("uses CRLF, escapes text and folds long lines", () => {
     const ics = buildIcs({ ...event, date: "2026-10-29" }, stamp);
     expect(ics.endsWith("\r\n")).toBe(true);
-    expect(ics).toContain("LOCATION:Halden Street Practice\\, 14 Halden Street\\, Edinburgh EH8 9RL");
+    // Unfold (RFC 5545 3.1: CRLF followed by a space continues the line) before reading a value.
+    expect(ics.replace(/\r\n /g, "")).toContain("LOCATION:Westbrook Medical Practice\\, 14 Westbrook Place\\, Edinburgh EH8 9RL");
     for (const line of ics.split("\r\n")) expect(line.length).toBeLessThanOrEqual(75);
   });
 });

@@ -3,6 +3,7 @@ import { Calendar, Clock, Pin } from "@/components/icons";
 import { Card } from "@/components/ui/Card";
 import { addMinutes } from "@/lib/clock";
 import type { Doctor, Reason, Slot } from "@/lib/data";
+import { practice } from "@/lib/data";
 import { formatFull } from "@/lib/format";
 import type { ReactNode } from "react";
 
@@ -37,7 +38,7 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
           <span className="text-muted">{reason ? ` · ${reason.minutes} minutes` : " · length depends on the reason"}</span>
         </Row>
         <Row icon={<Pin size={20} />} term="Where">
-          {doctor.room}, Halden Street Practice
+          {doctor.room}, {practice.name}
         </Row>
       </dl>
       {footer ? <div className="mt-5 border-t border-hairline pt-4">{footer}</div> : null}

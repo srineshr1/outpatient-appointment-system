@@ -1,4 +1,4 @@
-import { doctors, reasons } from "@/lib/data";
+import { reasons, findDoctor } from "@/lib/data";
 import type { AppointmentRecord } from "@/lib/clinic-types";
 import { formatPhone, formatWhen } from "@/lib/format";
 import { updateVisit } from "@/server/booking-actions";
@@ -11,7 +11,7 @@ function reasonLabel(id: string): string {
 }
 
 function doctorName(id: string): string {
-  return doctors.find((doctor) => doctor.id === id)?.name ?? "Your doctor";
+  return findDoctor(id)?.name ?? "Your doctor";
 }
 
 function statusLabel(status: AppointmentRecord["status"]): string {
@@ -40,11 +40,14 @@ export function VisitList({
   today,
   mode,
   returnTo,
+  payments = {},
 }: {
   visits: AppointmentRecord[];
   today: string;
   mode: Mode;
   returnTo: string;
+  /** A short payment line per visit id, such as "Paid £40.00". */
+  payments?: Readonly<Record<string, string>>;
 }) {
   const groups = groupVisits(visits, today);
   const sections = [
@@ -92,6 +95,12 @@ export function VisitList({
                     </p>
                     <p className="mt-2 text-callout text-muted">
                       Reference <span className="tabular text-ink">{visit.reference}</span>
+                      {payments[visit.id] ? (
+                        <>
+                          {" "}
+                          · <span className="tabular text-ink">{payments[visit.id]}</span>
+                        </>
+                      ) : null}
                       {visit.patientMobile ? (
                         <>
                           {" "}

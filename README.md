@@ -1,4 +1,4 @@
-# Halden Street Practice — GP booking
+# Westbrook Medical Practice — GP booking
 
 Online appointment booking for a demonstration GP practice: create an account, choose a doctor, pick a time, and see the visit on that doctor’s clinic book.
 
@@ -48,12 +48,23 @@ Sign in with any of these emails. Without a mail key, the code is shown on the s
 
 Any other email creates a new patient account on first sign-in.
 
+### Making a user a doctor without the admin console
+
+Supabase only handles sign-in. The clinic role lives in the app’s store (Vercel Blob in production), so changing a role in Supabase does nothing. To promote an existing account, or create the clinic profile for an email:
+
+```bash
+vercel env pull .env.production.local --environment=production
+npm run make-doctor -- you@example.com cho "Dr Your Name"
+```
+
+`doctorId` must be one of `adeyemi`, `reid`, `cho`, `rahman`, `macleod`. The script updates both the email and id records; refresh the app afterwards. For local SQLite, update `users.role` and `users.doctor_id` directly.
+
 ## Sign-in setup
 
 | Variable | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Long random string. Keys the stored code hashes. **Set it in production.** |
-| `RESEND_API_KEY`, `MAIL_FROM` | Send codes by email through [Resend](https://resend.com). `MAIL_FROM` must be on a verified domain, e.g. `Halden Street <signin@yourdomain>` |
+| `RESEND_API_KEY`, `MAIL_FROM` | Send codes by email through [Resend](https://resend.com). `MAIL_FROM` must be on a verified domain, e.g. `Westbrook <signin@yourdomain>` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable “Sign in with Google”. Register the redirect URI `<site>/auth/google/callback` in Google Cloud (OAuth client, type Web) |
 | `SHOW_LOGIN_CODES=1` | Show codes on screen in a production build with no mail key. For demos and e2e only |
 

@@ -14,13 +14,15 @@ interface ChipGroupProps {
   options: SegmentOption[];
   value: string;
   onChange: (value: string) => void;
+  /** Layout of the row. Defaults to wrapping chips. Pass overflow classes to make it scroll sideways. */
+  className?: string;
 }
 
 /**
  * Single-select filter chips. Rendered as a radiogroup with roving focus, and a
  * selection pill that glides between options.
  */
-export function ChipGroup({ label, options, value, onChange }: ChipGroupProps) {
+export function ChipGroup({ label, options, value, onChange, className = "flex flex-wrap gap-2" }: ChipGroupProps) {
   const groupId = useId();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -38,7 +40,8 @@ export function ChipGroup({ label, options, value, onChange }: ChipGroupProps) {
 
   return (
     <LayoutGroup id={groupId}>
-      <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+      {/* layoutScroll: the row may scroll sideways, and the pill has to follow that scroll. */}
+      <motion.div layoutScroll role="radiogroup" aria-label={label} className={className}>
         {options.map((option, index) => {
           const selected = option.value === value;
           return (
@@ -55,7 +58,7 @@ export function ChipGroup({ label, options, value, onChange }: ChipGroupProps) {
               onKeyDown={(event) => onKeyDown(event, index)}
               whileTap={{ scale: 0.96 }}
               transition={spring.press}
-              className={`relative isolate min-h-11 rounded-full px-4 text-callout font-medium transition-colors duration-200 ${
+              className={`relative isolate min-h-11 shrink-0 rounded-full px-4 text-callout font-medium whitespace-nowrap transition-colors duration-200 ${
                 selected ? "text-white" : "bg-surface text-ink shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-fill"
               }`}
             >
@@ -71,7 +74,7 @@ export function ChipGroup({ label, options, value, onChange }: ChipGroupProps) {
             </motion.button>
           );
         })}
-      </div>
+      </motion.div>
     </LayoutGroup>
   );
 }

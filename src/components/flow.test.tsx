@@ -193,7 +193,7 @@ describe("DetailsView", () => {
 describe("SignInPanel", () => {
   it("asks for an email, then turns the box into four code boxes", async () => {
     renderWithProviders(<SignInPanel nextPath="/" mode="patient" doctors={doctors} />);
-    expect(screen.getByRole("heading", { level: 1, name: "Your next appointment is waiting." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Welcome to Westbrook" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
 
@@ -203,17 +203,18 @@ describe("SignInPanel", () => {
     await userEvent.type(screen.getByLabelText("Email"), "Sam.Patel@Example.com");
     await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
     const first = await screen.findByLabelText("Digit 1 of 4", {}, { timeout: 3000 });
-    expect(screen.getByText("sam.patel@example.com")).toBeInTheDocument();
+    expect(screen.getByText(/Code sent to/)).toHaveTextContent("sam.patel@example.com");
+    expect(screen.queryByRole("link", { name: "Sign in with Google" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("textbox", { name: /Digit \d of 4/ })).toHaveLength(4);
     await waitFor(() => expect(first).toHaveFocus());
-    expect(screen.getByText(/Demo mode/)).toHaveTextContent(/\d{4}/);
+    expect(screen.getByText(/Demo code/)).toHaveTextContent(/\d{4}/);
   });
 
   it("says when the code is wrong, then signs a new patient up with their name", async () => {
     renderWithProviders(<SignInPanel nextPath="/book" mode="patient" doctors={doctors} />);
     await userEvent.type(screen.getByLabelText("Email"), `new.${Date.now()}@example.com`);
     await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
-    const demo = await screen.findByText(/Demo mode/, {}, { timeout: 3000 });
+    const demo = await screen.findByText(/Demo code/, {}, { timeout: 3000 });
     const code = demo.textContent!.match(/\d{4}/)![0];
     const wrong = code === "0000" ? "1111" : "0000";
 
@@ -226,7 +227,7 @@ describe("SignInPanel", () => {
     // Pasting the whole code into the first box works too.
     await userEvent.click(screen.getByLabelText("Digit 1 of 4"));
     await userEvent.paste(code);
-    expect(await screen.findByRole("heading", { name: "Welcome to Halden Street" }, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "One last thing" }, { timeout: 3000 })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Enter your full name.");
   });
@@ -243,7 +244,7 @@ describe("SignInPanel", () => {
 
   it("staff sign-in only accepts staff emails and links back to patients", async () => {
     renderWithProviders(<SignInPanel nextPath="/" mode="staff" doctors={doctors} />);
-    expect(screen.getByRole("heading", { level: 1, name: "Your clinic book is waiting." })).toBeInTheDocument();
+    expect(screen.getByText("Clinic staff sign-in")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Sign in with Google" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Patient sign-in" })).toHaveAttribute("href", "/sign-in");
     await userEvent.type(screen.getByLabelText("Practice email"), "ann.lee@halden.example");

@@ -2,15 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { actorOf, recordEvent, visitSummary } from "@/lib/audit";
 import { todayIso, now } from "@/lib/clock";
 import type { Slot } from "@/lib/data";
+import { formatMoney } from "@/lib/fees";
 import { confirmBooking, SlotUnavailableError } from "@/lib/repository";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { validatePatient, FIELD_ORDER, type PatientForm } from "@/lib/validate";
 import { changeAppointmentStatus } from "@/lib/visits";
 
 export type BookAppointmentResult =
-  | { ok: true; reference: string }
+  | { ok: true; reference: string; payment: { amountPence: number; paid: boolean } | null }
   | { ok: false; reason: "past" | "taken" | "teaching" | "missing" | "invalid" | "signed-out" | "staff"; message: string };
 
 export interface BookAppointmentInput {
@@ -21,6 +23,8 @@ export interface BookAppointmentInput {
   patientMobile: string;
   patientChi: string;
   note: string;
+  /** Pay the fee now with the demo card. Otherwise it's paid at the desk. */
+  payNow?: boolean;
 }
 
 export async function bookAppointment(input: BookAppointmentInput): Promise<BookAppointmentResult> {
@@ -54,9 +58,27 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
       patientChi: input.patientChi,
       note: input.note,
       patientUserId: user.id,
+      payNow: input.payNow === true,
     });
+    const who = actorOf(user);
+    await recordEvent({
+      actor: who,
+      action: "appointment.booked",
+      subjectType: "appointment",
+      subjectId: result.visit.id,
+      summary: visitSummary(result.visit),
+    });
+    if (result.payment?.paid && result.payment.amountPence > 0) {
+      await recordEvent({
+        actor: who,
+        action: "payment.received",
+        subjectType: "appointment",
+        subjectId: result.visit.id,
+        summary: `${formatMoney(result.payment.amountPence)} by online card (demo) · ${visitSummary(result.visit)}`,
+      });
+    }
     await refreshBook();
-    return { ok: true, reference: result.reference };
+    return { ok: true, reference: result.reference, payment: result.payment };
   } catch (error) {
     if (error instanceof SlotUnavailableError) {
       const message =

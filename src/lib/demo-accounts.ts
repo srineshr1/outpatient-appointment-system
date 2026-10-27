@@ -36,6 +36,16 @@ export const demoAccounts: DemoAccount[] = [
     blurb: "Doctor. Her clinic book lists the visits patients book with her.",
   },
   {
+    id: "user-rudraksha",
+    email: "rudraksha.srinesh@gmail.com",
+    name: "Dr Rudraksha Srinesh",
+    role: "doctor",
+    doctorId: "cho",
+    mobile: "",
+    dob: "",
+    blurb: "Doctor. Shares Dr Cho’s clinic book while the admin console is being built.",
+  },
+  {
     id: "user-adeyemi",
     email: "amara.adeyemi@halden.example",
     name: "Dr Amara Adeyemi",
@@ -84,5 +94,15 @@ export const demoAccounts: DemoAccount[] = [
     mobile: "",
     dob: "",
     blurb: "Reception. Sees every doctor’s book and can update a visit.",
+  },
+  {
+    id: "user-admin",
+    email: "admin@halden.example",
+    name: "Fiona Grant",
+    role: "admin",
+    doctorId: null,
+    mobile: "",
+    dob: "",
+    blurb: "Practice manager. Opens the admin console: visits, payments, people and activity.",
   },
 ];

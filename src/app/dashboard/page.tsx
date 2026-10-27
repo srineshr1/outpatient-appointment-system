@@ -5,9 +5,10 @@ import { VisitList } from "@/components/clinic/VisitList";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { Notice } from "@/components/ui/Card";
 import { todayIso, now } from "@/lib/clock";
-import { doctors } from "@/lib/data";
+import { findDoctor, allDoctors } from "@/lib/data";
 import { getCurrentUser } from "@/lib/session";
-import { visitsFor } from "@/lib/visits";
+import { paymentLabels } from "@/lib/billing";
+import { seesWholeBook, visitsFor } from "@/lib/visits";
 
 export const metadata: Metadata = {
   title: "Clinic book",
@@ -30,13 +31,14 @@ export default async function DashboardPage({
 
   const query = await searchParams;
   const requested = typeof query.doctor === "string" ? query.doctor : "";
-  const filter = user.role === "reception" && doctors.some((doctor) => doctor.id === requested) ? requested : "";
+  const wholeBook = seesWholeBook(user);
+  const filter = wholeBook && Boolean(findDoctor(requested)) ? requested : "";
   const noticeKey = typeof query.notice === "string" ? query.notice : "";
   const notice = notices[noticeKey];
   const visits = (await visitsFor(user)).filter((visit) => (filter ? visit.doctorId === filter : true));
   const today = todayIso(now());
   const returnTo = filter ? `/dashboard?doctor=${filter}` : "/dashboard";
-  const doctor = user.doctorId ? doctors.find((item) => item.id === user.doctorId) : null;
+  const doctor = user.doctorId ? findDoctor(user.doctorId) : null;
 
   return (
     <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
@@ -51,12 +53,20 @@ export default async function DashboardPage({
         </time>
         .
       </p>
-      {user.role === "reception" ? (
+      {user.role === "admin" ? (
+        <p className="mt-3 text-callout">
+          <Link href="/admin" className="text-accent hover:underline underline-offset-4">
+            Open the admin console
+          </Link>{" "}
+          for payments, people and activity.
+        </p>
+      ) : null}
+      {wholeBook ? (
         <nav aria-label="Filter by doctor" className="mt-5 flex flex-wrap gap-2">
           <FilterLink href="/dashboard" current={!filter}>
             All doctors
           </FilterLink>
-          {doctors.map((item) => (
+          {allDoctors().map((item) => (
             <FilterLink key={item.id} href={`/dashboard?doctor=${item.id}`} current={filter === item.id}>
               {item.short}
             </FilterLink>
@@ -68,7 +78,7 @@ export default async function DashboardPage({
           {notice}
         </Notice>
       ) : null}
-      <VisitList visits={visits} today={today} mode="clinic" returnTo={returnTo} />
+      <VisitList visits={visits} today={today} mode="clinic" returnTo={returnTo} payments={await paymentLabels(visits)} />
     </div>
   );
 }
