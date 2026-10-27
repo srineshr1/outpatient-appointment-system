@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import type { SessionUser } from "./clinic-types";
-import { findUserByEmail } from "./accounts";
+import { createPatient, findUserByEmail } from "./accounts";
 import { hashToken, newToken } from "./passwords";
 import { getStore } from "./store";
 import { createSupabase, supabaseConfigured } from "./supabase";
@@ -31,13 +31,21 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     try {
       const supabase = await createSupabase();
       const { data } = await supabase.auth.getUser();
-      const email = data.user?.email;
-      if (email) {
-        const user = await findUserByEmail(email);
-        if (user) {
-          const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
-          return { ...user, expiresAt };
+      const account = data.user;
+      const email = account?.email;
+      if (account && email) {
+        const store = await getStore();
+        let stored = await store.getUserByEmail(email);
+        if (!stored) {
+          const metaName = typeof account.user_metadata?.full_name === "string" ? account.user_metadata.full_name : "";
+          const name = metaName || email.split("@")[0] || "Patient";
+          await createPatient(email, name);
+          stored = await store.getUserByEmail(email);
         }
+        if (!stored || stored.disabledAt) return null;
+        const { passwordHash: _secret, ...profile } = stored;
+        const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+        return { ...profile, expiresAt, sessionId: null };
       }
     } catch {
       // Fall through to the local session when Supabase is unreachable.
@@ -56,7 +64,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   }
   const user = await store.getUserById(session.userId);
   if (!user) return null;
-  return { ...user, expiresAt: session.expiresAt };
+  return { ...user, expiresAt: session.expiresAt, sessionId: session.id };
 }
 
 export async function startSession(userId: string): Promise<void> {

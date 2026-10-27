@@ -1,16 +1,24 @@
-import { del, get, list, put } from "@vercel/blob";
+import { BlobPreconditionFailedError, del, get, list, put } from "@vercel/blob";
 import type {
   AppointmentRecord,
   AppointmentStatus,
+  AuditEvent,
+  ChargeRecord,
   ClinicStore,
   LoginCodeRecord,
   NewUser,
-  PublicUser,
+  SessionRecord,
   StoredUser,
+  UserAccount,
+  UserPatch,
 } from "./clinic-types";
 import { hashToken } from "./passwords";
 
 const ACCESS = "private" as const;
+/** Parallel reads when a page needs every object under a prefix. */
+const READ_CONCURRENCY = 16;
+/** Retries when another request changed a record between our read and write. */
+const WRITE_RETRIES = 5;
 
 function userEmailPath(email: string): string {
   return `hsp/users/email/${hashToken(email)}.json`;
@@ -36,6 +44,18 @@ function slotPath(slotId: string): string {
   return `hsp/slots/${slotId}.json`;
 }
 
+function chargePath(appointmentId: string): string {
+  return `hsp/charges/${appointmentId}.json`;
+}
+
+const LATEST = 9_999_999_999_999;
+
+/** Newest first when pathnames are sorted, so the latest events can be read without reading them all. */
+function eventPath(event: AuditEvent): string {
+  const inverted = String(LATEST - new Date(event.at).getTime()).padStart(13, "0");
+  return `hsp/audit/${inverted}-${event.id}.json`;
+}
+
 function isMissing(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /not found|404|does not exist|Blob not found/i.test(message);
@@ -46,17 +66,27 @@ function isConflict(error: unknown): boolean {
   return /already exists|conflict|409/i.test(message);
 }
 
-async function readJson<T>(pathname: string): Promise<T | null> {
+function isStale(error: unknown): boolean {
+  if (error instanceof BlobPreconditionFailedError) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /precondition|412/i.test(message);
+}
+
+async function readTagged<T>(pathname: string): Promise<{ value: T; etag: string } | null> {
   try {
     const result = await get(pathname, { access: ACCESS, useCache: false });
     if (!result || result.statusCode !== 200 || !result.stream) return null;
     const text = await new Response(result.stream).text();
     if (!text) return null;
-    return JSON.parse(text) as T;
+    return { value: JSON.parse(text) as T, etag: result.blob.etag };
   } catch (error) {
     if (isMissing(error)) return null;
     throw error;
   }
+}
+
+async function readJson<T>(pathname: string): Promise<T | null> {
+  return (await readTagged<T>(pathname))?.value ?? null;
 }
 
 async function writeNew(pathname: string, value: unknown): Promise<boolean> {
@@ -75,14 +105,23 @@ async function writeNew(pathname: string, value: unknown): Promise<boolean> {
   }
 }
 
-async function writeOver(pathname: string, value: unknown): Promise<void> {
+async function writeOver(pathname: string, value: unknown, ifMatch?: string): Promise<void> {
   await put(pathname, JSON.stringify(value), {
     access: ACCESS,
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType: "application/json",
     cacheControlMaxAge: 60,
+    ...(ifMatch ? { ifMatch } : {}),
   });
+}
+
+async function remove(pathname: string): Promise<void> {
+  try {
+    await del(pathname);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+  }
 }
 
 async function listPathnames(prefix: string): Promise<string[]> {
@@ -96,16 +135,82 @@ async function listPathnames(prefix: string): Promise<string[]> {
   return pathnames;
 }
 
-function withoutSecret(user: StoredUser): PublicUser {
+async function mapLimit<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await work(items[index]!);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+async function readAll<T>(prefix: string): Promise<{ pathname: string; value: T }[]> {
+  const pathnames = await listPathnames(prefix);
+  const values = await mapLimit(pathnames, READ_CONCURRENCY, (pathname) => readJson<T>(pathname));
+  const rows: { pathname: string; value: T }[] = [];
+  for (let index = 0; index < pathnames.length; index += 1) {
+    const value = values[index];
+    const pathname = pathnames[index];
+    if (value != null && pathname) rows.push({ pathname, value });
+  }
+  return rows;
+}
+
+/**
+ * Read, change and write one record, retrying if someone else wrote it in between.
+ * `change` returns the new value, or null to leave it alone.
+ */
+async function updateTagged<T>(pathname: string, change: (value: T) => T | null): Promise<{ value: T; changed: boolean } | null> {
+  for (let attempt = 0; attempt < WRITE_RETRIES; attempt += 1) {
+    const current = await readTagged<T>(pathname);
+    if (!current) return null;
+    const next = change(current.value);
+    if (next === null) return { value: current.value, changed: false };
+    try {
+      await writeOver(pathname, next, current.etag);
+      return { value: next, changed: true };
+    } catch (error) {
+      if (!isStale(error)) throw error;
+    }
+  }
+  throw new Error("The record kept changing. Try again.");
+}
+
+/** Accounts written before these fields existed get defaults. */
+function normaliseUser(stored: StoredUser): StoredUser {
   return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    doctorId: user.doctorId,
-    mobile: user.mobile,
-    dob: user.dob,
+    ...stored,
+    createdAt: stored.createdAt ?? "",
+    disabledAt: stored.disabledAt ?? null,
+    sessionsRevokedAt: stored.sessionsRevokedAt ?? null,
   };
+}
+
+function withoutSecret(user: StoredUser): UserAccount {
+  const { passwordHash: _secret, ...account } = normaliseUser(user);
+  return account;
+}
+
+interface StoredSession {
+  userId: string;
+  expiresAt: string;
+  id?: string;
+  createdAt?: string;
+  device?: string;
+}
+
+/** Sessions written before ids existed get a stable one derived from the hash. */
+function sessionIdFor(tokenHash: string, stored: StoredSession): string {
+  return stored.id ?? `legacy-${hashToken(`session:${tokenHash}`).slice(0, 22)}`;
+}
+
+function tokenHashFrom(pathname: string): string {
+  return pathname.slice("hsp/sessions/".length).replace(/\.json$/, "");
 }
 
 export class BlobClinicStore implements ClinicStore {
@@ -114,12 +219,20 @@ export class BlobClinicStore implements ClinicStore {
   }
 
   async getUserByEmail(email: string): Promise<StoredUser | null> {
-    return readJson<StoredUser>(userEmailPath(email));
+    const stored = await readJson<StoredUser>(userEmailPath(email));
+    return stored ? normaliseUser(stored) : null;
   }
 
-  async getUserById(id: string): Promise<PublicUser | null> {
+  async getUserById(id: string): Promise<UserAccount | null> {
     const user = await readJson<StoredUser>(userIdPath(id));
     return user ? withoutSecret(user) : null;
+  }
+
+  async listUsers(): Promise<UserAccount[]> {
+    const rows = await readAll<StoredUser>("hsp/users/id/");
+    return rows
+      .map((row) => withoutSecret(row.value))
+      .sort((a, b) => (a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt.localeCompare(b.createdAt)));
   }
 
   async createUser(user: NewUser): Promise<"ok" | "exists"> {
@@ -132,6 +245,9 @@ export class BlobClinicStore implements ClinicStore {
       doctorId: user.doctorId,
       mobile: user.mobile,
       dob: user.dob,
+      createdAt: new Date().toISOString(),
+      disabledAt: null,
+      sessionsRevokedAt: null,
     };
     const created = await writeNew(userEmailPath(user.email), stored);
     if (!created) return "exists";
@@ -139,20 +255,69 @@ export class BlobClinicStore implements ClinicStore {
     return "ok";
   }
 
-  async createSession(tokenHash: string, userId: string, expiresAt: string): Promise<void> {
-    await writeOver(sessionPath(tokenHash), { userId, expiresAt });
+  async updateUser(id: string, patch: UserPatch): Promise<UserAccount | null> {
+    const defined = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as UserPatch;
+    const result = await updateTagged<StoredUser>(userIdPath(id), (stored) => ({ ...normaliseUser(stored), ...defined }));
+    if (!result) return null;
+    // The email copy is what sign-in reads. Keep it the same as the id copy.
+    await writeOver(userEmailPath(result.value.email), result.value);
+    return withoutSecret(result.value);
   }
 
-  async getSession(tokenHash: string): Promise<{ userId: string; expiresAt: string } | null> {
-    return readJson<{ userId: string; expiresAt: string }>(sessionPath(tokenHash));
+  async createSession(tokenHash: string, userId: string, expiresAt: string, device = ""): Promise<void> {
+    const stored: StoredSession = {
+      userId,
+      expiresAt,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      device: device.slice(0, 80),
+    };
+    await writeOver(sessionPath(tokenHash), stored);
+  }
+
+  async getSession(tokenHash: string): Promise<{ id: string; userId: string; expiresAt: string } | null> {
+    const stored = await readJson<StoredSession>(sessionPath(tokenHash));
+    return stored ? { id: sessionIdFor(tokenHash, stored), userId: stored.userId, expiresAt: stored.expiresAt } : null;
   }
 
   async deleteSession(tokenHash: string): Promise<void> {
-    try {
-      await del(sessionPath(tokenHash));
-    } catch (error) {
-      if (!isMissing(error)) throw error;
-    }
+    await remove(sessionPath(tokenHash));
+  }
+
+  private async readSessions(): Promise<{ tokenHash: string; record: SessionRecord }[]> {
+    const rows = await readAll<StoredSession>("hsp/sessions/");
+    return rows.map(({ pathname, value }) => {
+      const tokenHash = tokenHashFrom(pathname);
+      return {
+        tokenHash,
+        record: {
+          id: sessionIdFor(tokenHash, value),
+          userId: value.userId,
+          createdAt: value.createdAt ?? "",
+          expiresAt: value.expiresAt,
+          device: value.device ?? "",
+        },
+      };
+    });
+  }
+
+  async listSessions(): Promise<SessionRecord[]> {
+    return (await this.readSessions())
+      .map((row) => row.record)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async deleteSessionById(id: string): Promise<boolean> {
+    const match = (await this.readSessions()).find((row) => row.record.id === id);
+    if (!match) return false;
+    await remove(sessionPath(match.tokenHash));
+    return true;
+  }
+
+  async deleteSessionsForUser(userId: string, keepId: string | null = null): Promise<number> {
+    const doomed = (await this.readSessions()).filter((row) => row.record.userId === userId && row.record.id !== keepId);
+    await mapLimit(doomed, READ_CONCURRENCY, (row) => remove(sessionPath(row.tokenHash)));
+    return doomed.length;
   }
 
   async listBlockedSlotIds(): Promise<string[]> {
@@ -173,9 +338,7 @@ export class BlobClinicStore implements ClinicStore {
   }
 
   async listAppointments(): Promise<AppointmentRecord[]> {
-    const pathnames = await listPathnames("hsp/appointments/");
-    const rows = await Promise.all(pathnames.map((pathname) => readJson<AppointmentRecord>(pathname)));
-    return rows.filter((row): row is AppointmentRecord => row !== null);
+    return (await readAll<AppointmentRecord>("hsp/appointments/")).map((row) => row.value);
   }
 
   async getAppointment(id: string): Promise<AppointmentRecord | null> {
@@ -183,16 +346,9 @@ export class BlobClinicStore implements ClinicStore {
   }
 
   async updateStatus(id: string, status: AppointmentStatus): Promise<void> {
-    const existing = await this.getAppointment(id);
-    if (!existing) return;
-    await writeOver(appointmentPath(id), { ...existing, status });
-    if (status === "cancelled") {
-      try {
-        await del(slotPath(existing.slotId));
-      } catch (error) {
-        if (!isMissing(error)) throw error;
-      }
-    }
+    const result = await updateTagged<AppointmentRecord>(appointmentPath(id), (existing) => ({ ...existing, status }));
+    if (!result) return;
+    if (status === "cancelled") await remove(slotPath(result.value.slotId));
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {
@@ -204,10 +360,49 @@ export class BlobClinicStore implements ClinicStore {
   }
 
   async deleteLoginCode(email: string): Promise<void> {
-    try {
-      await del(loginCodePath(email));
-    } catch (error) {
-      if (!isMissing(error)) throw error;
-    }
+    await remove(loginCodePath(email));
+  }
+
+  async listLoginCodes(): Promise<LoginCodeRecord[]> {
+    return (await readAll<LoginCodeRecord>("hsp/login-codes/"))
+      .map((row) => row.value)
+      .sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+  }
+
+  async createCharge(charge: ChargeRecord): Promise<"ok" | "exists"> {
+    return (await writeNew(chargePath(charge.appointmentId), charge)) ? "ok" : "exists";
+  }
+
+  async getCharge(appointmentId: string): Promise<ChargeRecord | null> {
+    return readJson<ChargeRecord>(chargePath(appointmentId));
+  }
+
+  async listCharges(): Promise<ChargeRecord[]> {
+    return (await readAll<ChargeRecord>("hsp/charges/")).map((row) => row.value);
+  }
+
+  async updateCharge(
+    appointmentId: string,
+    change: (charge: ChargeRecord) => ChargeRecord | null,
+  ): Promise<ChargeRecord | null> {
+    const result = await updateTagged<ChargeRecord>(chargePath(appointmentId), (current) => {
+      const next = change(current);
+      if (!next) return null;
+      const kept = new Set(next.entries.map((entry) => entry.id));
+      if (current.entries.some((entry) => !kept.has(entry.id))) throw new Error("Payments can't be removed, only refunded.");
+      return next;
+    });
+    return result?.value ?? null;
+  }
+
+  async appendEvent(event: AuditEvent): Promise<void> {
+    // A fresh id per event, and writeNew never overwrites: an event can't be replaced.
+    await writeNew(eventPath(event), event);
+  }
+
+  async listEvents(limit = 1000): Promise<AuditEvent[]> {
+    const newest = (await listPathnames("hsp/audit/")).sort().slice(0, Math.max(1, Math.floor(limit)));
+    const events = await mapLimit(newest, READ_CONCURRENCY, (pathname) => readJson<AuditEvent>(pathname));
+    return events.filter((event): event is AuditEvent => event !== null);
   }
 }
