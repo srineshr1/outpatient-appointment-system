@@ -11,6 +11,17 @@ import { SEND_FAILED, sendCodeErrorMessage } from "@/lib/sign-in-errors";
 import { destroySession, getCurrentUser, safeNext, startSession } from "@/lib/session";
 import { blockedSignIn, DISABLED_MESSAGE, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase";
+import { isDemoSignInEmail } from "@/lib/demo-accounts";
+
+/**
+ * Sample accounts on the fake clinic domain can't receive email, and Supabase refuses the address.
+ * On a demo deployment (SHOW_LOGIN_CODES=1, no mail key) they use the app's own code flow, with the
+ * code shown on screen. Everyone else, and every non-demo deployment, keeps Supabase.
+ */
+function useSupabaseFor(email: string): boolean {
+  if (!supabaseConfigured()) return false;
+  return !(isDemoSignInEmail(email) && devCodesAllowed());
+}
 
 export type SignInMode = "patient" | "staff";
 
@@ -39,7 +50,7 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
   if (!email) return { ok: false, error: "Enter your email address." };
   if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
 
-  if (supabaseConfigured()) {
+  if (useSupabaseFor(email)) {
     const supabase = await createSupabase();
     const site = siteUrl();
     const { error } = await supabase.auth.signInWithOtp({
@@ -93,7 +104,7 @@ export async function verifyCode(input: {
   const code = String(input.code ?? "").replace(/\D/g, "");
   if (code.length !== CODE_LENGTH) return { ok: false, error: `Enter the ${CODE_LENGTH}-digit code from the email.` };
 
-  if (supabaseConfigured()) {
+  if (useSupabaseFor(email)) {
     const supabase = await createSupabase();
     const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
     if (error || !data.user) {

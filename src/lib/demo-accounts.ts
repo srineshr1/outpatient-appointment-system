@@ -106,3 +106,18 @@ export const demoAccounts: DemoAccount[] = [
     blurb: "Practice manager. Opens the admin console: visits, payments, people and activity.",
   },
 ];
+
+/** The sample clinic's own mailbox domain. Nobody can receive mail there. */
+const DEMO_DOMAIN = "@halden.example";
+
+/**
+ * True for a seeded sample account on the fake clinic domain, other than the admin.
+ * These can't receive email, so a demo deployment (SHOW_LOGIN_CODES=1) signs them in with an
+ * on-screen code instead of sending one. The admin is left out: the console keeps its normal sign-in.
+ */
+export function isDemoSignInEmail(email: string): boolean {
+  const normalised = email.trim().toLowerCase();
+  if (!normalised.endsWith(DEMO_DOMAIN)) return false;
+  const account = demoAccounts.find((entry) => entry.email === normalised);
+  return Boolean(account && account.role !== "admin");
+}
