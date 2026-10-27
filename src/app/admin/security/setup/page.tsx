@@ -8,7 +8,7 @@ import { loadSnapshot, navCounts, type SearchParams } from "@/lib/admin-data";
 import { requireAdminPage } from "@/lib/admin-page";
 import { pluralise } from "@/lib/format";
 import { googleConfigured } from "@/lib/google";
-import { devCodesAllowed } from "@/lib/mailer";
+import { devCodesAllowed, ownMailConfigured } from "@/lib/mailer";
 import { adminEmailsFromEnv } from "@/lib/seed";
 import { supabaseConfigured } from "@/lib/supabase";
 
@@ -29,7 +29,8 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   const counts = navCounts(snapshot);
   const production = process.env.NODE_ENV === "production";
   const supabase = supabaseConfigured();
-  const resend = Boolean(process.env.RESEND_API_KEY);
+  // With RESEND_API_KEY and MAIL_FROM, the app sends every email code itself, ahead of Supabase.
+  const resend = ownMailConfigured();
   const admins = snapshot.users.filter(isActiveAdmin).length;
   const bootstrap = adminEmailsFromEnv().length;
 
@@ -44,8 +45,8 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
     },
     {
       name: "Email sign-in",
-      setting: supabase ? "Supabase" : resend ? "RESEND_API_KEY, MAIL_FROM" : "SHOW_LOGIN_CODES",
-      state: supabase ? "Supabase sends codes" : resend ? "Resend sends codes" : devCodesAllowed() ? "Codes shown on screen" : "Can’t send codes",
+      setting: resend ? "RESEND_API_KEY, MAIL_FROM" : supabase ? "Supabase" : "SHOW_LOGIN_CODES",
+      state: resend ? "Resend sends codes" : supabase ? "Supabase sends codes" : devCodesAllowed() ? "Codes shown on screen" : "Can’t send codes",
       tone: supabase || resend ? "success" : devCodesAllowed() ? "warn" : "danger",
       detail: supabase || resend ? "Codes go to the person’s inbox." : devCodesAllowed() ? "Demo mode: anyone at the screen can see the code." : "Email sign-in fails until mail is set up.",
     },
