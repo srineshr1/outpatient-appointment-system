@@ -10,6 +10,7 @@ import { homeFor } from "@/lib/auth-routing";
 import type { PublicUser } from "@/lib/clinic-types";
 import { practice, findDoctor } from "@/lib/data";
 import { spring } from "@/lib/motion";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 import { signOutAction } from "@/server/auth-actions";
 
 type HeaderUser = Pick<PublicUser, "name" | "email" | "role" | "doctorId">;
@@ -273,13 +274,12 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
                       </span>
                     </div>
                     <form action={signOutAction} onSubmit={forgetBooking} className="mt-4">
-                      <button
-                        type="submit"
+                      <SignOutButton
                         className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-fill text-body font-medium text-ink transition-colors hover:bg-fill-strong"
+                        icon={<SignOut size={18} />}
                       >
-                        <SignOut size={18} />
                         Sign out
-                      </button>
+                      </SignOutButton>
                     </form>
                   </div>
                 ) : (
@@ -492,13 +492,12 @@ function AccountMenu({
             </ul>
             <div aria-hidden="true" className="mx-1.5 h-px bg-hairline" />
             <form action={signOutAction} onSubmit={onSignOut} className="pt-1">
-              <button
-                type="submit"
+              <SignOutButton
                 className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-callout font-medium text-ink transition-colors hover:bg-fill"
+                icon={<SignOut size={18} className="text-muted" />}
               >
-                <SignOut size={18} className="text-muted" />
                 Sign out
-              </button>
+              </SignOutButton>
             </form>
           </motion.div>
         ) : null}

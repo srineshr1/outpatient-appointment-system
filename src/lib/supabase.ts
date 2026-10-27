@@ -5,6 +5,11 @@ export function supabaseConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 }
 
+/** A Supabase auth cookie: sb-<ref>-auth-token, its numbered chunks, or the PKCE code verifier. */
+export function isAuthCookie(name: string): boolean {
+  return /^sb-.+-auth-token(-code-verifier)?(\.\d+)?$/.test(name);
+}
+
 /** Server Supabase client. Session cookies are written when Auth sets them. */
 export async function createSupabase() {
   const jar = await cookies();

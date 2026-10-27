@@ -111,14 +111,18 @@ export async function startSession(userId: string): Promise<void> {
 
 export async function destroySession(): Promise<void> {
   const token = await readToken();
-  if (token) {
-    const store = await getStore();
-    await store.deleteSession(hashToken(token));
-  }
   try {
-    const jar = await cookies();
-    jar.delete(SESSION_COOKIE);
-  } catch {
-    // Tests call this outside a request. The session row is already gone.
+    if (token) {
+      const store = await getStore();
+      await store.deleteSession(hashToken(token));
+    }
+  } finally {
+    // The cookie goes even when the store can't be reached, so signing out always works in this browser.
+    try {
+      const jar = await cookies();
+      jar.delete(SESSION_COOKIE);
+    } catch {
+      // Tests call this outside a request. The session row is already gone.
+    }
   }
 }
