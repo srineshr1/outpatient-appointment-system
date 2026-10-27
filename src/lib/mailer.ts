@@ -1,4 +1,7 @@
 import { practice } from "./data";
+import { isDemoSignInEmail } from "./demo-accounts";
+import { CODE_TTL_MS } from "./login-codes";
+import { loginEmail } from "./login-email";
 
 export interface SentCode {
   /** "email" when it really went out; "console" in development without a mail key. */
@@ -23,6 +26,30 @@ export function devCodesAllowed(): boolean {
 }
 
 /**
+ * The app sends its own sign-in codes through Resend from the practice's domain. When both are
+ * set, every email sign-in uses the app's code flow instead of Supabase's email OTP.
+ */
+export function ownMailConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.MAIL_FROM?.trim());
+}
+
+/** Showing sample codes on screen: in development, or on a demo deployment with SHOW_LOGIN_CODES=1. */
+function demoCodesOn(): boolean {
+  return process.env.NODE_ENV !== "production" || process.env.SHOW_LOGIN_CODES === "1";
+}
+
+/**
+ * Whether this email's code is shown on screen instead of sent. The seeded sample accounts on
+ * the fake clinic domain (not the admin) can't receive mail, so they stay on on-screen codes
+ * while demo codes are on, even when a mail key is set. Real addresses only get on-screen codes
+ * when no mail key is set at all.
+ */
+export function showsCodeOnScreen(email: string): boolean {
+  if (isDemoSignInEmail(email)) return demoCodesOn();
+  return devCodesAllowed();
+}
+
+/**
  * Send a sign-in code. Uses Resend's HTTP API when RESEND_API_KEY is set. In development
  * without a key the code is printed to the server terminal instead. In production without
  * a key, it refuses, so a code is never silently lost.
@@ -39,13 +66,7 @@ export async function sendLoginCode(email: string, code: string): Promise<SentCo
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from,
-      to: [email],
-      subject: `${code} is your ${practice.shortName} sign-in code`,
-      text: `Your sign-in code is ${code}.\n\nIt works for 10 minutes. If you didn’t ask for it, you can ignore this email.\n\n${practice.name}`,
-      html: `<p>Your sign-in code is</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>It works for 10 minutes. If you didn’t ask for it, you can ignore this email.</p><p>${practice.name}</p>`,
-    }),
+    body: JSON.stringify({ from, to: [email], ...loginEmailFor(code) }),
   });
   if (!response.ok) {
     // Resend explains refusals in the body, e.g. an unverified MAIL_FROM domain. It never echoes the key.
@@ -54,4 +75,14 @@ export async function sendLoginCode(email: string, code: string): Promise<SentCo
     throw new Error(`Email provider responded ${response.status}: ${detail.slice(0, 300)}${hint}`);
   }
   return { via: "email" };
+}
+
+function loginEmailFor(code: string) {
+  return loginEmail({
+    code,
+    minutes: Math.round(CODE_TTL_MS / 60_000),
+    practiceName: practice.name,
+    practiceShortName: practice.shortName,
+    address: practice.address,
+  });
 }

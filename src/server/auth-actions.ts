@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { authenticate, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
 import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RESEND_AFTER_MS } from "@/lib/login-codes";
-import { devCodesAllowed, sendLoginCode } from "@/lib/mailer";
+import { ownMailConfigured, sendLoginCode, showsCodeOnScreen } from "@/lib/mailer";
 import { normaliseEmail } from "@/lib/passwords";
 import { CODE_LENGTH, SUPABASE_CODE_LENGTH } from "@/lib/sign-in-config";
 import { SEND_FAILED, sendCodeErrorMessage } from "@/lib/sign-in-errors";
@@ -14,13 +14,14 @@ import { createSupabase, supabaseConfigured } from "@/lib/supabase";
 import { isDemoSignInEmail } from "@/lib/demo-accounts";
 
 /**
- * Sample accounts on the fake clinic domain can't receive email, and Supabase refuses the address.
- * On a demo deployment (SHOW_LOGIN_CODES=1, no mail key) they use the app's own code flow, with the
- * code shown on screen. Everyone else, and every non-demo deployment, keeps Supabase.
+ * Who sends the email code. With RESEND_API_KEY and MAIL_FROM set, the app sends its own codes
+ * for every email sign-in. Without them, Supabase's email OTP is used when Supabase is set up,
+ * except for the sample accounts on the fake clinic domain, which Supabase refuses: on a demo
+ * deployment those use the app's own flow with the code on screen. Google sign-in is separate.
  */
 function sendsThroughSupabase(email: string): boolean {
-  if (!supabaseConfigured()) return false;
-  return !(isDemoSignInEmail(email) && devCodesAllowed());
+  if (!supabaseConfigured() || ownMailConfigured()) return false;
+  return !(isDemoSignInEmail(email) && showsCodeOnScreen(email));
 }
 
 export type SignInMode = "patient" | "staff";
@@ -73,19 +74,19 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
     }
   }
 
-  const issued = await issueCode(email, new Date(), !devCodesAllowed());
+  const onScreen = showsCodeOnScreen(email);
+  const issued = await issueCode(email, new Date(), !onScreen);
   // A code went out moments ago: carry on to the code step rather than sending another.
   if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs, codeLength: CODE_LENGTH };
 
+  if (onScreen) {
+    console.info(`[sign-in] On-screen code issued for ${email}`);
+    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH, devCode: issued.code };
+  }
+
   try {
-    const sent = await sendLoginCode(email, issued.code);
-    return {
-      ok: true,
-      email,
-      resendInMs: RESEND_AFTER_MS,
-      codeLength: CODE_LENGTH,
-      devCode: sent.via === "console" && devCodesAllowed() ? issued.code : undefined,
-    };
+    await sendLoginCode(email, issued.code);
+    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH };
   } catch (error) {
     console.error(`[sign-in] Could not send a code: ${error instanceof Error ? error.message : "unknown error"}`);
     return { ok: false, error: SEND_FAILED };
