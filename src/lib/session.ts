@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import type { SessionUser } from "./clinic-types";
+import { findUserByEmail } from "./accounts";
 import { hashToken, newToken } from "./passwords";
 import { getStore } from "./store";
+import { createSupabase, supabaseConfigured } from "./supabase";
 
 export const SESSION_COOKIE = "hsp_session";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
@@ -25,6 +27,23 @@ async function readToken(): Promise<string | null> {
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
+  if (supabaseConfigured()) {
+    try {
+      const supabase = await createSupabase();
+      const { data } = await supabase.auth.getUser();
+      const email = data.user?.email;
+      if (email) {
+        const user = await findUserByEmail(email);
+        if (user) {
+          const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+          return { ...user, expiresAt };
+        }
+      }
+    } catch {
+      // Fall through to the local session when Supabase is unreachable.
+    }
+  }
+
   const token = await readToken();
   if (!token) return null;
   const store = await getStore();

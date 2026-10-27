@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { authenticate, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
 import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RESEND_AFTER_MS } from "@/lib/login-codes";
-import { devCodesAllowed, MailNotConfiguredError, sendLoginCode } from "@/lib/mailer";
+import { devCodesAllowed, sendLoginCode } from "@/lib/mailer";
 import { normaliseEmail } from "@/lib/passwords";
 import { CODE_LENGTH } from "@/lib/sign-in-config";
 import { destroySession, safeNext, startSession } from "@/lib/session";
+import { createSupabase, supabaseConfigured } from "@/lib/supabase";
 
 export type SignInMode = "patient" | "staff";
 
@@ -20,12 +21,26 @@ export type RequestCodeResult =
       /** Development only, when no mail key is set: the code, so local sign-in works offline. */
       devCode?: string;
     }
-  | { ok: false; error: string; needsPassword?: boolean; email?: string };
+  | { ok: false; error: string };
 
 export async function requestCode(input: { email: string; mode: SignInMode }): Promise<RequestCodeResult> {
   const email = normaliseEmail(String(input.email ?? ""));
   if (!email) return { ok: false, error: "Enter your email address." };
   if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
+
+  if (supabaseConfigured()) {
+    const supabase = await createSupabase();
+    const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://halden-street-practice.vercel.app";
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${site}/auth/confirm`,
+      },
+    });
+    if (error) return { ok: false, error: "We couldn’t send the confirmation email. Try again in a minute." };
+    return { ok: true, email, resendInMs: RESEND_AFTER_MS };
+  }
 
   if (input.mode === "staff") {
     const user = await findUserByEmail(email);
@@ -34,7 +49,6 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
     }
   }
 
-  // In demo mode no email goes out, so there is nothing to throttle, and the code must always be shown.
   const issued = await issueCode(email, new Date(), !devCodesAllowed());
   // A code went out moments ago: carry on to the code step rather than sending another.
   if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs };
@@ -47,61 +61,9 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
       resendInMs: RESEND_AFTER_MS,
       devCode: sent.via === "console" && devCodesAllowed() ? issued.code : undefined,
     };
-  } catch (error) {
-    if (error instanceof MailNotConfiguredError) {
-      return { ok: false, error: "", needsPassword: true, email };
-    }
+  } catch {
     return { ok: false, error: "We couldn’t send the email just now. Please try again in a minute." };
   }
-}
-
-export type PasswordResult = { ok: false; error: string; needsAccount?: boolean };
-
-/** Sign in with the password stored for this account. Used when email codes are not configured. */
-export async function signInWithPassword(input: {
-  email: string;
-  password: string;
-  next: string;
-  mode: SignInMode;
-}): Promise<PasswordResult> {
-  const email = normaliseEmail(String(input.email ?? ""));
-  const password = String(input.password ?? "");
-  if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
-  if (password.length < 8) return { ok: false, error: "Use at least 8 characters." };
-
-  const result = await authenticate(email, password);
-  if (!result.ok) {
-    const existing = await findUserByEmail(email);
-    if (!existing) return { ok: false, error: "No account for that email yet.", needsAccount: true };
-    return { ok: false, error: "That password doesn’t match." };
-  }
-  if (input.mode === "staff" && result.user.role === "patient") {
-    return { ok: false, error: "That email isn’t a staff account. Patients sign in on the main sign-in page." };
-  }
-  await startSession(result.user.id);
-  redirect(destinationFor(result.user.role, safeNext(String(input.next ?? "/"))));
-}
-
-/** Create a patient account with a password, then sign them in. */
-export async function registerWithPassword(input: {
-  email: string;
-  password: string;
-  name: string;
-  next: string;
-}): Promise<PasswordResult> {
-  const email = normaliseEmail(String(input.email ?? ""));
-  const password = String(input.password ?? "");
-  const problem = nameError(String(input.name ?? ""));
-  if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
-  if (problem) return { ok: false, error: problem };
-  if (password.length < 8) return { ok: false, error: "Use at least 8 characters." };
-  if (password.length > 200) return { ok: false, error: "Keep the password to 200 characters." };
-
-  const existing = await findUserByEmail(email);
-  if (existing) return { ok: false, error: "That email already has an account. Sign in with the password." };
-  const user = await createPatient(email, String(input.name), password);
-  await startSession(user.id);
-  redirect(destinationFor(user.role, safeNext(String(input.next ?? "/"))));
 }
 
 export type VerifyCodeResult =
@@ -118,6 +80,23 @@ export async function verifyCode(input: {
   const email = normaliseEmail(String(input.email ?? ""));
   const code = String(input.code ?? "").replace(/\D/g, "");
   if (code.length !== CODE_LENGTH) return { ok: false, error: `Enter the ${CODE_LENGTH}-digit code from the email.` };
+
+  if (supabaseConfigured()) {
+    const supabase = await createSupabase();
+    const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
+    if (error || !data.user) return { ok: false, error: "That code isn’t right, or it has expired. Send a new one.", spent: true };
+    const existing = await findUserByEmail(email);
+    if (!existing) {
+      if (input.mode === "staff") {
+        await supabase.auth.signOut();
+        return { ok: false, error: "That email isn’t a staff account.", spent: true };
+      }
+      const metaName = typeof data.user.user_metadata?.full_name === "string" ? data.user.user_metadata.full_name : "";
+      if (!metaName) return { ok: true, needsName: true, signupToken: "supabase" };
+      await createPatient(email, metaName);
+    }
+    redirect(destinationFor((await findUserByEmail(email))?.role ?? "patient", safeNext(String(input.next ?? "/"))));
+  }
 
   const result = await checkCode(email, code);
   if (!result.ok) {
@@ -150,7 +129,7 @@ export async function completeSignup(input: {
   const problem = nameError(String(input.name ?? ""));
   if (problem) return { ok: false, error: problem };
   const email = normaliseEmail(String(input.email ?? ""));
-  if (!(await consumeSignupToken(email, String(input.signupToken ?? "")))) {
+  if (input.signupToken !== "supabase" && !(await consumeSignupToken(email, String(input.signupToken ?? "")))) {
     return { ok: false, error: "This sign-in has timed out. Start again with your email.", spent: true };
   }
   const existing = await findUserByEmail(email);
@@ -169,6 +148,10 @@ export async function signInFromDemo(formData: FormData): Promise<void> {
 }
 
 export async function signOutAction(formData?: FormData): Promise<void> {
+  if (supabaseConfigured()) {
+    const supabase = await createSupabase();
+    await supabase.auth.signOut();
+  }
   await destroySession();
   const next = formData ? safeNext(String(formData.get("next") ?? "/")) : "/";
   redirect(next);

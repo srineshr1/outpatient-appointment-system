@@ -41,13 +41,13 @@ export function nameError(raw: string): string | undefined {
  * Create a patient who signs in by email code or Google. There is no password: the stored
  * hash is empty, which never verifies. Mobile and date of birth are asked for at booking.
  */
-export async function createPatient(rawEmail: string, rawName: string, password = ""): Promise<PublicUser> {
+export async function createPatient(rawEmail: string, rawName: string): Promise<PublicUser> {
   const email = normaliseEmail(rawEmail);
   const store = await getStore();
   const created = await store.createUser({
     id: crypto.randomUUID(),
     email,
-    passwordHash: password ? hashPassword(password) : "",
+    passwordHash: "",
     name: rawName.trim().slice(0, 100),
     role: "patient",
     doctorId: null,

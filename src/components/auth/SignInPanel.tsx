@@ -20,9 +20,9 @@ import { buttonClass } from "@/components/ui/button-styles";
 import type { Doctor } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
 import { CODE_LENGTH } from "@/lib/sign-in-config";
-import { completeSignup, registerWithPassword, requestCode, signInWithPassword, verifyCode, type SignInMode } from "@/server/auth-actions";
+import { completeSignup, requestCode, verifyCode, type SignInMode } from "@/server/auth-actions";
 
-type Step = "email" | "code" | "password" | "name";
+type Step = "email" | "code" | "name";
 
 const emptyDigits = () => Array.from({ length: CODE_LENGTH }, () => "");
 
@@ -43,8 +43,6 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   const [digits, setDigits] = useState<string[]>(emptyDigits);
   const [name, setName] = useState("");
   const [signupToken, setSignupToken] = useState("");
-  const [password, setPassword] = useState("");
-  const [creating, setCreating] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(notice);
   const [resendAt, setResendAt] = useState(0);
@@ -69,13 +67,6 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
     startTransition(async () => {
       const result = await requestCode({ email, mode });
       if (!result.ok) {
-        if (result.needsPassword && result.email) {
-          setEmail(result.email);
-          setError(null);
-          setCreating(false);
-          setStep("password");
-          return;
-        }
         setError(result.error);
         return;
       }
@@ -123,19 +114,6 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
     });
   }
 
-  function submitPassword(event: FormEvent) {
-    event.preventDefault();
-    if (pending) return;
-    startTransition(async () => {
-      const result = creating
-        ? await registerWithPassword({ email, password, name, next: nextPath })
-        : await signInWithPassword({ email, password, next: nextPath, mode });
-      if (!result) return;
-      if (result.needsAccount) setCreating(true);
-      setError(result.error);
-    });
-  }
-
   function changeEmail() {
     setError(null);
     setFromFill(false);
@@ -160,76 +138,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
       {/* Right: the form */}
       <div className="rounded-sheet bg-surface p-5 shadow-card md:p-6">
         <AnimatePresence mode="wait" initial={false}>
-          {step === "password" ? (
-            <motion.div
-              key="password"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2 }}
-            >
-              <form onSubmit={submitPassword} className="grid gap-4">
-                <p className="px-2 text-callout text-ink-2">
-                  {creating ? "Create an account for " : "Password for "}
-                  <span className="font-semibold break-all text-ink">{email}</span>{" "}
-                  <button type="button" onClick={changeEmail} className="font-semibold text-accent hover:underline underline-offset-4">
-                    Change
-                  </button>
-                </p>
-                {creating ? (
-                  <div>
-                    <label htmlFor="account-name" className="sr-only">
-                      Full name
-                    </label>
-                    <input
-                      id="account-name"
-                      name="name"
-                      autoComplete="name"
-                      autoFocus
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      placeholder="Full name"
-                      className="field h-14 rounded-full! px-5"
-                    />
-                  </div>
-                ) : null}
-                <div>
-                  <label htmlFor="password" className="sr-only">
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autoComplete={creating ? "new-password" : "current-password"}
-                    autoFocus={!creating}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Password"
-                    aria-invalid={Boolean(error) || undefined}
-                    aria-describedby={error ? "password-error" : undefined}
-                    className="field h-14 rounded-full! px-5"
-                  />
-                  <ErrorText id="password-error" message={error} />
-                </div>
-                <button type="submit" disabled={pending} className="btn-chunky btn-chunky-primary w-full">
-                  {pending ? "Please wait" : creating ? "Create account" : "Sign in"}
-                </button>
-                {staff || creating ? null : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreating(true);
-                      setError(null);
-                    }}
-                    className="text-callout font-semibold text-accent"
-                  >
-                    New here? Create an account
-                  </button>
-                )}
-              </form>
-            </motion.div>
-          ) : step === "name" ? (
+          {step === "name" ? (
             <motion.div
               key="name"
               initial={{ opacity: 0, y: 8 }}
