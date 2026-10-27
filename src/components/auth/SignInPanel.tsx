@@ -24,7 +24,7 @@ import { completeSignup, requestCode, verifyCode, type SignInMode } from "@/serv
 
 type Step = "email" | "code" | "name";
 
-const emptyDigits = () => Array.from({ length: CODE_LENGTH }, () => "");
+const emptyDigits = (length: number = CODE_LENGTH) => Array.from({ length }, () => "");
 
 interface Props {
   nextPath: string;
@@ -37,10 +37,12 @@ interface Props {
 export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   const reduce = useReducedMotion();
   const [step, setStep] = useState<Step>("email");
-  /** True when the code boxes should play the "email box splits in four" entrance. */
+  /** True when the code boxes should play the "email box splits apart" entrance. */
   const [split, setSplit] = useState(false);
   const [email, setEmail] = useState("");
-  const [digits, setDigits] = useState<string[]>(emptyDigits);
+  /** Digits in the code that was sent. The server says: 4 for the app's own codes, 6 from Supabase. */
+  const [codeLength, setCodeLength] = useState(CODE_LENGTH);
+  const [digits, setDigits] = useState<string[]>(() => emptyDigits());
   const [name, setName] = useState("");
   const [signupToken, setSignupToken] = useState("");
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -69,7 +71,8 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
       setEmail(result.email);
       setDevCode(result.devCode ?? null);
       setResendAt(Date.now() + result.resendInMs);
-      setDigits(emptyDigits());
+      setCodeLength(result.codeLength);
+      setDigits(emptyDigits(result.codeLength));
       if (step === "code") return;
       // The email box splits into the code boxes.
       setSplit(!reduce);
@@ -78,14 +81,14 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   }
 
   function submitCode(code: string) {
-    if (pending || code.length !== CODE_LENGTH) return;
+    if (pending || code.length !== codeLength) return;
     startTransition(async () => {
       const result = await verifyCode({ email, code, next: nextPath, mode });
       // A successful sign-in redirects, so only problems and new patients come back here.
       if (!result) return;
       if (!result.ok) {
         setError(result.error);
-        setDigits(emptyDigits());
+        setDigits(emptyDigits(codeLength));
         return;
       }
       setError(null);
@@ -308,15 +311,15 @@ function EmailField({
   );
 }
 
-/** Where each code box starts so the four together look like the email pill. */
-function splitStart(index: number) {
+/** Where each code box starts so the boxes together look like the email pill. */
+function splitStart(index: number, length: number) {
   const pill = 28;
   const first = index === 0;
-  const last = index === CODE_LENGTH - 1;
-  // Close the 12px gaps: each box widens by 9px and slides toward the middle.
-  const offsets = [4.5, 1.5, -1.5, -4.5];
+  const last = index === length - 1;
+  // Close the gaps: each box widens a little and slides toward the middle.
+  const middle = (length - 1) / 2;
   return {
-    x: offsets[index] ?? 0,
+    x: (middle - index) * 3,
     scaleX: 1.12,
     borderTopLeftRadius: first ? pill : 0,
     borderBottomLeftRadius: first ? pill : 0,
@@ -350,6 +353,7 @@ function CodeBoxes({
   onResend: () => void;
   onChangeEmail: () => void;
 }) {
+  const length = digits.length;
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   // The fading copy of the email is removed once it has faded.
   const [ghost, setGhost] = useState(split);
@@ -370,14 +374,14 @@ function CodeBoxes({
     // One digit, or several from a paste or the phone's code suggestion.
     let at = index;
     for (const char of clean) {
-      if (at >= CODE_LENGTH) break;
+      if (at >= length) break;
       next[at] = char;
       at += 1;
     }
     setDigits(next);
     const code = next.join("");
-    if (code.length === CODE_LENGTH) onComplete(code);
-    else refs.current[Math.min(at, CODE_LENGTH - 1)]?.focus();
+    if (code.length === length) onComplete(code);
+    else refs.current[Math.min(at, length - 1)]?.focus();
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>, index: number) {
@@ -390,7 +394,7 @@ function CodeBoxes({
     } else if (event.key === "ArrowLeft" && index > 0) {
       event.preventDefault();
       refs.current[index - 1]?.focus();
-    } else if (event.key === "ArrowRight" && index < CODE_LENGTH - 1) {
+    } else if (event.key === "ArrowRight" && index < length - 1) {
       event.preventDefault();
       refs.current[index + 1]?.focus();
     } else if (event.key === "Enter") {
@@ -434,14 +438,15 @@ function CodeBoxes({
             />
           </motion.div>
         ) : null}
-        <div role="group" aria-labelledby="code-label" className="grid grid-cols-4 gap-3">
+        {/* Always one row, at any width and for any code length: the boxes share the width. */}
+        <div role="group" aria-labelledby="code-label" className={`flex flex-nowrap ${length > 4 ? "gap-2" : "gap-3"}`}>
           {digits.map((digit, index) => (
             <motion.input
               key={index}
               ref={(node) => {
                 refs.current[index] = node;
               }}
-              aria-label={`Digit ${index + 1} of ${CODE_LENGTH}`}
+              aria-label={`Digit ${index + 1} of ${length}`}
               inputMode="numeric"
               autoComplete={index === 0 ? "one-time-code" : "off"}
               pattern="[0-9]*"
@@ -453,7 +458,7 @@ function CodeBoxes({
               disabled={pending}
               aria-invalid={Boolean(error) || undefined}
               aria-describedby={error ? "code-error" : undefined}
-              initial={split ? splitStart(index) : false}
+              initial={split ? splitStart(index, length) : false}
               animate={{
                 x: 0,
                 scaleX: 1,
@@ -462,14 +467,14 @@ function CodeBoxes({
                 borderTopRightRadius: 16,
                 borderBottomRightRadius: 16,
               }}
-              transition={{ type: "spring", duration: 0.55, bounce: 0.4, delay: split ? 0.18 + Math.abs(index - 1.5) * 0.04 : 0 }}
-              className="tabular h-14 w-full min-w-0 border border-control bg-surface text-center text-title2 font-semibold text-ink caret-accent transition-colors hover:border-ink-2 focus-visible:border-accent focus-visible:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent)_22%,transparent)] focus-visible:outline-none disabled:opacity-60 aria-invalid:border-danger"
+              transition={{ type: "spring", duration: 0.55, bounce: 0.4, delay: split ? 0.18 + Math.abs(index - (length - 1) / 2) * 0.04 : 0 }}
+              className="tabular h-14 w-0 min-w-0 flex-1 border border-control bg-surface text-center text-title2 font-semibold text-ink caret-accent transition-colors hover:border-ink-2 focus-visible:border-accent focus-visible:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent)_22%,transparent)] focus-visible:outline-none disabled:opacity-60 aria-invalid:border-danger"
             />
           ))}
         </div>
       </div>
       <span id="code-label" className="sr-only">
-        Enter the {CODE_LENGTH}-digit code from the email
+        Enter the {length}-digit code from the email
       </span>
 
       <ErrorText id="code-error" message={error} />
