@@ -7,6 +7,7 @@ import type { SessionUser, UserAccount } from "./clinic-types";
 import { setNow } from "./clock";
 import { destinationFor } from "./auth-routing";
 import { describeDevice } from "./device";
+import { loadDoctors } from "./doctors";
 import { issueCode } from "./login-codes";
 import { summarise } from "./payments";
 import { confirmBooking, getUpcoming } from "./repository";
@@ -188,7 +189,7 @@ describe("admin rules", () => {
     await expect(createStaff(admin, { name: "", email: "x@example.com", role: "reception", doctorId: null })).rejects.toThrow(/full name/);
     await expect(createStaff(admin, { name: "Sam", email: "not-an-email", role: "reception", doctorId: null })).rejects.toThrow(/valid email/);
     await expect(createStaff(admin, { name: "Sam", email: "sam@example.com", role: "patient", doctorId: null })).rejects.toThrow(/staff role/);
-    await expect(createStaff(admin, { name: "Sam", email: "sam@example.com", role: "doctor", doctorId: null })).rejects.toThrow(/clinic book/);
+    await expect(createStaff(admin, { name: "Sam", email: "sam@example.com", role: "doctor", doctorId: "nobody" })).rejects.toThrow(/clinic book/);
     await expect(createStaff(admin, { name: "Sam", email: "desk@halden.example", role: "reception", doctorId: null })).rejects.toThrow(/already has an account/);
 
     const created = await createStaff(admin, { name: "Dr Sam Patel", email: "Sam.Patel@Example.com", role: "doctor", doctorId: "cho" });
@@ -196,6 +197,27 @@ describe("admin rules", () => {
     const store = await getStore();
     expect((await store.getUserByEmail("sam.patel@example.com"))?.passwordHash).toBe("");
     expect((await store.listEvents(10)).some((event) => event.action === "staff.created" && event.subjectId === created.id)).toBe(true);
+  });
+
+  it("gives a new doctor their own bookable book by default", async () => {
+    const admin = asSession(await account("user-admin"));
+    const created = await createStaff(admin, {
+      name: "Dr Someone New",
+      email: "someone.new@example.com",
+      role: "doctor",
+      doctorId: null,
+      doctor: { room: "Room 7", interest: "Sports medicine" },
+    });
+    expect(created).toMatchObject({ role: "doctor", doctorId: created.id, doctorRoom: "Room 7", doctorInterest: "Sports medicine" });
+    const listed = (await loadDoctors()).find((doctor) => doctor.id === created.id);
+    expect(listed).toMatchObject({ name: "Dr Someone New", room: "Room 7", interest: "Sports medicine" });
+    expect((await getUpcoming(40))[created.id]?.length).toBeGreaterThan(0);
+
+    // Changing someone to a doctor also defaults to their own book.
+    const moved = await changeRole(admin, "user-desk", "doctor", null, "Qualified");
+    expect(moved.doctorId).toBe("user-desk");
+    expect((await loadDoctors()).some((doctor) => doctor.id === "user-desk")).toBe(true);
+    await changeRole(admin, "user-desk", "reception", null, "Back on the desk");
   });
 
   it("changes a role, ends their sessions, and protects the last admin", async () => {

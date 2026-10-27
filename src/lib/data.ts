@@ -250,7 +250,13 @@ function pick<T>(list: readonly T[], seed: string): T {
 }
 
 /** A listing for a doctor account that has its own book. */
-export function staffDoctorProfile(account: { id: string; name: string }): Doctor {
+export function staffDoctorProfile(account: {
+  id: string;
+  name: string;
+  doctorRoom?: string;
+  doctorInterest?: string;
+}): Doctor {
+  const interest = account.doctorInterest?.trim() || "General practice";
   const clean = account.name.replace(/\s+/g, " ").trim() || "New doctor";
   const name = /^dr\.?\s/i.test(clean) ? clean.replace(/^dr\.?\s+/i, "Dr ") : `Dr ${clean}`;
   const surname = name.split(" ").slice(-1)[0] ?? clean;
@@ -259,10 +265,10 @@ export function staffDoctorProfile(account: { id: string; name: string }): Docto
     name,
     short: name.split(" ").length > 2 ? `Dr ${surname}` : name,
     qualification: "MRCGP",
-    interest: "General practice",
+    interest,
     years: 1,
-    note: "General practice.",
-    room: "Room 6",
+    note: interest === "General practice" ? "General practice." : `General practice, with an interest in ${interest.toLowerCase()}.`,
+    room: account.doctorRoom?.trim() || "Room 6",
     bio: "Recently joined the practice. Happy to see anything, from a new worry to a long-running condition.",
     languages: ["English"],
     days: "Monday to Friday",

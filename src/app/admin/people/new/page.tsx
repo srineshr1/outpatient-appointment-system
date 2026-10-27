@@ -59,7 +59,7 @@ export default async function NewStaffPage({ searchParams }: { searchParams: Pro
                 <legend className="text-sm font-medium text-ink">Role</legend>
                 <div className="mt-2 grid gap-1">
                   {[
-                    { value: "doctor", label: "Doctor", hint: "Opens one doctor’s clinic book." },
+                    { value: "doctor", label: "Doctor", hint: "Gets their own clinic book, which patients can book." },
                     { value: "reception", label: "Reception", hint: "Sees every doctor’s book and updates visits." },
                     { value: "admin", label: "Admin", hint: "Everything here, including money and other people’s access." },
                   ].map((option, index) => (
@@ -85,17 +85,44 @@ export default async function NewStaffPage({ searchParams }: { searchParams: Pro
                   ))}
                 </div>
               </fieldset>
-              <AdminField id="staff-doctor" label="Clinic book" hint="Doctors only: whose book they open. A book can be shared, for example with a locum.">
-                <select id="staff-doctor" name="doctorId" aria-describedby="staff-doctor-hint" defaultValue="" className={inputClass}>
-                  <option value="">Not a doctor</option>
+              <AdminField
+                id="staff-doctor"
+                label="Clinic book"
+                hint="Doctors only. A new doctor gets their own book, listed for patients to book with Monday to Friday times. Only share another doctor’s book for someone covering for them, like a locum."
+              >
+                <select id="staff-doctor" name="doctorId" aria-describedby="staff-doctor-hint" defaultValue={OWN_BOOK} className={inputClass}>
                   <option value={OWN_BOOK}>Their own book (listed for patients to book)</option>
-                  {doctors.map((doctor) => (
-                    <option key={doctor.id} value={doctor.id}>
-                      {`${doctor.name}${openers.has(doctor.id) ? ` (opened by ${openers.get(doctor.id)!.join(", ")})` : ""}`}
-                    </option>
-                  ))}
+                  <optgroup label="Share another doctor’s book (not listed for patients)">
+                    {doctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {`Share ${doctor.name}’s book${openers.has(doctor.id) ? ` (opened by ${openers.get(doctor.id)!.join(", ")})` : ""}`}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </AdminField>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <AdminField id="staff-doctor-room" label="Room" hint="Doctors with their own book. Blank: Room 6.">
+                  <input
+                    id="staff-doctor-room"
+                    name="doctorRoom"
+                    maxLength={40}
+                    autoComplete="off"
+                    aria-describedby="staff-doctor-room-hint"
+                    className={inputClass}
+                  />
+                </AdminField>
+                <AdminField id="staff-doctor-interest" label="Specialty" hint="Blank: General practice.">
+                  <input
+                    id="staff-doctor-interest"
+                    name="doctorInterest"
+                    maxLength={60}
+                    autoComplete="off"
+                    aria-describedby="staff-doctor-interest-hint"
+                    className={inputClass}
+                  />
+                </AdminField>
+              </div>
               <div>
                 <SubmitButton pendingLabel="Adding…">Add staff member</SubmitButton>
               </div>

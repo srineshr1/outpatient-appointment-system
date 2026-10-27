@@ -54,15 +54,32 @@ async function load(id: string): Promise<UserAccount> {
   return account;
 }
 
-/** Doctors need a clinic book. Several accounts may open the same one, for example a locum. */
 /** Chosen in the clinic book menu: the doctor gets their own book and a listing patients can book. */
 export const OWN_BOOK = "own";
 
-function checkDoctorLink(role: Role, doctorId: string | null, accountId: string): string | null {
+/**
+ * Every doctor gets their own book (and a listing patients can book) unless the admin explicitly
+ * chose to share one of the practice doctors' books, for example for a locum.
+ */
+export function checkDoctorLink(role: Role, doctorId: string | null, accountId: string): string | null {
   if (role !== "doctor") return null;
-  if (doctorId === OWN_BOOK || doctorId === accountId) return accountId;
-  if (!doctorId || !isPracticeDoctor(doctorId)) throw new AdminError("Choose whose clinic book this doctor opens.");
+  if (!doctorId || doctorId === OWN_BOOK || doctorId === accountId) return accountId;
+  if (!isPracticeDoctor(doctorId)) throw new AdminError("That clinic book no longer exists. Choose their own book instead.");
   return doctorId;
+}
+
+export interface DoctorDetails {
+  room?: string;
+  interest?: string;
+}
+
+/** Room and special interest for a doctor's own listing. Blank fields keep the defaults. */
+function cleanDoctorDetails(details: DoctorDetails | undefined): { doctorRoom?: string; doctorInterest?: string } {
+  const room = (details?.room ?? "").replace(/\s+/g, " ").trim();
+  const interest = (details?.interest ?? "").replace(/\s+/g, " ").trim();
+  if (room.length > 40) throw new AdminError("Keep the room to 40 characters.");
+  if (interest.length > 60) throw new AdminError("Keep the specialty to 60 characters.");
+  return { ...(room ? { doctorRoom: room } : {}), ...(interest ? { doctorInterest: interest } : {}) };
 }
 
 /** Another admin must stay able to sign in. */
@@ -77,6 +94,8 @@ export interface NewStaff {
   email: string;
   role: Role;
   doctorId: string | null;
+  /** Only used when the doctor gets their own book. */
+  doctor?: DoctorDetails;
 }
 
 export async function createStaff(admin: SessionUser, input: NewStaff): Promise<UserAccount> {
@@ -88,11 +107,12 @@ export async function createStaff(admin: SessionUser, input: NewStaff): Promise<
   if (!isRole(input.role) || input.role === "patient") throw new AdminError("Choose a staff role.");
   const id = crypto.randomUUID();
   const doctorId = checkDoctorLink(input.role, input.doctorId, id);
+  const details = doctorId === id ? cleanDoctorDetails(input.doctor) : {};
 
   const store = await getStore();
   if (await store.getUserByEmail(email)) throw new AdminError("That email already has an account. Change its role from People instead.");
   // No password: staff sign in with a code sent to this email (or Google, when that's on).
-  const created = await store.createUser({ id, email, passwordHash: "", name, role: input.role, doctorId, mobile: "", dob: "" });
+  const created = await store.createUser({ id, email, passwordHash: "", name, role: input.role, doctorId, mobile: "", dob: "", ...details });
   if (created === "exists") throw new AdminError("That email already has an account.");
   await loadDoctors(true);
   const account = await load(id);
@@ -112,17 +132,22 @@ export async function changeRole(
   role: Role,
   doctorId: string | null,
   reason: string,
+  doctor?: DoctorDetails,
 ): Promise<UserAccount> {
   if (!isRole(role)) throw new AdminError("Choose a role.");
   const why = cleanReason(reason, true);
   const target = await load(userId);
   if (target.id === admin.id && role !== "admin") throw new AdminError("You can’t remove your own admin role. Ask another admin.");
   const nextDoctor = checkDoctorLink(role, doctorId, target.id);
-  if (target.role === role && target.doctorId === nextDoctor) throw new AdminError("That’s already their role.");
+  const details = nextDoctor === target.id ? cleanDoctorDetails(doctor) : {};
+  const detailsChanged =
+    (details.doctorRoom !== undefined && details.doctorRoom !== target.doctorRoom) ||
+    (details.doctorInterest !== undefined && details.doctorInterest !== target.doctorInterest);
+  if (target.role === role && target.doctorId === nextDoctor && !detailsChanged) throw new AdminError("That’s already their role.");
   if (role !== "admin") await checkNotLastAdmin(target);
 
   const store = await getStore();
-  const updated = await store.updateUser(target.id, { role, doctorId: nextDoctor });
+  const updated = await store.updateUser(target.id, { role, doctorId: nextDoctor, ...details });
   if (!updated) throw new AdminError("That account no longer exists.");
   await loadDoctors(true);
   // Their pages change with the role, so make them sign in again.

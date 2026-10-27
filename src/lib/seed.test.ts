@@ -20,6 +20,9 @@ function fakeStore(rows: Row[]) {
       Object.assign(row, patch);
       return row;
     },
+    async listUsers() {
+      return rows;
+    },
     async appendEvent(event: unknown) {
       events.push(event);
     },
@@ -53,5 +56,18 @@ describe("seedDemoUsers", () => {
     const second = fakeStore([{ id: "other", email: EMAIL, role: "patient", doctorId: null, name: "R" }]);
     await seedDemoUsers(second.store);
     expect(second.rows.find((row) => row.email === EMAIL)).toMatchObject({ role: "patient", doctorId: null });
+  });
+
+  it("moves Dr Someone off Dr Cho's book once, and leaves deliberate shares alone", async () => {
+    const { store, rows, events } = fakeStore([
+      { id: "acct-someone", email: "someone@example.com", role: "doctor", doctorId: "cho", name: "Dr Someone" },
+      { id: "acct-locum", email: "locum@example.com", role: "doctor", doctorId: "cho", name: "Dr Locum" },
+    ]);
+    await seedDemoUsers(store);
+    expect(rows.find((row) => row.id === "acct-someone")?.doctorId).toBe("acct-someone");
+    expect(rows.find((row) => row.id === "acct-locum")?.doctorId).toBe("cho");
+    const repairs = events.length;
+    await seedDemoUsers(store);
+    expect(events.length).toBe(repairs);
   });
 });

@@ -30,6 +30,8 @@ interface UserRow {
   created_at: string | null;
   disabled_at: string | null;
   sessions_revoked_at: string | null;
+  doctor_room?: string | null;
+  doctor_interest?: string | null;
 }
 
 interface SessionRow {
@@ -122,6 +124,8 @@ function toUser(row: UserRow): StoredUser {
     createdAt: row.created_at ?? "",
     disabledAt: row.disabled_at,
     sessionsRevokedAt: row.sessions_revoked_at,
+    ...(row.doctor_room ? { doctorRoom: row.doctor_room } : {}),
+    ...(row.doctor_interest ? { doctorInterest: row.doctor_interest } : {}),
   };
 }
 
@@ -340,6 +344,8 @@ export class SqliteClinicStore implements ClinicStore {
     // Columns added after the first release. Older databases get them here.
     this.addColumn("users", "disabled_at", "TEXT");
     this.addColumn("users", "sessions_revoked_at", "TEXT");
+    this.addColumn("users", "doctor_room", "TEXT");
+    this.addColumn("users", "doctor_interest", "TEXT");
     this.addColumn("sessions", "id", "TEXT");
     this.addColumn("sessions", "created_at", "TEXT");
     this.addColumn("sessions", "device", "TEXT NOT NULL DEFAULT ''");
@@ -367,8 +373,8 @@ export class SqliteClinicStore implements ClinicStore {
     const result = this.db
       .prepare(
         `INSERT OR IGNORE INTO users
-          (id, email, password_hash, name, role, doctor_id, mobile, dob, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, email, password_hash, name, role, doctor_id, mobile, dob, created_at, doctor_room, doctor_interest)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         user.id,
@@ -380,6 +386,8 @@ export class SqliteClinicStore implements ClinicStore {
         user.mobile,
         user.dob,
         new Date().toISOString(),
+        user.doctorRoom || null,
+        user.doctorInterest || null,
       );
     return Number(result.changes) === 1 ? "ok" : "exists";
   }
@@ -391,6 +399,8 @@ export class SqliteClinicStore implements ClinicStore {
       doctorId: "doctor_id",
       disabledAt: "disabled_at",
       sessionsRevokedAt: "sessions_revoked_at",
+      doctorRoom: "doctor_room",
+      doctorInterest: "doctor_interest",
     };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((key) => patch[key] !== undefined);
     if (patch.role !== undefined && !isRole(patch.role)) throw new Error("Unknown role.");
