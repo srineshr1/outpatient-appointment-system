@@ -26,6 +26,10 @@ export interface UserAccount extends PublicUser {
   disabledAt: string | null;
   /** Sessions that began before this instant are no longer accepted ("sign out everywhere"). */
   sessionsRevokedAt: string | null;
+  /** Doctors with their own book: the room shown to patients. Empty or missing uses the default. */
+  doctorRoom?: string;
+  /** Doctors with their own book: the special interest shown to patients. */
+  doctorInterest?: string;
 }
 
 export interface SessionUser extends UserAccount {
@@ -48,9 +52,13 @@ export interface NewUser {
   doctorId: string | null;
   mobile: string;
   dob: string;
+  doctorRoom?: string;
+  doctorInterest?: string;
 }
 
-export type UserPatch = Partial<Pick<UserAccount, "name" | "role" | "doctorId" | "disabledAt" | "sessionsRevokedAt">>;
+export type UserPatch = Partial<
+  Pick<UserAccount, "name" | "role" | "doctorId" | "disabledAt" | "sessionsRevokedAt" | "doctorRoom" | "doctorInterest">
+>;
 
 /** A practice sign-in session. The cookie token itself is never stored, only its hash. */
 export interface SessionRecord {

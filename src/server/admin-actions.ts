@@ -87,6 +87,7 @@ export async function createStaffAction(_previous: ActionResult, formData: FormD
       email: text(formData, "email"),
       role,
       doctorId: role === "doctor" ? text(formData, "doctorId") || null : null,
+      doctor: { room: text(formData, "doctorRoom"), interest: text(formData, "doctorInterest") },
     });
     id = account.id;
   } catch (error) {
@@ -101,7 +102,14 @@ export async function changeRoleAction(_previous: ActionResult, formData: FormDa
   const role = text(formData, "role");
   try {
     if (!isRole(role)) throw new AdminError("Choose a role.");
-    await changeRole(admin, userId, role, role === "doctor" ? text(formData, "doctorId") || null : null, text(formData, "reason"));
+    await changeRole(
+      admin,
+      userId,
+      role,
+      role === "doctor" ? text(formData, "doctorId") || null : null,
+      text(formData, "reason"),
+      { room: text(formData, "doctorRoom"), interest: text(formData, "doctorInterest") },
+    );
   } catch (error) {
     return failure(error);
   }

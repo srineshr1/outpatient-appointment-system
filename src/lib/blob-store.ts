@@ -248,6 +248,8 @@ export class BlobClinicStore implements ClinicStore {
       createdAt: new Date().toISOString(),
       disabledAt: null,
       sessionsRevokedAt: null,
+      ...(user.doctorRoom ? { doctorRoom: user.doctorRoom } : {}),
+      ...(user.doctorInterest ? { doctorInterest: user.doctorInterest } : {}),
     };
     const created = await writeNew(userEmailPath(user.email), stored);
     if (!created) return "exists";

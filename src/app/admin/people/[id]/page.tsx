@@ -197,23 +197,52 @@ export default async function PersonPage({
                     ))}
                   </select>
                 </AdminField>
-                <AdminField id="role-doctor" label="Clinic book" hint="For doctors: whose book they open.">
+                <AdminField
+                  id="role-doctor"
+                  label="Clinic book"
+                  hint="For doctors. Their own book is listed for patients to book. Only share another doctor’s book for someone covering for them."
+                >
                   <select
                     id="role-doctor"
                     name="doctorId"
-                    defaultValue={person.doctorId === person.id ? OWN_BOOK : (person.doctorId ?? "")}
+                    defaultValue={person.role === "doctor" && person.doctorId && person.doctorId !== person.id ? person.doctorId : OWN_BOOK}
                     aria-describedby="role-doctor-hint"
                     className={inputClass}
                   >
-                    <option value="">Not a doctor</option>
                     <option value={OWN_BOOK}>Their own book (listed for patients to book)</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor.id} value={doctor.id}>
-                        {`${doctor.name}${openers.has(doctor.id) ? ` (also ${openers.get(doctor.id)!.join(", ")})` : ""}`}
-                      </option>
-                    ))}
+                    <optgroup label="Share another doctor’s book (not listed for patients)">
+                      {doctors.map((doctor) => (
+                        <option key={doctor.id} value={doctor.id}>
+                          {`Share ${doctor.name}’s book${openers.has(doctor.id) ? ` (also ${openers.get(doctor.id)!.join(", ")})` : ""}`}
+                        </option>
+                      ))}
+                    </optgroup>
                   </select>
                 </AdminField>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AdminField id="role-doctor-room" label="Room" hint="Own book only. Blank keeps it.">
+                    <input
+                      id="role-doctor-room"
+                      name="doctorRoom"
+                      maxLength={40}
+                      defaultValue={person.doctorRoom ?? ""}
+                      autoComplete="off"
+                      aria-describedby="role-doctor-room-hint"
+                      className={inputClass}
+                    />
+                  </AdminField>
+                  <AdminField id="role-doctor-interest" label="Specialty" hint="Own book only. Blank keeps it.">
+                    <input
+                      id="role-doctor-interest"
+                      name="doctorInterest"
+                      maxLength={60}
+                      defaultValue={person.doctorInterest ?? ""}
+                      autoComplete="off"
+                      aria-describedby="role-doctor-interest-hint"
+                      className={inputClass}
+                    />
+                  </AdminField>
+                </div>
                 <AdminField id="role-reason" label="Reason" hint="Goes in the activity log.">
                   <textarea id="role-reason" name="reason" required maxLength={200} aria-describedby="role-reason-hint" className={textareaClass} />
                 </AdminField>

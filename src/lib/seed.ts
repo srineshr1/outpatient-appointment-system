@@ -24,6 +24,38 @@ export async function seedDemoUsers(store: ClinicStore): Promise<void> {
     });
   }
   await bootstrapAdmins(store);
+  await repairSharedBooks(store);
+}
+
+/**
+ * Doctor accounts an admin added that ended up opening a practice doctor's book by mistake, from
+ * when the add-staff form didn't default to the doctor's own book. Matched by name and the book
+ * they were wrongly given, so a deliberate share (a locum) is never touched. Only `doctorId`
+ * changes: visits already booked stay on the practice doctor's book. Runs once per account,
+ * because after the fix the account no longer matches.
+ */
+export const SHARED_BOOK_REPAIRS: readonly { name: RegExp; from: string }[] = [{ name: /^dr\.?\s+someone$/i, from: "cho" }];
+
+export async function repairSharedBooks(store: ClinicStore): Promise<void> {
+  const seeded = new Set(demoAccounts.map((account) => account.id));
+  for (const user of await store.listUsers()) {
+    if (user.role !== "doctor" || seeded.has(user.id) || !user.doctorId || user.doctorId === user.id) continue;
+    const repair = SHARED_BOOK_REPAIRS.find((item) => item.from === user.doctorId && item.name.test(user.name.trim()));
+    if (!repair) continue;
+    await store.updateUser(user.id, { doctorId: user.id });
+    await store.appendEvent({
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      action: "role.changed",
+      actorId: null,
+      actorName: "Clinic setup",
+      actorRole: "system",
+      subjectType: "user",
+      subjectId: user.id,
+      summary: `${user.name} · doctor (${repair.from}'s book) → doctor (own book)`,
+      reason: "Gave the account its own clinic book. It was linked to another doctor's book by mistake.",
+    });
+  }
 }
 
 /**
