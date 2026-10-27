@@ -6,7 +6,6 @@ import {
   formatWeekRange,
   formatWhen,
   monogram,
-  referenceFor,
   relativeDay,
 } from "./format";
 import { buildIcs } from "./ics";
@@ -35,10 +34,6 @@ describe("format", () => {
     expect(formatPhone(" 0131 496 0280 ")).toBe("0131 496 0280");
   });
 
-  it("makes stable references", () => {
-    expect(referenceFor("cho-2026-10-27-0940", "Ann Lee")).toMatch(/^HSP-\d{4}$/);
-    expect(referenceFor("cho-2026-10-27-0940", " ann lee ")).toBe(referenceFor("cho-2026-10-27-0940", "Ann Lee"));
-  });
 });
 
 describe("validatePatient", () => {

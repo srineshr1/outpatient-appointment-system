@@ -212,3 +212,95 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---------- Sign-in: big, friendly controls ---------- */
+
+@utility auth-field {
+  display: block;
+  width: 100%;
+  min-height: 3.5rem;
+  border-radius: 1rem;
+  border: 2px solid var(--color-control);
+  background: var(--color-surface);
+  padding: 0.75rem 1rem;
+  font-size: var(--text-body);
+  line-height: 1.5rem;
+  color: var(--color-ink);
+  transition:
+    border-color 160ms var(--ease-out-quint),
+    box-shadow 160ms var(--ease-out-quint),
+    background-color 160ms var(--ease-out-quint);
+
+  &:hover {
+    border-color: var(--color-ink-2);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+
+  &[aria-invalid="true"] {
+    border-color: var(--color-danger);
+    background: var(--color-danger-soft);
+  }
+}
+
+/* A button that sits on a darker "ledge" and presses into it. */
+@utility btn-chunky {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 1rem;
+  padding: 0 1.5rem;
+  font-size: var(--text-body);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  user-select: none;
+  transition:
+    transform 90ms var(--ease-out-quint),
+    box-shadow 90ms var(--ease-out-quint),
+    background-color 160ms var(--ease-out-quint);
+
+  &:active:not(:disabled) {
+    transform: translateY(4px);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@utility btn-chunky-primary {
+  background: var(--color-accent);
+  color: #ffffff;
+  box-shadow: 0 4px 0 var(--color-accent-press);
+
+  &:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+  }
+
+  &:active:not(:disabled) {
+    box-shadow: 0 0 0 var(--color-accent-press);
+  }
+}
+
+@utility btn-chunky-secondary {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  border: 2px solid var(--color-hairline);
+  box-shadow: 0 4px 0 var(--color-hairline);
+
+  &:hover:not(:disabled) {
+    background: var(--color-fill);
+  }
+
+  &:active:not(:disabled) {
+    box-shadow: 0 0 0 var(--color-hairline);
+  }
+}

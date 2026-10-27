@@ -22,11 +22,11 @@ npm run dev          # http://localhost:3000
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Doctor directory with search and specialty filter |
+| `/` | Landing page: hero, how it works, doctor profiles with search and specialty filter |
 | `/doctors/[id]?week=YYYY-MM-DD` | Week view; the week is clamped to the bookable window |
-| `/book/details` | Patient form (redirects to `/` if no time is held) |
+| `/book/details` | Patient form. Needs a patient sign-in (the held time survives it); redirects to `/` if no time is held |
 | `/book/confirmed` | Reference, summary and `.ics` download |
-| `/sign-in`, `/register` | Patient registration and sign-in. Sample clinic accounts are on the sign-in page |
+| `/sign-in`, `/register` | Sign-in with a patient / staff toggle (`?as=staff` opens the staff tab). Sample accounts are on each tab |
 | `/appointments` | The signed-in patient’s visits. Cancel a booked visit here |
 | `/dashboard` | Doctor clinic book, or every doctor for reception. Mark complete or cancel |
 

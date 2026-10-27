@@ -4,6 +4,7 @@ import { ScheduleView } from "@/components/schedule/ScheduleView";
 import { isIsoDate, now } from "@/lib/clock";
 import { clampWeek, nextOpening } from "@/lib/schedule";
 import { getDoctor, getSlots, getWindow } from "@/lib/repository";
+import { getCurrentUser } from "@/lib/session";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -25,10 +26,10 @@ export default async function DoctorPage({ params, searchParams }: Props) {
   const doctor = await getDoctor(id);
   if (!doctor) notFound();
 
-  const [slots, window] = await Promise.all([getSlots(doctor.id), getWindow()]);
+  const [slots, window, user] = await Promise.all([getSlots(doctor.id), getWindow(), getCurrentUser()]);
   const requested = typeof query.week === "string" && isIsoDate(query.week) ? query.week : null;
   const firstOpen = nextOpening(slots, doctor.id, [], now());
   const initialWeek = clampWeek(requested, window, firstOpen?.date);
 
-  return <ScheduleView doctor={doctor} slots={slots} initialWeek={initialWeek} />;
+  return <ScheduleView doctor={doctor} slots={slots} initialWeek={initialWeek} signedIn={Boolean(user)} />;
 }

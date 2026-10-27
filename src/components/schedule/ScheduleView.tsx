@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, ChevronLeft, ChevronRight } from "@/components/icons";
+import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
@@ -16,7 +17,6 @@ import {
   formatShortDate,
   formatWeekRange,
   formatWhen,
-  monogram,
   monthLong,
   pluralise,
   weekdayLong,
@@ -29,6 +29,8 @@ interface Props {
   doctor: Doctor;
   slots: Slot[];
   initialWeek: string;
+  /** Signed in as a patient. Otherwise Continue goes through sign-in first. */
+  signedIn?: boolean;
 }
 
 const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
@@ -37,7 +39,7 @@ const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
   teaching: "teaching session",
 };
 
-export function ScheduleView({ doctor, slots, initialWeek }: Props) {
+export function ScheduleView({ doctor, slots, initialWeek, signedIn = false }: Props) {
   const router = useRouter();
   const { state, dispatch } = useBooking();
   const { now, window } = useClock();
@@ -46,7 +48,7 @@ export function ScheduleView({ doctor, slots, initialWeek }: Props) {
   const flashRef = useRef<HTMLDivElement>(null);
 
   const held =
-    state.held && state.held.doctorId === doctor.id && slotStatus(state.held, state.takenIds, now) === "open"
+    state.held && state.held.doctorId === doctor.id && slotStatus(state.held, [], now) === "open"
       ? state.held
       : null;
   const flash = state.flash?.doctorId === doctor.id ? state.flash.message : null;
@@ -76,8 +78,8 @@ export function ScheduleView({ doctor, slots, initialWeek }: Props) {
 
   const days = weekDays(week);
   const weekSlots = slots.filter((slot) => slot.date >= week && slot.date <= addDays(week, 4));
-  const openThisWeek = openSlots(weekSlots, state.takenIds, now);
-  const upcoming = openSlots(slots, state.takenIds, now).find((slot) => slot.date > addDays(week, 4)) ?? null;
+  const openThisWeek = openSlots(weekSlots, [], now);
+  const upcoming = openSlots(slots, [], now).find((slot) => slot.date > addDays(week, 4)) ?? null;
 
   return (
     <div className="mx-auto max-w-page px-5 pt-6 pb-16 md:px-8 md:pt-10">
@@ -90,12 +92,7 @@ export function ScheduleView({ doctor, slots, initialWeek }: Props) {
       </Link>
 
       <div className="mt-4 flex items-start gap-4 md:gap-6">
-        <span
-          aria-hidden="true"
-          className="grid size-16 shrink-0 place-items-center rounded-full bg-surface text-title2 font-semibold text-ink-2 shadow-card md:size-20"
-        >
-          {monogram(doctor.name)}
-        </span>
+        <DoctorPortrait doctor={doctor} size={80} className="shadow-card md:size-24" />
         <div className="min-w-0">
           <PageHeading className="text-title2 font-semibold text-ink md:text-title1">{doctor.name}</PageHeading>
           <p className="mt-1 text-body text-ink-2">
@@ -204,7 +201,6 @@ export function ScheduleView({ doctor, slots, initialWeek }: Props) {
                         today={window.today}
                         now={now}
                         items={slotsOn(weekSlots, doctor.id, iso)}
-                        takenIds={state.takenIds}
                         heldId={held?.id ?? null}
                         onChoose={choose}
                       />
@@ -233,8 +229,17 @@ export function ScheduleView({ doctor, slots, initialWeek }: Props) {
                 <p className="tabular text-body font-semibold text-ink">
                   {weekdayLong(held.date)} {dayOfMonth(held.date)} {monthLong(held.date)}, {held.time}
                 </p>
+                {signedIn ? null : (
+                  <p className="mt-0.5 text-caption text-muted">Next, sign in. We’ll keep this time for you.</p>
+                )}
               </div>
-              <Button size="lg" className="w-full sm:w-auto" onClick={() => router.push("/book/details")}>
+              <Button
+                size="lg"
+                className="w-full sm:w-auto"
+                onClick={() =>
+                  router.push(signedIn ? "/book/details" : `/sign-in?next=${encodeURIComponent("/book/details")}`)
+                }
+              >
                 Continue
               </Button>
             </div>
@@ -276,13 +281,12 @@ interface DayCardProps {
   today: string;
   now: Date;
   items: Slot[];
-  takenIds: string[];
   heldId: string | null;
   onChoose: (slot: Slot) => void;
 }
 
-function DayCard({ iso, today, now, items, takenIds, heldId, onChoose }: DayCardProps) {
-  const statuses = items.map((slot) => slotStatus(slot, takenIds, now));
+function DayCard({ iso, today, now, items, heldId, onChoose }: DayCardProps) {
+  const statuses = items.map((slot) => slotStatus(slot, [], now));
   const open = statuses.filter((status) => status === "open").length;
   const isToday = iso === today;
   const sameDayClosed = isToday && items.length > 0 && open === 0 && statuses.some((status) => status === "past");

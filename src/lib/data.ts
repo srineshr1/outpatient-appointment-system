@@ -16,6 +16,19 @@ export interface Reason {
   minutes: number;
 }
 
+export type HairStyle = "short" | "curly" | "bob" | "long" | "bun";
+
+/** Inputs for the illustrated portrait. Swap for a real photo when the practice supplies one. */
+export interface Portrait {
+  background: string;
+  skin: string;
+  hair: string;
+  hairStyle: HairStyle;
+  shirt: string;
+  beard?: string;
+  glasses?: boolean;
+}
+
 export interface Doctor {
   id: string;
   name: string;
@@ -25,6 +38,12 @@ export interface Doctor {
   years: number;
   note: string;
   room: string;
+  /** Short introduction shown on the landing page. */
+  bio: string;
+  languages: string[];
+  /** Days the doctor is usually in clinic. */
+  days: string;
+  portrait: Portrait;
 }
 
 export interface Slot {
@@ -66,6 +85,10 @@ export const doctors: Doctor[] = [
     years: 16,
     note: "Sees the full list, and supervises Dr MacLeod.",
     room: "Room 2",
+    bio: "Senior partner and the practice’s lead GP. Happy to see anything, from a new worry to a long-running condition.",
+    languages: ["English", "Yoruba"],
+    days: "Monday to Friday",
+    portrait: { background: "#FFE6C7", skin: "#7A4A2E", hair: "#1C130F", hairStyle: "curly", shirt: "#2563EB" },
   },
   {
     id: "reid",
@@ -76,6 +99,10 @@ export const doctors: Doctor[] = [
     years: 12,
     note: "General practice. Friday mornings are his diabetes clinic.",
     room: "Room 1",
+    bio: "Runs the diabetes clinic and annual reviews. Good for anything to do with blood sugar, weight or the heart.",
+    languages: ["English", "Gaelic"],
+    days: "Monday to Friday",
+    portrait: { background: "#DCEBFF", skin: "#F1C6A4", hair: "#B4572A", hairStyle: "short", shirt: "#16A34A", glasses: true },
   },
   {
     id: "cho",
@@ -86,6 +113,10 @@ export const doctors: Doctor[] = [
     years: 14,
     note: "General practice, with longer visits for a first women’s health concern.",
     room: "Room 3",
+    bio: "Contraception, menopause, pregnancy planning and smear questions, alongside general practice.",
+    languages: ["English", "Korean"],
+    days: "Monday to Friday",
+    portrait: { background: "#E3F6DA", skin: "#EBC09A", hair: "#17171A", hairStyle: "bob", shirt: "#DB2777" },
   },
   {
     id: "rahman",
@@ -96,6 +127,17 @@ export const doctors: Doctor[] = [
     years: 21,
     note: "General practice. Joint injections are on Tuesday afternoons in the treatment room.",
     room: "Room 4",
+    bio: "Sore knees, shoulders and backs. Gives joint injections and has the longest record at the practice.",
+    languages: ["English", "Urdu", "Bengali"],
+    days: "Tuesday and Thursday",
+    portrait: {
+      background: "#EFE3FF",
+      skin: "#A97450",
+      hair: "#29201B",
+      hairStyle: "short",
+      shirt: "#0F766E",
+      beard: "#6F6863",
+    },
   },
   {
     id: "macleod",
@@ -106,6 +148,10 @@ export const doctors: Doctor[] = [
     years: 2,
     note: "Registrar, supervised by Dr Adeyemi. Teaching sessions cannot be booked.",
     room: "Room 5",
+    bio: "A qualified doctor training as a GP, supervised by Dr Adeyemi. Often has times free this week.",
+    languages: ["English"],
+    days: "Monday, Tuesday, Wednesday and Friday",
+    portrait: { background: "#FFE2E2", skin: "#F4CFB3", hair: "#8A3A1C", hairStyle: "long", shirt: "#7C3AED" },
   },
 ];
 

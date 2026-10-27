@@ -13,8 +13,6 @@ export interface Booking {
 export interface BookingState {
   /** The time the patient is holding while they fill in details. */
   held: Slot | null;
-  /** Times booked (or found taken) during this session. */
-  takenIds: string[];
   form: PatientForm;
   booking: Booking | null;
   /** A message to show on the schedule after a failed confirmation. */
@@ -33,15 +31,10 @@ export type BookingAction =
 
 export const initialBookingState: BookingState = {
   held: null,
-  takenIds: [],
   form: EMPTY_FORM,
   booking: null,
   flash: null,
 };
-
-function addId(ids: string[], id: string): string[] {
-  return ids.includes(id) ? ids : [...ids, id];
-}
 
 export function bookingReducer(state: BookingState, action: BookingAction): BookingState {
   switch (action.type) {
@@ -49,7 +42,6 @@ export function bookingReducer(state: BookingState, action: BookingAction): Book
       return {
         ...state,
         held: action.state.held ?? state.held,
-        takenIds: Array.from(new Set([...action.state.takenIds, ...state.takenIds])),
         booking: state.booking ?? action.state.booking,
         flash: action.state.flash ?? state.flash,
       };
@@ -63,7 +55,6 @@ export function bookingReducer(state: BookingState, action: BookingAction): Book
       return {
         ...state,
         held: null,
-        takenIds: addId(state.takenIds, action.slot.id),
         flash: { doctorId: action.slot.doctorId, message: action.message },
       };
     case "confirmed":
@@ -71,13 +62,12 @@ export function bookingReducer(state: BookingState, action: BookingAction): Book
         ...state,
         held: null,
         booking: action.booking,
-        takenIds: addId(state.takenIds, action.booking.slot.id),
         flash: null,
       };
     case "clearFlash":
       return state.flash ? { ...state, flash: null } : state;
     case "startOver":
-      return { ...initialBookingState, takenIds: state.takenIds };
+      return initialBookingState;
   }
 }
 
@@ -85,10 +75,13 @@ export function bookingReducer(state: BookingState, action: BookingAction): Book
 
 export const STORAGE_KEY = "halden.booking.v1";
 
-/** What survives a reload. Patient details are deliberately excluded. */
+/**
+ * What survives a reload. Patient details are deliberately excluded.
+ * Availability is not cached here: the server's book is the only source of truth,
+ * so a cancelled time is bookable again straight away.
+ */
 export interface PersistedState {
   held: Slot | null;
-  takenIds: string[];
   booking: Omit<Booking, "patient"> | null;
   flash: BookingState["flash"];
 }
@@ -102,7 +95,7 @@ export function toPersisted(state: BookingState): PersistedState {
         reasonId: state.booking.reasonId,
       }
     : null;
-  return { held: state.held, takenIds: state.takenIds, booking, flash: state.flash };
+  return { held: state.held, booking, flash: state.flash };
 }
 
 function isSlot(value: unknown): value is Slot {
@@ -123,9 +116,6 @@ export function parsePersisted(raw: string | null): PersistedState | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
-    const takenIds = Array.isArray(value.takenIds)
-      ? value.takenIds.filter((id): id is string => typeof id === "string").slice(0, 200)
-      : [];
     const held = isSlot(value.held) ? value.held : null;
     let booking: PersistedState["booking"] = null;
     const candidate = value.booking as Record<string, unknown> | null;
@@ -148,7 +138,7 @@ export function parsePersisted(raw: string | null): PersistedState | null {
       flashValue && typeof flashValue.doctorId === "string" && typeof flashValue.message === "string"
         ? { doctorId: flashValue.doctorId, message: flashValue.message }
         : null;
-    return { held, takenIds, booking, flash };
+    return { held, booking, flash };
   } catch {
     return null;
   }

@@ -15,14 +15,13 @@ describe("bookingReducer", () => {
     expect(bookingReducer(held, { type: "release" }).held).toBeNull();
   });
 
-  it("marks a lost slot as taken and flashes the doctor's schedule", () => {
+  it("drops a lost slot and flashes the doctor's schedule", () => {
     const next = bookingReducer({ ...initialBookingState, held: slot }, { type: "slotLost", slot, message: "Gone." });
     expect(next.held).toBeNull();
-    expect(next.takenIds).toEqual([slot.id]);
     expect(next.flash).toEqual({ doctorId: "cho", message: "Gone." });
   });
 
-  it("starts over but remembers what was booked", () => {
+  it("starts over with a clean form", () => {
     const booked = bookingReducer(
       { ...initialBookingState, held: slot, form: { ...EMPTY_FORM, name: "Ann" } },
       { type: "confirmed", booking: { reference: "HSP-1", doctorId: "cho", slot, reasonId: "new" } },
@@ -30,7 +29,7 @@ describe("bookingReducer", () => {
     const fresh = bookingReducer(booked, { type: "startOver" });
     expect(fresh.booking).toBeNull();
     expect(fresh.form).toEqual(EMPTY_FORM);
-    expect(fresh.takenIds).toEqual([slot.id]);
+    expect(fresh.held).toBeNull();
   });
 });
 
@@ -57,7 +56,7 @@ describe("persistence", () => {
   it("drops malformed or hostile storage", () => {
     expect(parsePersisted("not json")).toBeNull();
     const parsed = parsePersisted(JSON.stringify({ held: { id: 1 }, takenIds: ["a", 2], booking: { slot: "x" } }));
-    expect(parsed).toEqual({ held: null, takenIds: ["a"], booking: null, flash: null });
+    expect(parsed).toEqual({ held: null, booking: null, flash: null });
   });
 });
 
@@ -65,24 +64,25 @@ describe("repository", () => {
   it("confirms an open slot with a reference", async () => {
     setNow(Date.UTC(2026, 9, 26, 13, 40));
     const open = (await getUpcoming())["cho"]![0]!;
-    const result = await confirmBooking({ slot: open, reasonId: "new", patientName: "Ann", takenIds: [] }, 0);
-    expect(result.reference).toMatch(/^HSP-\d{4}$/);
+    const result = await confirmBooking({ slot: open, reasonId: "new", patientName: "Ann" }, 0);
+    expect(result.reference).toMatch(/^HSP-\d{6}$/);
   });
 
-  it("rejects a slot taken earlier in the session", async () => {
+  it("rejects a slot that is already on the book", async () => {
     setNow(Date.UTC(2026, 9, 26, 13, 40));
-    const open = (await getUpcoming())["cho"]![0]!;
-    await expect(
-      confirmBooking({ slot: open, reasonId: "new", patientName: "Ann", takenIds: [open.id] }, 0),
-    ).rejects.toBeInstanceOf(SlotUnavailableError);
+    const open = (await getUpcoming())["reid"]![0]!;
+    await confirmBooking({ slot: open, reasonId: "new", patientName: "Ann" }, 0);
+    await expect(confirmBooking({ slot: open, reasonId: "new", patientName: "Ben" }, 0)).rejects.toBeInstanceOf(
+      SlotUnavailableError,
+    );
   });
 
   it("rejects a slot that has started while the form was open", async () => {
     setNow(Date.UTC(2026, 9, 26, 9, 0));
     const open = (await getSlots("adeyemi")).find((item) => item.date === "2026-10-26" && !item.taken && item.time > "09:00")!;
     setNow(Date.UTC(2026, 9, 26, 17, 0));
-    await expect(
-      confirmBooking({ slot: open, reasonId: "new", patientName: "Ann", takenIds: [] }, 0),
-    ).rejects.toMatchObject({ reason: "past" });
+    await expect(confirmBooking({ slot: open, reasonId: "new", patientName: "Ann" }, 0)).rejects.toMatchObject({
+      reason: "past",
+    });
   });
 });

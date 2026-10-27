@@ -7,7 +7,6 @@
  */
 import { now } from "./clock";
 import { bookWindow, doctors, generateSlots, reasons, type BookWindow, type Doctor, type Slot } from "./data";
-import { referenceFor } from "./format";
 import { slotStatus } from "./schedule";
 import { getStore } from "./store";
 
@@ -66,13 +65,26 @@ export interface ConfirmInput {
   slot: Slot;
   reasonId: string;
   patientName: string;
-  /** Times booked earlier in this session, as well as the server book. */
-  takenIds: readonly string[];
   patientDob?: string;
   patientMobile?: string;
   patientChi?: string;
   note?: string;
   patientUserId?: string | null;
+}
+
+/** "HSP-482913": six random digits, checked against the book so no two visits share one. */
+export function newReference(): string {
+  const value = crypto.getRandomValues(new Uint32Array(1))[0]! % 900000;
+  return `HSP-${100000 + value}`;
+}
+
+async function uniqueReference(store: Awaited<ReturnType<typeof getStore>>): Promise<string> {
+  const used = new Set((await store.listAppointments()).map((visit) => visit.reference));
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const reference = newReference();
+    if (!used.has(reference)) return reference;
+  }
+  throw new Error("Could not allocate a booking reference.");
 }
 
 export interface ConfirmResult {
@@ -88,11 +100,10 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
 
   const store = await getStore();
   const blocked = await store.listBlockedSlotIds();
-  const takenIds = Array.from(new Set([...input.takenIds, ...blocked]));
-  const status = slotStatus(current, takenIds, now());
+  const status = slotStatus(current, blocked, now());
   if (status !== "open") throw new SlotUnavailableError(current.id, status);
 
-  const reference = referenceFor(current.id, input.patientName);
+  const reference = await uniqueReference(store);
   const outcome = await store.createAppointment({
     id: crypto.randomUUID(),
     reference,

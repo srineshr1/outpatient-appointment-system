@@ -1,8 +1,9 @@
+import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { Calendar, Clock, Pin } from "@/components/icons";
 import { Card } from "@/components/ui/Card";
 import { addMinutes } from "@/lib/clock";
 import type { Doctor, Reason, Slot } from "@/lib/data";
-import { formatFull, monogram } from "@/lib/format";
+import { formatFull } from "@/lib/format";
 import type { ReactNode } from "react";
 
 interface Props {
@@ -18,12 +19,7 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
     <Card className="p-5 md:p-6">
       <h2 className="text-callout font-semibold text-muted">{title}</h2>
       <div className="mt-4 flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="grid size-11 shrink-0 place-items-center rounded-full bg-fill text-callout font-semibold text-ink-2"
-        >
-          {monogram(doctor.name)}
-        </span>
+        <DoctorPortrait doctor={doctor} size={44} />
         <div>
           <p className="text-body font-semibold text-ink">{doctor.name}</p>
           <p className="text-callout text-muted">{doctor.interest}</p>

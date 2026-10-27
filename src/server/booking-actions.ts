@@ -11,7 +11,7 @@ import { changeAppointmentStatus } from "@/lib/visits";
 
 export type BookAppointmentResult =
   | { ok: true; reference: string }
-  | { ok: false; reason: "past" | "taken" | "teaching" | "missing" | "invalid"; message: string };
+  | { ok: false; reason: "past" | "taken" | "teaching" | "missing" | "invalid" | "signed-out" | "staff"; message: string };
 
 export interface BookAppointmentInput {
   slot: Slot;
@@ -21,10 +21,16 @@ export interface BookAppointmentInput {
   patientMobile: string;
   patientChi: string;
   note: string;
-  takenIds: readonly string[];
 }
 
 export async function bookAppointment(input: BookAppointmentInput): Promise<BookAppointmentResult> {
+  // Every visit belongs to a patient account, so it shows under Appointments.
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, reason: "signed-out", message: "Sign in to book this time." };
+  if (user.role !== "patient") {
+    return { ok: false, reason: "staff", message: "Clinic staff accounts can’t book. Sign in with a patient account." };
+  }
+
   const form: PatientForm = {
     name: input.patientName,
     dob: input.patientDob,
@@ -38,7 +44,6 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
   const first = FIELD_ORDER.find((key) => errors[key]);
   if (first) return { ok: false, reason: "invalid", message: errors[first] ?? "Check the form and try again." };
 
-  const user = await getCurrentUser();
   try {
     const result = await confirmBooking({
       slot: input.slot,
@@ -48,8 +53,7 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
       patientMobile: input.patientMobile,
       patientChi: input.patientChi,
       note: input.note,
-      takenIds: input.takenIds,
-      patientUserId: user?.id ?? null,
+      patientUserId: user.id,
     });
     await refreshBook();
     return { ok: true, reference: result.reference };

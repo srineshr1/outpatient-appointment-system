@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Phone } from "@/components/icons";
+import { useBooking } from "@/components/providers/BookingProvider";
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import type { PublicUser } from "@/lib/clinic-types";
 import { practice } from "@/lib/data";
 import { signOutAction } from "@/server/auth-actions";
 
+/** Progress through booking. The landing page is step 0 but shows its own hero instead of the bar. */
 export function stepFor(pathname: string): number | null {
-  if (pathname === "/") return 0;
   if (pathname.startsWith("/doctors/")) return 1;
   if (pathname === "/book/details") return 2;
   if (pathname === "/book/confirmed") return 3;
@@ -18,9 +19,13 @@ export function stepFor(pathname: string): number | null {
 
 export function SiteHeader({ user }: { user: PublicUser | null }) {
   const pathname = usePathname();
+  const { dispatch } = useBooking();
   const step = stepFor(pathname);
   const bookHref = user && user.role !== "patient" ? "/dashboard" : "/appointments";
   const bookLabel = user && user.role !== "patient" ? "Clinic book" : "Appointments";
+  const onAuthPage = pathname === "/sign-in" || pathname === "/register";
+  // Come back to the same page after signing in. A held time on /doctors/* survives in sessionStorage.
+  const signInHref = pathname === "/" || onAuthPage ? "/sign-in" : `/sign-in?next=${encodeURIComponent(pathname)}`;
 
   return (
     <header className="sticky top-0 z-30 border-b border-black/[0.06] bg-canvas/80 backdrop-blur-xl backdrop-saturate-150">
@@ -49,7 +54,8 @@ export function SiteHeader({ user }: { user: PublicUser | null }) {
                 >
                   {bookLabel}
                 </Link>
-                <form action={signOutAction}>
+                {/* Forget any half-filled form, so the next person on this device starts clean. */}
+                <form action={signOutAction} onSubmit={() => dispatch({ type: "startOver" })}>
                   <button
                     type="submit"
                     className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-ink-2 hover:bg-fill"
@@ -58,9 +64,9 @@ export function SiteHeader({ user }: { user: PublicUser | null }) {
                   </button>
                 </form>
               </>
-            ) : (
+            ) : onAuthPage ? null : (
               <Link
-                href="/sign-in"
+                href={signInHref}
                 className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-accent hover:bg-accent-soft"
               >
                 Sign in

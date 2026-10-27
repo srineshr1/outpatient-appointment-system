@@ -4,7 +4,13 @@ import { expect, test, type Page } from "@playwright/test";
 async function expectAccessible(page: Page) {
   // Let entrance animations settle so contrast is measured on final colours.
   await page.waitForTimeout(800);
-  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+  // Looping decorations (the mascot's bob, the "available" pulse) never finish, so ignore them.
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+      .every((animation) => animation.playState !== "running"),
+  );
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
   const serious = results.violations.filter((item) => item.impact === "serious" || item.impact === "critical");
   expect(serious, JSON.stringify(serious.map((item) => [item.id, item.nodes.map((node) => node.target)]), null, 2)).toEqual([]);
@@ -36,15 +42,21 @@ async function bookUntilConfirmed(page: Page) {
 }
 
 async function fillDetails(page: Page) {
-  await page.getByLabel("Full name").fill("Ann Lee");
-  await page.getByLabel("Date of birth").fill("1980-03-14");
-  await page.getByLabel("Mobile number").fill("07700 900123");
+  // Name, date of birth and mobile come from the signed-in account.
+  await expect(page.getByLabel("Full name")).toHaveValue("Ann Lee");
   await page.getByText("A follow-up").click();
 }
 
-test("directory is accessible and filters", async ({ page }) => {
+async function signInAsSamplePatient(page: Page) {
+  await page.getByRole("button", { name: /sample patient, Ann Lee/ }).click();
+}
+
+test("landing page shows the doctors and is accessible", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle(/Book a GP appointment/);
+  await expect(page.getByRole("heading", { level: 1, name: /Book your GP/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Meet our doctors" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Doctors" }).getByRole("link")).toHaveCount(5);
   await expectAccessible(page);
   await page.getByRole("radio", { name: "Diabetes" }).click();
   await expect(page.getByText("1 doctor in diabetes")).toBeVisible();
@@ -65,41 +77,75 @@ test("full booking flow, with refresh and back", async ({ page }) => {
   await page.reload();
   await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
 
+  // Signed out: Continue goes through sign-in, which shows the held time and comes back.
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page).toHaveURL(/\/book\/details$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Your details" })).toBeFocused();
-  await expect(page.getByText(chosen.split("\n").pop()!.split(", ")[1]!).first()).toBeVisible();
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fbook%2Fdetails$/);
+  await expect(page.getByText("We’re holding your time")).toBeVisible();
+  await expectAccessible(page);
+  await signInAsSamplePatient(page);
 
-  // Submitting empty shows the summary.
+  await expect(page).toHaveURL(/\/book\/details$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Your details" })).toBeVisible();
+  const chosenTime = chosen.match(/\d{2}:\d{2}/)?.[0] ?? "missing";
+  await expect(page.getByText(chosenTime).first()).toBeVisible();
+
+  // Submitting without a reason shows the summary.
   await page.getByRole("button", { name: "Book appointment" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "things to fix" })).toBeVisible();
-  await expect(page.getByLabel("Full name")).toBeFocused();
+  await expect(page.getByRole("alert").filter({ hasText: "1 thing to fix" })).toBeVisible();
   await expectAccessible(page);
 
   await fillDetails(page);
   await bookUntilConfirmed(page);
   await expect(page.getByRole("heading", { name: "You’re booked" })).toBeVisible();
-  await expect(page.getByText(/^HSP-\d{4}$/)).toBeVisible();
+  const reference = (await page.getByText(/^HSP-\d{6}$/).textContent())?.trim() ?? "";
+  expect(reference).toMatch(/^HSP-\d{6}$/);
   await expectAccessible(page);
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Add to calendar" }).click();
-  expect((await download).suggestedFilename()).toMatch(/^HSP-\d{4}\.ics$/);
+  expect((await download).suggestedFilename()).toBe(`${reference}.ics`);
 
   // Patient details are not persisted; the visit is.
   const stored = await page.evaluate(() => sessionStorage.getItem("halden.booking.v1"));
   expect(stored).toContain("HSP-");
   expect(stored).not.toContain("Ann Lee");
 
+  // The visit is on the patient's own list, and cancelling it frees the time.
+  await page.getByRole("link", { name: "View your appointments" }).click();
+  await expect(page.getByText(reference)).toBeVisible();
+
+  await page.goto("/book/confirmed");
   await page.getByRole("button", { name: "Book another appointment" }).click();
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("guards: details and confirmation need a booking in progress", async ({ page }) => {
+test("guards: booking needs sign-in, and a booking in progress", async ({ page }) => {
   await page.goto("/book/details");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fbook%2Fdetails$/);
+  await signInAsSamplePatient(page);
+  // Signed in, but nothing held: back to the start.
   await expect(page).toHaveURL(/\/$/);
   await page.goto("/book/confirmed");
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("sign-in: patient and staff tabs, and a wrong password keeps the email", async ({ page }) => {
+  await page.goto("/sign-in");
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expectAccessible(page);
+
+  await page.getByLabel("Email").fill("ann.lee@halden.example");
+  await page.getByLabel("Password", { exact: true }).fill("wrong-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "don’t match" })).toBeVisible();
+  await expect(page.getByLabel("Email")).toHaveValue("ann.lee@halden.example");
+  await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
+
+  await page.getByRole("tab", { name: "I work here" }).click();
+  await expect(page.getByRole("heading", { name: "Clinic staff" })).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole("button", { name: "Sign in as Dr Helen Cho" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
 });
 
 test("unknown doctor shows a helpful 404", async ({ page }) => {
@@ -116,6 +162,9 @@ test("deep link to a week is clamped into the bookable window", async ({ page })
 
 test("keyboard-only booking", async ({ page, isMobile }) => {
   test.skip(isMobile, "Keyboard path is checked on desktop");
+  await page.goto("/sign-in?next=%2Fdoctors%2Fcho");
+  await signInAsSamplePatient(page);
+  await expect(page).toHaveURL(/\/doctors\/cho/);
   await page.goto("/doctors/cho");
   await page.keyboard.press("Tab"); // skip link
   await expect(page.getByRole("link", { name: "Skip to main content" })).toBeFocused();

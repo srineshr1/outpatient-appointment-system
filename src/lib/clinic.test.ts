@@ -27,12 +27,12 @@ describe("clinic book", () => {
 
     const open = (await getUpcoming())["cho"]![0]!;
     const first = await confirmBooking(
-      { slot: open, reasonId: "follow", patientName: "Ann Lee", patientUserId: "user-patient-demo", takenIds: [] },
+      { slot: open, reasonId: "follow", patientName: "Ann Lee", patientUserId: "user-patient-demo" },
       0,
     );
-    expect(first.reference).toMatch(/^HSP-\d{4}$/);
+    expect(first.reference).toMatch(/^HSP-\d{6}$/);
     await expect(
-      confirmBooking({ slot: open, reasonId: "new", patientName: "Ben", takenIds: [] }, 0),
+      confirmBooking({ slot: open, reasonId: "new", patientName: "Ben" }, 0),
     ).rejects.toMatchObject({ reason: "taken" });
     expect((await getSlots("cho")).find((slot) => slot.id === open.id)?.taken).toBe(true);
 
@@ -46,11 +46,27 @@ describe("clinic book", () => {
     expect(await changeAppointmentStatus(patient!, visit!.id, "cancelled")).toBe("ok");
     expect(await changeAppointmentStatus(patient!, visit!.id, "completed")).toBe("closed");
 
-    const again = await confirmBooking({ slot: open, reasonId: "new", patientName: "Ben", takenIds: [] }, 0);
-    expect(again.reference).toMatch(/^HSP-\d{4}$/);
-    const bens = (await store.listAppointments()).find((item) => item.patientName === "Ben" && item.status === "booked");
+    // Cancelling frees the time straight away, and rebooking gets a fresh reference.
+    const again = await confirmBooking({ slot: open, reasonId: "new", patientName: "Ann Lee" }, 0);
+    expect(again.reference).toMatch(/^HSP-\d{6}$/);
+    expect(again.reference).not.toBe(first.reference);
+    const rebooked = (await store.listAppointments()).find((item) => item.reference === again.reference);
     const other = await store.getUserById("user-reid");
-    expect(bens && other).toBeTruthy();
-    expect(await changeAppointmentStatus(other!, bens!.id, "cancelled")).toBe("forbidden");
+    expect(rebooked && other).toBeTruthy();
+    expect(await changeAppointmentStatus(other!, rebooked!.id, "cancelled")).toBe("forbidden");
+  });
+});
+
+describe("sign-in routing", () => {
+  it("sends each role to a page it can use", async () => {
+    const { destinationFor } = await import("./auth-routing");
+    expect(destinationFor("patient", "/")).toBe("/appointments");
+    expect(destinationFor("doctor", "/")).toBe("/dashboard");
+    expect(destinationFor("patient", "/book/details")).toBe("/book/details");
+    expect(destinationFor("patient", "/#doctors")).toBe("/#doctors");
+    expect(destinationFor("patient", "/dashboard?doctor=cho")).toBe("/appointments");
+    expect(destinationFor("reception", "/book/details")).toBe("/dashboard");
+    expect(destinationFor("doctor", "/appointments")).toBe("/dashboard");
+    expect(destinationFor("doctor", "/doctors/cho")).toBe("/doctors/cho");
   });
 });

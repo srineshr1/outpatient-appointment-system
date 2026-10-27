@@ -108,16 +108,6 @@ export function formatPhone(input: string): string {
   return input.trim();
 }
 
-/** Booking reference, stable for a slot and patient name: "HSP-4821". */
-export function referenceFor(slotId: string, name: string): string {
-  let hash = 0;
-  const source = `${slotId}|${name.trim().toLowerCase()}`;
-  for (let index = 0; index < source.length; index += 1) {
-    hash = (hash * 33 + source.charCodeAt(index)) % 9000;
-  }
-  return `HSP-${1000 + hash}`;
-}
-
 export function pluralise(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }

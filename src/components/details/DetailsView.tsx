@@ -33,7 +33,7 @@ export interface BookingAccount {
   email: string;
 }
 
-export function DetailsView({ doctors, account = null }: { doctors: Doctor[]; account?: BookingAccount | null }) {
+export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: BookingAccount }) {
   const router = useRouter();
   const { state, dispatch, ready } = useBooking();
   const { window } = useClock();
@@ -55,7 +55,7 @@ export function DetailsView({ doctors, account = null }: { doctors: Doctor[]; ac
   }, [ready, held, doctor, router]);
 
   useEffect(() => {
-    if (!ready || !account || prefilled.current) return;
+    if (!ready || prefilled.current) return;
     prefilled.current = true;
     const patch: Partial<PatientForm> = {};
     if (!form.name && account.name) patch.name = account.name;
@@ -116,10 +116,15 @@ export function DetailsView({ doctors, account = null }: { doctors: Doctor[]; ac
         patientMobile: form.mobile,
         patientChi: form.chi,
         note: form.note,
-        takenIds: state.takenIds,
       });
       if (!result.ok) {
-        if (result.reason === "invalid") {
+        if (result.reason === "signed-out") {
+          // The session ended while the form was open. The held time is still in sessionStorage.
+          leaving.current = true;
+          router.push(`/sign-in?next=${encodeURIComponent("/book/details")}`);
+          return;
+        }
+        if (result.reason === "invalid" || result.reason === "staff") {
           setSubmitting(false);
           setFailure(result.message);
           return;
@@ -157,18 +162,9 @@ export function DetailsView({ doctors, account = null }: { doctors: Doctor[]; ac
       <p className="mt-2 max-w-prose text-body text-ink-2">
         Tell us who’s coming in, so we can find the right record.
       </p>
-      {account ? (
-        <Notice tone="info" className="mt-6">
-          Signed in as {account.name}. This visit is saved to your appointments and to {heldDoctor.short}’s clinic book.
-        </Notice>
-      ) : (
-        <Notice tone="info" className="mt-6">
-          <Link href={`/sign-in?next=${encodeURIComponent("/book/details")}`} className="font-semibold text-accent hover:underline underline-offset-4">
-            Sign in
-          </Link>{" "}
-          before you book to keep this visit on your account. The doctor’s clinic book records it either way.
-        </Notice>
-      )}
+      <Notice tone="info" className="mt-6">
+        Signed in as {account.name}. This visit is saved to your appointments and to {heldDoctor.short}’s clinic book.
+      </Notice>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-12 lg:gap-10">
         <aside className="lg:sticky lg:top-32 lg:order-2 lg:col-span-5 lg:self-start">
