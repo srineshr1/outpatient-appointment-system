@@ -16,6 +16,8 @@ import { slotStatus } from "@/lib/schedule";
 interface Props {
   doctors: Doctor[];
   upcoming: Record<string, Slot[]>;
+  /** On the booking page the page's own h1 introduces the list, labelled by this id. */
+  labelledBy?: string;
 }
 
 export function filterDoctors(doctors: Doctor[], query: string, specialty: string): Doctor[] {
@@ -30,7 +32,7 @@ export function filterDoctors(doctors: Doctor[], query: string, specialty: strin
   });
 }
 
-export function DoctorDirectory({ doctors, upcoming }: Props) {
+export function DoctorDirectory({ doctors, upcoming, labelledBy }: Props) {
   const { now, window } = useClock();
   const [query, setQuery] = useState("");
   const [specialty, setSpecialty] = useState("");
@@ -45,14 +47,22 @@ export function DoctorDirectory({ doctors, upcoming }: Props) {
   }
 
   return (
-    <section id="doctors" aria-labelledby="doctors-title" className="mx-auto max-w-page scroll-mt-24 px-5 pt-16 md:px-8 md:pt-24">
-      <p className="text-callout font-bold tracking-wide text-accent uppercase">Our team</p>
-      <h2 id="doctors-title" className="mt-2 text-title1 font-bold text-ink">
-        Meet our doctors
-      </h2>
-      <p className="mt-3 max-w-prose text-body text-ink-2">
-        Five GPs, each with something they’re especially good at. Pick the one that fits, then choose a time.
-      </p>
+    <section
+      id="doctors"
+      aria-labelledby={labelledBy ?? "doctors-title"}
+      className={`mx-auto max-w-page scroll-mt-24 px-5 md:px-8 ${labelledBy ? "pt-2" : "pt-16 md:pt-24"}`}
+    >
+      {labelledBy ? null : (
+        <>
+          <p className="text-callout font-bold tracking-wide text-accent uppercase">Our team</p>
+          <h2 id="doctors-title" className="mt-2 text-title1 font-bold text-ink">
+            Meet our doctors
+          </h2>
+          <p className="mt-3 max-w-prose text-body text-ink-2">
+            Five GPs, each with something they’re especially good at. Pick the one that fits, then choose a time.
+          </p>
+        </>
+      )}
 
       <div className="mt-8 grid gap-5 md:mt-10">
         <div className="relative max-w-xl">
@@ -168,7 +178,7 @@ function DoctorCard({ doctor, next, today }: { doctor: Doctor; next: Slot | null
       href={`/doctors/${doctor.id}`}
       aria-label={`${doctor.name}, ${doctor.interest}. See times`}
       aria-describedby={`next-${doctor.id}`}
-      className="group flex h-full flex-col rounded-sheet bg-surface p-5 shadow-card transition-[box-shadow,transform] duration-300 ease-out-quint hover:-translate-y-0.5 hover:shadow-raised active:scale-[0.99] md:p-6"
+      className="group flex h-full flex-col rounded-sheet bg-surface p-5 no-underline shadow-card transition-[box-shadow,transform] duration-300 ease-out-quint hover:-translate-y-0.5 hover:shadow-raised active:scale-[0.99] md:p-6"
     >
       <span className="flex items-start gap-4">
         <DoctorPortrait

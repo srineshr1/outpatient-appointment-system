@@ -11,6 +11,7 @@ import { signOutAction } from "@/server/auth-actions";
 
 /** Progress through booking. The landing page is step 0 but shows its own hero instead of the bar. */
 export function stepFor(pathname: string): number | null {
+  if (pathname === "/book") return 0;
   if (pathname.startsWith("/doctors/")) return 1;
   if (pathname === "/book/details") return 2;
   if (pathname === "/book/confirmed") return 3;
@@ -48,6 +49,15 @@ export function SiteHeader({ user }: { user: PublicUser | null }) {
           <div className="flex items-center gap-1">
             {user ? (
               <>
+                {user.role === "patient" ? (
+                  <Link
+                    href="/book"
+                    aria-current={pathname === "/book" ? "page" : undefined}
+                    className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-accent hover:bg-accent-soft"
+                  >
+                    Book
+                  </Link>
+                ) : null}
                 <Link
                   href={bookHref}
                   className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-accent hover:bg-accent-soft"

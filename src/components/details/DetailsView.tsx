@@ -47,11 +47,11 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
   const { held, form } = state;
   const doctor = held ? (doctors.find((item) => item.id === held.doctorId) ?? null) : null;
   const reason = reasons.find((item) => item.id === form.reasonId) ?? null;
-  const backHref = held ? `/doctors/${held.doctorId}?week=${mondayOf(held.date)}` : "/";
+  const backHref = held ? `/doctors/${held.doctorId}?week=${mondayOf(held.date)}` : "/book";
 
   // Nothing held (fresh tab, or the booking just finished): start from the directory.
   useEffect(() => {
-    if (ready && (!held || !doctor) && !leaving.current) router.replace("/");
+    if (ready && (!held || !doctor) && !leaving.current) router.replace("/book");
   }, [ready, held, doctor, router]);
 
   useEffect(() => {

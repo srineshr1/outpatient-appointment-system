@@ -31,6 +31,8 @@ interface Props {
   initialWeek: string;
   /** Signed in as a patient. Otherwise Continue goes through sign-in first. */
   signedIn?: boolean;
+  /** Where "All doctors" goes: the booking page for patients, the landing page otherwise. */
+  allDoctorsHref?: string;
 }
 
 const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
@@ -39,7 +41,7 @@ const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
   teaching: "teaching session",
 };
 
-export function ScheduleView({ doctor, slots, initialWeek, signedIn = false }: Props) {
+export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, allDoctorsHref = "/#doctors" }: Props) {
   const router = useRouter();
   const { state, dispatch } = useBooking();
   const { now, window } = useClock();
@@ -84,7 +86,7 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false }: P
   return (
     <div className="mx-auto max-w-page px-5 pt-6 pb-16 md:px-8 md:pt-10">
       <Link
-        href="/"
+        href={allDoctorsHref}
         className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-full pr-3 pl-1 text-body text-accent hover:bg-accent-soft"
       >
         <ChevronLeft size={22} />

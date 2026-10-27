@@ -48,8 +48,27 @@ async function fillDetails(page: Page) {
 }
 
 async function signInAsSamplePatient(page: Page) {
-  await page.getByRole("button", { name: /sample patient, Ann Lee/ }).click();
+  await signInWithEmail(page, "ann.lee@halden.example");
 }
+
+async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
+  await page.locator("#email").fill(email);
+  await page.getByRole("button", { name: "Continue with email" }).click();
+  const demo = page.getByText(/Demo mode/);
+  await expect(demo).toBeVisible();
+  const code = ((await demo.textContent()) ?? "").match(/\d{4}/)?.[0] ?? "";
+  await page.getByLabel("Digit 1 of 4").fill(code);
+  // New patients are asked their name once.
+  const welcome = page.getByRole("heading", { name: "Welcome to Halden Street" });
+  const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
+  await Promise.race([welcome.waitFor(), left]);
+  if (await welcome.isVisible()) {
+    await page.getByLabel("Full name").fill(name);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  }
+  await left;
+}
+
 
 test("landing page shows the doctors and is accessible", async ({ page }) => {
   await page.goto("/");
@@ -80,7 +99,7 @@ test("full booking flow, with refresh and back", async ({ page }) => {
   // Signed out: Continue goes through sign-in, which shows the held time and comes back.
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fbook%2Fdetails$/);
-  await expect(page.getByText("We’re holding your time")).toBeVisible();
+  await expect(page.getByText("Holding your time")).toBeVisible();
   await expectAccessible(page);
   await signInAsSamplePatient(page);
 
@@ -116,35 +135,50 @@ test("full booking flow, with refresh and back", async ({ page }) => {
 
   await page.goto("/book/confirmed");
   await page.getByRole("button", { name: "Book another appointment" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/book$/);
 });
 
 test("guards: booking needs sign-in, and a booking in progress", async ({ page }) => {
   await page.goto("/book/details");
   await expect(page).toHaveURL(/\/sign-in\?next=%2Fbook%2Fdetails$/);
   await signInAsSamplePatient(page);
-  // Signed in, but nothing held: back to the start.
-  await expect(page).toHaveURL(/\/$/);
+  // Signed in, but nothing held: back to choosing a doctor.
+  await expect(page).toHaveURL(/\/book$/);
   await page.goto("/book/confirmed");
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/book$/);
 });
 
-test("sign-in: patient and staff tabs, and a wrong password keeps the email", async ({ page }) => {
+test("sign-in: email, then a code; wrong codes are explained", async ({ page }) => {
   await page.goto("/sign-in");
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Your next appointment is waiting." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in with Google" })).toBeVisible();
   await expectAccessible(page);
 
-  await page.getByLabel("Email").fill("ann.lee@halden.example");
-  await page.getByLabel("Password", { exact: true }).fill("wrong-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "don’t match" })).toBeVisible();
-  await expect(page.getByLabel("Email")).toHaveValue("ann.lee@halden.example");
-  await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
-
-  await page.getByRole("tab", { name: "I work here" }).click();
-  await expect(page.getByRole("heading", { name: "Clinic staff" })).toBeVisible();
+  await page.getByLabel("Email", { exact: true }).fill("ann.lee@halden.example");
+  await page.getByRole("button", { name: "Continue with email" }).click();
+  await expect(page.getByLabel("Digit 1 of 4")).toBeFocused();
+  await expect(page.getByRole("textbox", { name: /Digit \d of 4/ })).toHaveCount(4);
   await expectAccessible(page);
-  await page.getByRole("button", { name: "Sign in as Dr Helen Cho" }).click();
+  const code = ((await page.getByText(/Demo mode/).textContent()) ?? "").match(/\d{4}/)![0];
+  await page.getByLabel("Digit 1 of 4").fill(code === "0000" ? "1111" : "0000");
+  await expect(page.getByRole("alert").filter({ hasText: "isn’t right" })).toBeVisible();
+  await page.getByLabel("Digit 1 of 4").fill(code);
+  await expect(page).toHaveURL(/\/book$/);
+});
+
+test("Google sign-in explains when it isn't set up", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByRole("link", { name: "Sign in with Google" }).click();
+  await expect(page).toHaveURL(/error=google-off/);
+  await expect(page.getByRole("alert").filter({ hasText: "isn’t set up" })).toBeVisible();
+});
+
+test("doctor sign-in from the link at the bottom", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByRole("link", { name: "Sign in as a doctor" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Your clinic book is waiting." })).toBeVisible();
+  await expectAccessible(page);
+  await signInWithEmail(page, "helen.cho@halden.example");
   await expect(page).toHaveURL(/\/dashboard$/);
 });
 
@@ -184,4 +218,16 @@ test("sends security headers", async ({ request }) => {
   expect(headers["content-security-policy"]).toMatch(/script-src 'self' 'nonce-/);
   expect(headers["x-content-type-options"]).toBe("nosniff");
   expect(headers["x-powered-by"]).toBeUndefined();
+});
+
+test("a signed-in patient lands on the booking page, not the landing page", async ({ page }) => {
+  await page.goto("/sign-in");
+  await signInAsSamplePatient(page);
+  await expect(page).toHaveURL(/\/book$/);
+  await expect(page.getByRole("heading", { level: 1, name: /Hi Ann, who would you like to see/ })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Doctors" }).getByRole("link")).toHaveCount(5);
+  await expectAccessible(page);
+  await page.getByRole("link", { name: /Dr Callum Reid/ }).click();
+  await expect(page).toHaveURL(/\/doctors\/reid/);
+  await expect(page.getByRole("link", { name: "All doctors" })).toHaveAttribute("href", "/book");
 });

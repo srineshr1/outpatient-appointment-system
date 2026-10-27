@@ -40,7 +40,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
         .
       </p>
       <p className="mt-3 text-callout">
-        <Link href="/" className="text-accent hover:underline underline-offset-4">
+        <Link href="/book" className="text-accent hover:underline underline-offset-4">
           Book a time
         </Link>
         {user.role !== "patient" ? (

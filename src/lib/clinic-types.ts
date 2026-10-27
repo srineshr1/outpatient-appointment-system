@@ -50,6 +50,18 @@ export interface AppointmentRecord {
   createdAt: string;
 }
 
+/** A pending email sign-in. Only a hash of the code is kept. */
+export interface LoginCodeRecord {
+  email: string;
+  codeHash: string;
+  /** ISO timestamps. */
+  expiresAt: string;
+  sentAt: string;
+  attempts: number;
+  /** Set once the code is right but the person still has to give their name (new accounts). */
+  signupTokenHash: string | null;
+}
+
 export interface ClinicStore {
   ensureReady(): Promise<void>;
   getUserByEmail(email: string): Promise<StoredUser | null>;
@@ -63,4 +75,7 @@ export interface ClinicStore {
   listAppointments(): Promise<AppointmentRecord[]>;
   getAppointment(id: string): Promise<AppointmentRecord | null>;
   updateStatus(id: string, status: AppointmentStatus): Promise<void>;
+  putLoginCode(record: LoginCodeRecord): Promise<void>;
+  getLoginCode(email: string): Promise<LoginCodeRecord | null>;
+  deleteLoginCode(email: string): Promise<void>;
 }

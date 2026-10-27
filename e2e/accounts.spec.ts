@@ -1,4 +1,23 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
+  await page.locator("#email").fill(email);
+  await page.getByRole("button", { name: "Continue with email" }).click();
+  const demo = page.getByText(/Demo mode/);
+  await expect(demo).toBeVisible();
+  const code = ((await demo.textContent()) ?? "").match(/\d{4}/)?.[0] ?? "";
+  await page.getByLabel("Digit 1 of 4").fill(code);
+  // New patients are asked their name once.
+  const welcome = page.getByRole("heading", { name: "Welcome to Halden Street" });
+  const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
+  await Promise.race([welcome.waitFor(), left]);
+  if (await welcome.isVisible()) {
+    await page.getByLabel("Full name").fill(name);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  }
+  await left;
+}
+
 
 async function chooseFirstOpenTime(page: import("@playwright/test").Page) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -14,9 +33,9 @@ async function chooseFirstOpenTime(page: import("@playwright/test").Page) {
 
 test("a patient booking appears on that doctor’s clinic book", async ({ page }) => {
   await page.goto("/sign-in");
-  await page.getByRole("button", { name: /sample patient, Ann Lee/ }).click();
-  await expect(page).toHaveURL(/\/appointments$/);
-  await expect(page.getByRole("heading", { name: "Your appointments" })).toBeVisible();
+  await signInWithEmail(page, "ann.lee@halden.example");
+  await expect(page).toHaveURL(/\/book$/);
+  await expect(page.getByRole("heading", { level: 1, name: /Hi Ann/ })).toBeVisible();
 
   await page.goto("/doctors/reid");
   await chooseFirstOpenTime(page);
@@ -43,35 +62,25 @@ test("a patient booking appears on that doctor’s clinic book", async ({ page }
   await expect(page).toHaveURL(/\/$/);
 
   await page.goto("/sign-in?as=staff");
-  await page.getByRole("button", { name: "Sign in as Dr Callum Reid" }).click();
+  await signInWithEmail(page, "callum.reid@halden.example");
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Clinic book" })).toBeVisible();
   await expect(page.getByText(reference)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Ann Lee" }).first()).toBeVisible();
 });
 
-test("a new patient can register, keeping what they typed after a mistake", async ({ page }) => {
+test("a new patient signs up with just an email and their name", async ({ page }) => {
   const email = `new.${Date.now()}.${Math.floor(Math.random() * 1e6)}@example.com`;
   await page.goto("/register");
-  await page.getByLabel("Full name").fill("Sam Patel");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill("long-enough-pw");
-  await page.getByLabel("Date of birth").fill("1990-05-01");
-  await page.getByLabel("Mobile number").fill("12345");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "1 thing to fix" })).toBeVisible();
-  await expect(page.getByLabel("Full name")).toHaveValue("Sam Patel");
-  await expect(page.getByLabel("Email")).toHaveValue(email);
-
-  await page.getByLabel("Mobile number").fill("07700 900456");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page).toHaveURL(/\/appointments$/);
-  await expect(page.getByText("Signed in as Sam Patel")).toBeVisible();
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await signInWithEmail(page, email, "Sam Patel");
+  await expect(page).toHaveURL(/\/book$/);
+  await expect(page.getByRole("heading", { level: 1, name: /Hi Sam/ })).toBeVisible();
 });
 
 test("clinic staff cannot book as a patient", async ({ page }) => {
   await page.goto("/sign-in?as=staff");
-  await page.getByRole("button", { name: "Sign in as Halden Street desk" }).click();
+  await signInWithEmail(page, "desk@halden.example");
   await expect(page).toHaveURL(/\/dashboard/);
   await page.goto("/book/details");
   await expect(page.getByRole("heading", { name: "Patients book here" })).toBeVisible();

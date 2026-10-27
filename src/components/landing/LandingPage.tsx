@@ -31,7 +31,7 @@ const COLLAGE = [
 
 export function LandingPage({ doctors, upcoming, role }: Props) {
   const { now, window } = useClock();
-  const bookHref = role === null ? `/sign-in?next=${encodeURIComponent("/#doctors")}` : "#doctors";
+  const bookHref = role === null ? `/sign-in?next=${encodeURIComponent("/book")}` : role === "patient" ? "/book" : "#doctors";
 
   const soonest = doctors
     .map((doctor) => ({ doctor, slot: (upcoming[doctor.id] ?? []).find((slot) => slotStatus(slot, [], now) === "open") }))
@@ -44,11 +44,11 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
       <section className="relative isolate overflow-hidden">
         <div
           aria-hidden="true"
-          className="absolute -top-48 -right-40 -z-10 size-[44rem] rounded-full bg-[radial-gradient(circle,var(--color-accent-soft)_0%,transparent_65%)]"
+          className="absolute -top-48 -left-40 -z-10 size-[44rem] rounded-full bg-[radial-gradient(circle,var(--color-accent-soft)_0%,transparent_65%)]"
         />
         <div className="mx-auto grid max-w-page items-center gap-10 px-5 pt-10 pb-6 md:px-8 md:pt-16 lg:grid-cols-12 lg:gap-6">
           <motion.div
-            className="lg:col-span-6"
+            className="lg:order-2 lg:col-span-6"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={spring.gentle}
@@ -69,7 +69,7 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
                 Book an appointment
               </Link>
               {role === null ? (
-                <Link href="/register" className="btn-chunky btn-chunky-secondary sm:w-auto">
+                <Link href="/sign-in" className="btn-chunky btn-chunky-secondary sm:w-auto">
                   Create an account
                 </Link>
               ) : (
@@ -90,7 +90,7 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
           </motion.div>
 
           {/* Portrait collage */}
-          <div className="relative mx-auto aspect-square w-full max-w-[30rem] lg:col-span-6" aria-hidden="true">
+          <div className="relative mx-auto aspect-square w-full max-w-[30rem] lg:order-1 lg:col-span-6" aria-hidden="true">
             {doctors.slice(0, COLLAGE.length).map((doctor, index) => {
               const spot = COLLAGE[index]!;
               return (

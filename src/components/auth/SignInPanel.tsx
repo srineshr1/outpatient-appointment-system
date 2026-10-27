@@ -1,336 +1,662 @@
 "use client";
 
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
-import Link from "next/link";
-import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
+import { Alert } from "@/components/icons";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
-import { initialAuthState } from "@/lib/auth-routing";
+import { PageHeading } from "@/components/shell/PageHeading";
+import { buttonClass } from "@/components/ui/button-styles";
 import type { Doctor } from "@/lib/data";
-import { DEMO_PASSWORD, demoAccounts } from "@/lib/demo-accounts";
 import { formatWhen } from "@/lib/format";
-import { spring } from "@/lib/motion";
-import { signInAction, signInFromDemo } from "@/server/auth-actions";
-import { AuthTextField, ChunkyButton, OrDivider, PasswordField, Shake } from "./AuthControls";
-import { Mascot } from "./Mascot";
+import { CODE_LENGTH } from "@/lib/sign-in-config";
+import { completeSignup, registerWithPassword, requestCode, signInWithPassword, verifyCode, type SignInMode } from "@/server/auth-actions";
 
-export type SignInRole = "patient" | "staff";
+type Step = "email" | "code" | "password" | "name";
 
-const TABS: { value: SignInRole; label: string }[] = [
-  { value: "patient", label: "I’m a patient" },
-  { value: "staff", label: "I work here" },
-];
-
-const COPY: Record<SignInRole, { title: string; lead: string }> = {
-  patient: { title: "Welcome back", lead: "Sign in to book a visit and see your appointments." },
-  staff: { title: "Clinic staff", lead: "Doctors open their clinic book. Reception sees every doctor." },
-};
+const emptyDigits = () => Array.from({ length: CODE_LENGTH }, () => "");
 
 interface Props {
   nextPath: string;
-  initialRole: SignInRole;
+  mode: SignInMode;
   doctors: Doctor[];
+  /** Shown when Google sign-in bounced back with a problem. */
+  notice?: string | null;
 }
 
-export function SignInPanel({ nextPath, initialRole, doctors }: Props) {
-  const [state, action, pending] = useActionState(signInAction, initialAuthState);
-  const [role, setRole] = useState<SignInRole>(initialRole);
-  const [direction, setDirection] = useState(1);
+export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
+  const reduce = useReducedMotion();
+  const [step, setStep] = useState<Step>("email");
+  const [filling, setFilling] = useState(false);
+  const [fromFill, setFromFill] = useState(false);
   const [email, setEmail] = useState("");
+  const [digits, setDigits] = useState<string[]>(emptyDigits);
+  const [name, setName] = useState("");
+  const [signupToken, setSignupToken] = useState("");
   const [password, setPassword] = useState("");
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(notice);
+  const [resendAt, setResendAt] = useState(0);
+  const [pending, startTransition] = useTransition();
+  const [, forceTick] = useState(0);
 
-  // After a failed attempt the email stays and the cursor goes back where it's needed.
+  // Count down to "Send again".
   useEffect(() => {
-    if (state.attempt === 0) return;
-    document.getElementById(state.fields.email ? "email" : "password")?.focus();
-  }, [state]);
+    if (step !== "code" || resendAt <= Date.now()) return;
+    const timer = setInterval(() => forceTick((tick) => tick + 1), 1000);
+    return () => clearInterval(timer);
+  }, [step, resendAt]);
 
-  function choose(next: SignInRole) {
-    if (next === role) return;
-    setDirection(next === "staff" ? 1 : -1);
-    setRole(next);
+  const showCode = useCallback(() => {
+    setFilling(false);
+    setStep("code");
+  }, []);
+
+  function sendCode(event?: FormEvent) {
+    event?.preventDefault();
+    if (pending || filling) return;
+    startTransition(async () => {
+      const result = await requestCode({ email, mode });
+      if (!result.ok) {
+        if (result.needsPassword && result.email) {
+          setEmail(result.email);
+          setError(null);
+          setCreating(false);
+          setStep("password");
+          return;
+        }
+        setError(result.error);
+        return;
+      }
+      setError(null);
+      setEmail(result.email);
+      setDevCode(result.devCode ?? null);
+      setResendAt(Date.now() + result.resendInMs);
+      setDigits(emptyDigits());
+      if (step === "code") return;
+      // The circle floods the box, then the box splits into the code digits.
+      setFromFill(!reduce);
+      if (reduce) setStep("code");
+      else setFilling(true);
+    });
   }
 
-  function onTabKey(event: KeyboardEvent, index: number) {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : (index + 1) % TABS.length;
-    choose(TABS[nextIndex]!.value);
-    tabRefs.current[nextIndex]?.focus();
+  function submitCode(code: string) {
+    if (pending || code.length !== CODE_LENGTH) return;
+    startTransition(async () => {
+      const result = await verifyCode({ email, code, next: nextPath, mode });
+      // A successful sign-in redirects, so only problems and new patients come back here.
+      if (!result) return;
+      if (!result.ok) {
+        setError(result.error);
+        setDigits(emptyDigits());
+        return;
+      }
+      setError(null);
+      setSignupToken(result.signupToken);
+      setStep("name");
+    });
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submitName(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
-    const data = new FormData(event.currentTarget);
-    // The password is sent, then cleared, so a failed attempt starts the password afresh.
-    setPassword("");
-    startTransition(() => action(data));
+    startTransition(async () => {
+      const result = await completeSignup({ email, name, signupToken, next: nextPath });
+      if (!result) return;
+      if (result.spent) {
+        setSignupToken("");
+        setStep("email");
+      }
+      setError(result.error);
+    });
   }
 
-  const failed = state.attempt > 0;
-  const copy = COPY[role];
+  function submitPassword(event: FormEvent) {
+    event.preventDefault();
+    if (pending) return;
+    startTransition(async () => {
+      const result = creating
+        ? await registerWithPassword({ email, password, name, next: nextPath })
+        : await signInWithPassword({ email, password, next: nextPath, mode });
+      if (!result) return;
+      if (result.needsAccount) setCreating(true);
+      setError(result.error);
+    });
+  }
+
+  function changeEmail() {
+    setError(null);
+    setFromFill(false);
+    setStep("email");
+  }
+
+  const resendIn = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+  const staff = mode === "staff";
+  const googleHref = `/auth/google${nextPath === "/" ? "" : `?next=${encodeURIComponent(nextPath)}`}`;
 
   return (
-    <div className="mx-auto w-full max-w-md">
-      <div className="flex flex-col items-center text-center">
+    <div className="mx-auto grid w-full max-w-4xl gap-8 px-5 md:px-8 lg:min-h-[28rem] lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-center lg:gap-12">
+      {/* Left: the message */}
+      <div>
+        <PageHeading className="font-statement text-[2.75rem] leading-[1.08] font-bold tracking-[-0.025em] text-ink md:text-[4rem]">
+          {staff ? "Your clinic book is " : "Your next appointment is "}
+          <span className="text-accent">waiting.</span>
+        </PageHeading>
+        {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
+      </div>
+
+      {/* Right: the form */}
+      <div className="rounded-sheet bg-surface p-5 shadow-card md:p-6">
         <AnimatePresence mode="wait" initial={false}>
-          {role === "patient" ? (
+          {step === "password" ? (
             <motion.div
-              key="mascot"
-              initial={{ scale: 0.6, opacity: 0, rotate: -8 }}
-              animate={{ scale: 1, opacity: 1, rotate: 0 }}
-              exit={{ scale: 0.6, opacity: 0, rotate: 8 }}
-              transition={spring.press}
+              key="password"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2 }}
             >
-              <Mascot mood={failed && !pending ? "oops" : "happy"} />
+              <form onSubmit={submitPassword} className="grid gap-4">
+                <p className="px-2 text-callout text-ink-2">
+                  {creating ? "Create an account for " : "Password for "}
+                  <span className="font-semibold break-all text-ink">{email}</span>{" "}
+                  <button type="button" onClick={changeEmail} className="font-semibold text-accent hover:underline underline-offset-4">
+                    Change
+                  </button>
+                </p>
+                {creating ? (
+                  <div>
+                    <label htmlFor="account-name" className="sr-only">
+                      Full name
+                    </label>
+                    <input
+                      id="account-name"
+                      name="name"
+                      autoComplete="name"
+                      autoFocus
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="Full name"
+                      className="field h-14 rounded-full! px-5"
+                    />
+                  </div>
+                ) : null}
+                <div>
+                  <label htmlFor="password" className="sr-only">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete={creating ? "new-password" : "current-password"}
+                    autoFocus={!creating}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="Password"
+                    aria-invalid={Boolean(error) || undefined}
+                    aria-describedby={error ? "password-error" : undefined}
+                    className="field h-14 rounded-full! px-5"
+                  />
+                  <ErrorText id="password-error" message={error} />
+                </div>
+                <button type="submit" disabled={pending} className="btn-chunky btn-chunky-primary w-full">
+                  {pending ? "Please wait" : creating ? "Create account" : "Sign in"}
+                </button>
+                {staff || creating ? null : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreating(true);
+                      setError(null);
+                    }}
+                    className="text-callout font-semibold text-accent"
+                  >
+                    New here? Create an account
+                  </button>
+                )}
+              </form>
+            </motion.div>
+          ) : step === "name" ? (
+            <motion.div
+              key="name"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2 }}
+            >
+              <NameStep name={name} setName={setName} error={error} pending={pending} onSubmit={submitName} />
             </motion.div>
           ) : (
-            <motion.div key="team" className="flex h-[104px] items-center" initial="hidden" animate="shown" exit="hidden">
-              {doctors.slice(0, 4).map((doctor, index) => (
-                <motion.span
-                  key={doctor.id}
-                  variants={{
-                    hidden: { opacity: 0, y: 16, scale: 0.7 },
-                    shown: { opacity: 1, y: 0, scale: 1, transition: { ...spring.press, delay: index * 0.06 } },
-                  }}
-                  className={`rounded-full ring-4 ring-surface ${index === 0 ? "" : "-ml-4"}`}
-                >
-                  <DoctorPortrait doctor={doctor} size={68} />
-                </motion.span>
-              ))}
+            <motion.div key="auth" exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
+              {step === "email" ? (
+                <EmailField
+                  staff={staff}
+                  email={email}
+                  setEmail={setEmail}
+                  error={error}
+                  pending={pending}
+                  filling={filling}
+                  onSubmit={sendCode}
+                  onFilled={showCode}
+                />
+              ) : (
+                <CodeBoxes
+                  email={email}
+                  digits={digits}
+                  setDigits={setDigits}
+                  error={error}
+                  pending={pending}
+                  devCode={devCode}
+                  resendIn={resendIn}
+                  fromFill={fromFill}
+                  onComplete={submitCode}
+                  onResend={() => sendCode()}
+                  onChangeEmail={changeEmail}
+                />
+              )}
+
+              {staff || step !== "email" ? null : (
+                <>
+                  <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
+                    <span className="h-px flex-1 bg-hairline" />
+                    or
+                    <span className="h-px flex-1 bg-hairline" />
+                  </div>
+                  <a
+                    href={googleHref}
+                    className="flex min-h-12 w-full items-center justify-center gap-3 rounded-full border border-control bg-surface px-6 text-body font-medium text-ink no-underline hover:bg-fill"
+                  >
+                    <GoogleMark />
+                    Sign in with Google
+                  </a>
+                </>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
-      <BookingContext nextPath={nextPath} doctors={doctors} />
-
-      <LayoutGroup id="role-tabs">
-        <div
-          role="tablist"
-          aria-label="Who’s signing in"
-          className="mt-6 grid grid-cols-2 gap-1 rounded-2xl bg-fill-strong p-1"
-        >
-          {TABS.map((tab, index) => {
-            const selected = tab.value === role;
-            return (
-              <button
-                key={tab.value}
-                ref={(node) => {
-                  tabRefs.current[index] = node;
-                }}
-                id={`tab-${tab.value}`}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                aria-controls="sign-in-panel"
-                tabIndex={selected ? 0 : -1}
-                onClick={() => choose(tab.value)}
-                onKeyDown={(event) => onTabKey(event, index)}
-                className={`relative isolate min-h-12 rounded-xl text-callout font-bold transition-colors ${
-                  selected ? "text-ink" : "text-ink-2 hover:text-ink"
-                }`}
-              >
-                {selected ? (
-                  <motion.span
-                    layoutId="role-pill"
-                    transition={spring.snap}
-                    aria-hidden="true"
-                    className="absolute inset-0 -z-10 rounded-xl bg-surface shadow-card"
-                  />
-                ) : null}
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </LayoutGroup>
-
-      <div
-        id="sign-in-panel"
-        role="tabpanel"
-        aria-labelledby={`tab-${role}`}
-        className="relative mt-6 overflow-hidden"
-      >
-        <AnimatePresence mode="wait" initial={false} custom={direction}>
-          <motion.div
-            key={role}
-            custom={direction}
-            variants={{
-              enter: (dir: number) => ({ x: dir * 40, opacity: 0 }),
-              center: { x: 0, opacity: 1 },
-              exit: (dir: number) => ({ x: dir * -40, opacity: 0 }),
-            }}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={spring.gentle}
-          >
-            <h2 className="text-center text-title2 font-bold text-ink">{copy.title}</h2>
-            <p className="mt-2 text-center text-body text-ink-2">{copy.lead}</p>
-
-            <Shake attempt={state.attempt}>
-              <AnimatePresence initial={false}>
-                {state.error ? (
-                  <motion.div
-                    key={`error-${state.attempt}`}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={spring.gentle}
-                    className="overflow-hidden"
-                  >
-                    <p role="alert" className="mt-5 rounded-2xl bg-danger-soft px-4 py-3 text-callout font-semibold text-danger">
-                      {state.error}
-                    </p>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-
-              <form action={action} onSubmit={submit} noValidate className="mt-5 grid gap-4">
-                <input type="hidden" name="next" value={nextPath} />
-                <AuthTextField
-                  id="email"
-                  label={role === "staff" ? "Work email" : "Email"}
-                  value={email}
-                  onChange={setEmail}
-                  error={state.fields.email}
-                  input={{
-                    name: "email",
-                    type: "email",
-                    autoComplete: "username",
-                    inputMode: "email",
-                    spellCheck: false,
-                    placeholder: role === "staff" ? "name@halden.example" : "you@example.com",
-                  }}
-                />
-                <PasswordField
-                  value={password}
-                  onChange={setPassword}
-                  error={state.fields.password}
-                  autoComplete="current-password"
-                />
-                <ChunkyButton type="submit" loading={pending} loadingLabel="Signing in…" className="mt-2">
-                  Sign in
-                </ChunkyButton>
-              </form>
-            </Shake>
-
-            <div className="mt-6 grid gap-4">
-              <OrDivider />
-              {role === "patient" ? (
-                <PatientExtras nextPath={nextPath} />
-              ) : (
-                <StaffAccounts nextPath={nextPath} doctors={doctors} />
-              )}
-            </div>
-          </motion.div>
-        </AnimatePresence>
+        <p className="mt-5 text-center text-callout text-ink-2">
+          {staff ? (
+            <>
+              Not a doctor?{" "}
+              <a href={nextPath === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(nextPath)}`} className="font-semibold text-accent">
+                Patient sign-in
+              </a>
+            </>
+          ) : (
+            <>
+              Doctor or reception?{" "}
+              <a href={`/sign-in?as=staff${nextPath === "/" ? "" : `&next=${encodeURIComponent(nextPath)}`}`} className="font-semibold text-accent">
+                Sign in as a doctor
+              </a>
+            </>
+          )}
+        </p>
       </div>
     </div>
   );
 }
 
-/** "You're signing in to book Dr Cho, Thu 29 Oct, 10:00": so the patient knows their time is safe. */
-function BookingContext({ nextPath, doctors }: { nextPath: string; doctors: Doctor[] }) {
+function ErrorText({ id, message }: { id: string; message: string | null }) {
+  if (!message) return null;
+  return (
+    <p id={id} role="alert" className="mt-2 flex items-start gap-1.5 px-2 text-callout text-danger">
+      <Alert size={18} className="mt-px shrink-0" />
+      <span>{message}</span>
+    </p>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="size-5 rounded-full border-2 border-white border-r-transparent [animation:spin_700ms_linear_infinite]"
+    />
+  );
+}
+
+function EmailField({
+  staff,
+  email,
+  setEmail,
+  error,
+  pending,
+  filling,
+  onSubmit,
+  onFilled,
+}: {
+  staff: boolean;
+  email: string;
+  setEmail: (value: string) => void;
+  error: string | null;
+  pending: boolean;
+  filling: boolean;
+  onSubmit: (event: FormEvent) => void;
+  onFilled: () => void;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const done = useRef(false);
+  const [fullWidth, setFullWidth] = useState(44);
+
+  useEffect(() => {
+    if (!filling) return;
+    done.current = false;
+    setFullWidth(Math.max(44, (boxRef.current?.offsetWidth ?? 0) - 12));
+    // Safety net: move on even if the animation can't report finishing.
+    const timer = setTimeout(() => {
+      if (!done.current) {
+        done.current = true;
+        onFilled();
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [filling, onFilled]);
+
+  function finished() {
+    if (done.current) return;
+    done.current = true;
+    onFilled();
+  }
+
+  return (
+    <form onSubmit={onSubmit} noValidate>
+      <label htmlFor="email" className="sr-only">
+        {staff ? "Practice email" : "Email"}
+      </label>
+      <div ref={boxRef} className="relative">
+        <input
+          id="email"
+          name="email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          spellCheck={false}
+          autoFocus
+          readOnly={filling}
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder={staff ? "name@halden.example" : "Your email"}
+          aria-invalid={Boolean(error) || undefined}
+          aria-describedby={error ? "email-error" : undefined}
+          className="field h-14 rounded-full! pr-16 pl-5"
+        />
+        {/* The liquid: grows from the circle to fill the box, sloshing a little at the end. */}
+        {filling ? (
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
+            <motion.div
+              className="absolute top-1.5 right-1.5 bottom-1.5 rounded-full bg-accent"
+              initial={{ width: 44, scaleY: 1 }}
+              animate={{ width: fullWidth, scaleY: [1, 0.86, 1.04, 1] }}
+              transition={{
+                width: { type: "spring", duration: 0.6, bounce: 0.35 },
+                scaleY: { duration: 0.6, times: [0, 0.35, 0.7, 1] },
+              }}
+              onAnimationComplete={finished}
+            />
+          </div>
+        ) : null}
+        <button
+          type="submit"
+          aria-label="Continue with email"
+          aria-busy={pending || undefined}
+          className="absolute top-1.5 right-1.5 grid size-11 place-items-center rounded-full bg-accent text-white transition-[background-color,transform] hover:bg-accent-hover active:scale-90"
+        >
+          {pending || filling ? (
+            <Spinner />
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+      </div>
+      <ErrorText id="email-error" message={error} />
+    </form>
+  );
+}
+
+function CodeBoxes({
+  email,
+  digits,
+  setDigits,
+  error,
+  pending,
+  devCode,
+  resendIn,
+  fromFill,
+  onComplete,
+  onResend,
+  onChangeEmail,
+}: {
+  email: string;
+  digits: string[];
+  setDigits: (digits: string[]) => void;
+  error: string | null;
+  pending: boolean;
+  devCode: string | null;
+  resendIn: number;
+  fromFill: boolean;
+  onComplete: (code: string) => void;
+  onResend: () => void;
+  onChangeEmail: () => void;
+}) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Start on the first box, and go back to it after a wrong code (the boxes are disabled while checking).
+  useEffect(() => {
+    if (!pending) refs.current[0]?.focus();
+  }, [error, pending]);
+
+  function place(index: number, typed: string) {
+    const clean = typed.replace(/\D/g, "");
+    const next = [...digits];
+    if (!clean) {
+      next[index] = "";
+      setDigits(next);
+      return;
+    }
+    // One digit, or several from a paste or the phone's code suggestion.
+    let at = index;
+    for (const char of clean) {
+      if (at >= CODE_LENGTH) break;
+      next[at] = char;
+      at += 1;
+    }
+    setDigits(next);
+    const code = next.join("");
+    if (code.length === CODE_LENGTH) onComplete(code);
+    else refs.current[Math.min(at, CODE_LENGTH - 1)]?.focus();
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLInputElement>, index: number) {
+    if (event.key === "Backspace" && !digits[index] && index > 0) {
+      event.preventDefault();
+      const next = [...digits];
+      next[index - 1] = "";
+      setDigits(next);
+      refs.current[index - 1]?.focus();
+    } else if (event.key === "ArrowLeft" && index > 0) {
+      event.preventDefault();
+      refs.current[index - 1]?.focus();
+    } else if (event.key === "ArrowRight" && index < CODE_LENGTH - 1) {
+      event.preventDefault();
+      refs.current[index + 1]?.focus();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      onComplete(digits.join(""));
+    }
+  }
+
+  function onPaste(event: ClipboardEvent<HTMLInputElement>, index: number) {
+    event.preventDefault();
+    place(index, event.clipboardData.getData("text"));
+  }
+
+  return (
+    <div>
+      <p className="px-2 text-callout text-ink-2">
+        Code sent to <span className="font-semibold break-all text-ink">{email}</span>{" "}
+        <button type="button" onClick={onChangeEmail} className="font-semibold text-accent hover:underline underline-offset-4">
+          Change
+        </button>
+      </p>
+
+      <div className="relative mt-3">
+        {/* The blue box from the email step, dissolving into the digits. */}
+        {fromFill ? (
+          <motion.div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-full bg-accent"
+            initial={{ opacity: 1, scaleX: 1 }}
+            animate={{ opacity: 0, scaleX: 0.96 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+          />
+        ) : null}
+        <div role="group" aria-labelledby="code-label" className="grid grid-cols-4 gap-3">
+          {digits.map((digit, index) => (
+            <motion.input
+              key={index}
+              ref={(node) => {
+                refs.current[index] = node;
+              }}
+              aria-label={`Digit ${index + 1} of ${CODE_LENGTH}`}
+              inputMode="numeric"
+              autoComplete={index === 0 ? "one-time-code" : "off"}
+              pattern="[0-9]*"
+              value={digit}
+              onChange={(event) => place(index, event.target.value)}
+              onKeyDown={(event) => onKeyDown(event, index)}
+              onPaste={(event) => onPaste(event, index)}
+              onFocus={(event) => event.target.select()}
+              disabled={pending}
+              aria-invalid={Boolean(error) || undefined}
+              aria-describedby={error ? "code-error" : undefined}
+              initial={fromFill ? { scale: 0.5, opacity: 0, borderRadius: 999 } : false}
+              animate={{ scale: 1, opacity: 1, borderRadius: 16 }}
+              transition={{ type: "spring", duration: 0.5, bounce: 0.45, delay: fromFill ? 0.08 + index * 0.06 : 0 }}
+              className="tabular h-14 w-full min-w-0 border border-control bg-surface text-center text-title2 font-semibold text-ink caret-accent transition-colors hover:border-ink-2 focus-visible:border-accent focus-visible:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-accent)_22%,transparent)] focus-visible:outline-none disabled:opacity-60 aria-invalid:border-danger"
+            />
+          ))}
+        </div>
+      </div>
+      <span id="code-label" className="sr-only">
+        Enter the {CODE_LENGTH}-digit code from the email
+      </span>
+
+      <ErrorText id="code-error" message={error} />
+      {devCode ? (
+        <p className="mt-3 px-2 text-callout text-muted">
+          Demo mode, no email is sent. Your code is <span className="tabular font-semibold text-ink">{devCode}</span>
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex items-center justify-between gap-2 px-2 text-callout">
+        <span className="text-muted" role="status">
+          {pending ? "Checking…" : ""}
+        </span>
+        {resendIn > 0 ? (
+          <span className="tabular text-muted">Send again in {resendIn}s</span>
+        ) : (
+          <button
+            type="button"
+            onClick={onResend}
+            disabled={pending}
+            className="min-h-11 text-accent hover:underline underline-offset-4"
+          >
+            Send a new code
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NameStep({
+  name,
+  setName,
+  error,
+  pending,
+  onSubmit,
+}: {
+  name: string;
+  setName: (value: string) => void;
+  error: string | null;
+  pending: boolean;
+  onSubmit: (event: FormEvent) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => inputRef.current?.focus(), []);
+  return (
+    <>
+      <h2 className="px-2 text-title3 font-semibold text-ink">Welcome to Halden Street</h2>
+      <p className="mt-1 px-2 text-callout text-ink-2">What’s your name? We’ll use it on your bookings.</p>
+      <form onSubmit={onSubmit} noValidate className="mt-4">
+        <label htmlFor="name" className="sr-only">
+          Full name
+        </label>
+        <input
+          ref={inputRef}
+          id="name"
+          name="name"
+          autoComplete="name"
+          maxLength={100}
+          placeholder="Full name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          aria-invalid={Boolean(error) || undefined}
+          aria-describedby={error ? "name-error" : undefined}
+          className="field h-14 rounded-full! px-5"
+        />
+        <ErrorText id="name-error" message={error} />
+        <button type="submit" aria-busy={pending || undefined} className={buttonClass("primary", "lg", "mt-3 w-full")}>
+          {pending ? "Creating your account…" : "Continue"}
+        </button>
+      </form>
+    </>
+  );
+}
+
+/** If they came from choosing a time, show it, so they know it's kept. */
+function HeldTime({ nextPath, doctors }: { nextPath: string; doctors: Doctor[] }) {
   const { state, ready } = useBooking();
   const { window } = useClock();
   const held = state.held;
   const doctor = held ? doctors.find((item) => item.id === held.doctorId) : null;
   if (!ready || nextPath !== "/book/details" || !held || !doctor) return null;
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ ...spring.gentle, delay: 0.1 }}
-      className="mt-6 flex items-center gap-3 rounded-2xl border-2 border-accent/25 bg-accent-soft p-3 text-left"
-    >
+    <div className="mt-8 inline-flex items-center gap-3 rounded-card bg-surface p-3 pr-5 shadow-card">
       <DoctorPortrait doctor={doctor} size={44} />
-      <p className="text-callout text-ink">
-        <span className="block font-bold">We’re holding your time</span>
+      <p className="text-callout">
+        <span className="block font-semibold text-ink">Holding your time</span>
         <span className="tabular text-ink-2">
-          {doctor.short}, {formatWhen(held, window.today)}. Sign in to finish booking.
+          {doctor.short}, {formatWhen(held, window.today)}
         </span>
       </p>
-    </motion.div>
+    </div>
   );
 }
 
-function PatientExtras({ nextPath }: { nextPath: string }) {
-  const sample = demoAccounts.find((account) => account.role === "patient");
+function GoogleMark() {
   return (
-    <>
-      <Link href={`/register?next=${encodeURIComponent(nextPath)}`} className="btn-chunky btn-chunky-secondary">
-        Create a patient account
-      </Link>
-      {sample ? (
-        <form action={signInFromDemo} className="text-center">
-          <input type="hidden" name="email" value={sample.email} />
-          <input type="hidden" name="password" value={DEMO_PASSWORD} />
-          <input type="hidden" name="next" value={nextPath} />
-          <p className="text-callout text-muted">Just looking around?</p>
-          <button
-            type="submit"
-            className="mt-1 min-h-11 rounded-xl px-3 text-callout font-bold text-accent hover:bg-accent-soft"
-          >
-            Sign in as the sample patient, {sample.name}
-          </button>
-        </form>
-      ) : null}
-    </>
-  );
-}
-
-function StaffAccounts({ nextPath, doctors }: { nextPath: string; doctors: Doctor[] }) {
-  const staff = demoAccounts.filter((account) => account.role !== "patient");
-  return (
-    <section aria-labelledby="sample-staff">
-      <h3 id="sample-staff" className="text-center text-callout font-bold text-ink">
-        Sample staff accounts
-      </h3>
-      <p className="mt-1 text-center text-caption text-muted">
-        Tap one to sign in. The password for each is <span className="font-semibold text-ink-2">{DEMO_PASSWORD}</span>
-      </p>
-      <ul className="mt-4 grid grid-cols-2 gap-3">
-        {staff.map((account, index) => {
-          const doctor = account.doctorId ? doctors.find((item) => item.id === account.doctorId) : null;
-          return (
-            <motion.li
-              key={account.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...spring.gentle, delay: 0.05 * index }}
-            >
-              <form action={signInFromDemo} className="h-full">
-                <input type="hidden" name="email" value={account.email} />
-                <input type="hidden" name="password" value={DEMO_PASSWORD} />
-                <input type="hidden" name="next" value={nextPath} />
-                <button
-                  type="submit"
-                  aria-label={`Sign in as ${account.name}`}
-                  className="btn-chunky btn-chunky-secondary h-full flex-col gap-1.5 py-3 text-ink"
-                >
-                  {doctor ? (
-                    <DoctorPortrait doctor={doctor} size={44} />
-                  ) : (
-                    <span aria-hidden="true" className="grid size-11 place-items-center rounded-full bg-ink text-white">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M4 20v-1a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v1M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
-                      </svg>
-                    </span>
-                  )}
-                  <span className="text-callout leading-tight font-bold">{account.name}</span>
-                  <span className="text-caption font-medium text-muted">{doctor ? doctor.interest : "Reception"}</span>
-                </button>
-              </form>
-            </motion.li>
-          );
-        })}
-      </ul>
-    </section>
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
+      <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+    </svg>
   );
 }

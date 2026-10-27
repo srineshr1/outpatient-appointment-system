@@ -11,7 +11,6 @@ import { doctors } from "@/lib/data";
 import { getSlots, getUpcoming } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
 import { SignInPanel } from "@/components/auth/SignInPanel";
-import { RegisterForm } from "@/components/auth/RegisterForm";
 
 // The booking action reads the session cookie. Here the sample patient is signed in.
 vi.mock("@/lib/session", async (importOriginal) => {
@@ -132,7 +131,7 @@ describe("DetailsView", () => {
 
   it("sends people with nothing held back to the start", async () => {
     renderWithProviders(<DetailsView doctors={doctors} account={account} />);
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/book"));
   });
 
   it("summarises errors and focuses the first problem", async () => {
@@ -192,61 +191,78 @@ describe("DetailsView", () => {
 });
 
 describe("SignInPanel", () => {
-  it("switches between patient and staff sign-in", async () => {
-    renderWithProviders(<SignInPanel nextPath="/" initialRole="patient" doctors={doctors} />);
-    expect(screen.getByRole("tab", { name: "I’m a patient" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("heading", { name: "Welcome back" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /sample patient, Ann Lee/ })).toBeInTheDocument();
+  it("asks for an email, then turns the box into four code boxes", async () => {
+    renderWithProviders(<SignInPanel nextPath="/" mode="patient" doctors={doctors} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Your next appointment is waiting." })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in with Google" })).toHaveAttribute("href", "/auth/google");
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("tab", { name: "I work here" }));
-    expect(await screen.findByRole("heading", { name: "Clinic staff" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in as Dr Helen Cho" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in as Halden Street desk" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter your email address.");
+
+    await userEvent.type(screen.getByLabelText("Email"), "Sam.Patel@Example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
+    const first = await screen.findByLabelText("Digit 1 of 4", {}, { timeout: 3000 });
+    expect(screen.getByText("sam.patel@example.com")).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox", { name: /Digit \d of 4/ })).toHaveLength(4);
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(screen.getByText(/Demo mode/)).toHaveTextContent(/\d{4}/);
   });
 
-  it("keeps the email after a wrong password and says what went wrong", async () => {
-    renderWithProviders(<SignInPanel nextPath="/" initialRole="patient" doctors={doctors} />);
-    await userEvent.type(screen.getByLabelText("Email"), "ann.lee@halden.example");
-    await userEvent.type(screen.getByLabelText("Password"), "not-the-password");
-    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("don’t match");
-    expect(screen.getByLabelText("Email")).toHaveValue("ann.lee@halden.example");
-    expect(screen.getByLabelText("Password")).toHaveValue("");
-    expect(screen.getByLabelText("Password")).toHaveFocus();
+  it("says when the code is wrong, then signs a new patient up with their name", async () => {
+    renderWithProviders(<SignInPanel nextPath="/book" mode="patient" doctors={doctors} />);
+    await userEvent.type(screen.getByLabelText("Email"), `new.${Date.now()}@example.com`);
+    await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
+    const demo = await screen.findByText(/Demo mode/, {}, { timeout: 3000 });
+    const code = demo.textContent!.match(/\d{4}/)![0];
+    const wrong = code === "0000" ? "1111" : "0000";
+
+    await waitFor(() => expect(screen.getByLabelText("Digit 1 of 4")).toHaveFocus());
+    await userEvent.keyboard(wrong);
+    expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("That code isn’t right. 4 tries left.");
+    expect(screen.getByLabelText("Digit 4 of 4")).toHaveValue("");
+    await waitFor(() => expect(screen.getByLabelText("Digit 1 of 4")).toHaveFocus());
+
+    // Pasting the whole code into the first box works too.
+    await userEvent.click(screen.getByLabelText("Digit 1 of 4"));
+    await userEvent.paste(code);
+    expect(await screen.findByRole("heading", { name: "Welcome to Halden Street" }, { timeout: 3000 })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter your full name.");
   });
 
-  it("can show the password", async () => {
-    renderWithProviders(<SignInPanel nextPath="/" initialRole="patient" doctors={doctors} />);
-    await userEvent.type(screen.getByLabelText("Password"), "secret");
-    await userEvent.click(screen.getByRole("button", { name: "Show password" }));
-    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "text");
+  it("can go back and use a different email", async () => {
+    renderWithProviders(<SignInPanel nextPath="/" mode="patient" doctors={doctors} />);
+    await userEvent.type(screen.getByLabelText("Email"), "back.test@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
+    await screen.findByLabelText("Digit 1 of 4", {}, { timeout: 3000 });
+    expect(screen.getByText(/Send again in \d+s/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Change" }));
+    expect(await screen.findByLabelText("Email")).toHaveValue("back.test@example.com");
+  });
+
+  it("staff sign-in only accepts staff emails and links back to patients", async () => {
+    renderWithProviders(<SignInPanel nextPath="/" mode="staff" doctors={doctors} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Your clinic book is waiting." })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in with Google" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Patient sign-in" })).toHaveAttribute("href", "/sign-in");
+    await userEvent.type(screen.getByLabelText("Practice email"), "ann.lee@halden.example");
+    await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
+    expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("isn’t a staff account");
+  });
+
+  it("links patients to doctor sign-in, keeping where they were going", () => {
+    renderWithProviders(<SignInPanel nextPath="/book/details" mode="patient" doctors={doctors} />);
+    expect(screen.getByRole("link", { name: "Sign in as a doctor" })).toHaveAttribute(
+      "href",
+      "/sign-in?as=staff&next=%2Fbook%2Fdetails",
+    );
   });
 
   it("shows the held time when signing in to book", async () => {
     const open = (await getUpcoming())["cho"]![0]!;
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ held: open, booking: null, flash: null }));
-    renderWithProviders(<SignInPanel nextPath="/book/details" initialRole="patient" doctors={doctors} />);
-    expect(await screen.findByText("We’re holding your time")).toBeInTheDocument();
-    expect(screen.getByText(/Dr Cho, .*Sign in to finish booking/)).toBeInTheDocument();
-  });
-});
-
-describe("RegisterForm", () => {
-  it("keeps everything typed when one field is wrong", async () => {
-    renderWithProviders(<RegisterForm nextPath="/appointments" />);
-    await userEvent.type(screen.getByLabelText("Full name"), "Sam Patel");
-    await userEvent.type(screen.getByLabelText("Email"), "sam@example.com");
-    await userEvent.type(screen.getByLabelText("Password"), "long-enough-pw");
-    await userEvent.type(screen.getByLabelText("Date of birth"), "1990-05-01");
-    await userEvent.type(screen.getByLabelText("Mobile number"), "12345");
-    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
-
-    expect(await screen.findByRole("alert", {}, { timeout: 3000 })).toHaveTextContent("There’s 1 thing to fix.");
-    expect(screen.getByLabelText("Mobile number")).toHaveAccessibleDescription(/UK mobile/);
-    expect(screen.getByLabelText("Mobile number")).toHaveFocus();
-    expect(screen.getByLabelText("Full name")).toHaveValue("Sam Patel");
-    expect(screen.getByLabelText("Email")).toHaveValue("sam@example.com");
-    expect(screen.getByLabelText("Password")).toHaveValue("long-enough-pw");
-    expect(screen.getByLabelText("Date of birth")).toHaveValue("1990-05-01");
+    renderWithProviders(<SignInPanel nextPath="/book/details" mode="patient" doctors={doctors} />);
+    expect(await screen.findByText("Holding your time")).toBeInTheDocument();
   });
 });

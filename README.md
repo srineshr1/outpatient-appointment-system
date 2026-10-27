@@ -26,7 +26,8 @@ npm run dev          # http://localhost:3000
 | `/doctors/[id]?week=YYYY-MM-DD` | Week view; the week is clamped to the bookable window |
 | `/book/details` | Patient form. Needs a patient sign-in (the held time survives it); redirects to `/` if no time is held |
 | `/book/confirmed` | Reference, summary and `.ics` download |
-| `/sign-in`, `/register` | Sign-in with a patient / staff toggle (`?as=staff` opens the staff tab). Sample accounts are on each tab |
+| `/sign-in` | Email + 4-digit code, or Google. New patients give their name once. “Sign in as a doctor” (`?as=staff`) is for staff. `/register` redirects here |
+| `/book` | Signed-in patient’s home: choose a doctor |
 | `/appointments` | The signed-in patient’s visits. Cancel a booked visit here |
 | `/dashboard` | Doctor clinic book, or every doctor for reception. Mark complete or cancel |
 
@@ -37,7 +38,7 @@ npm run dev          # http://localhost:3000
 
 ## Sample accounts
 
-Every sample account uses the password `Halden-demo-2026`.
+Sign in with any of these emails. Without a mail key, the code is shown on the sign-in page and printed in the `npm run dev` terminal.
 
 | Email | What you can do |
 | --- | --- |
@@ -45,14 +46,27 @@ Every sample account uses the password `Halden-demo-2026`.
 | `helen.cho@halden.example` (and the other doctors) | Open that doctor’s clinic book |
 | `desk@halden.example` | Reception view of every doctor |
 
+Any other email creates a new patient account on first sign-in.
+
+## Sign-in setup
+
+| Variable | Purpose |
+| --- | --- |
+| `AUTH_SECRET` | Long random string. Keys the stored code hashes. **Set it in production.** |
+| `RESEND_API_KEY`, `MAIL_FROM` | Send codes by email through [Resend](https://resend.com). `MAIL_FROM` must be on a verified domain, e.g. `Halden Street <signin@yourdomain>` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable “Sign in with Google”. Register the redirect URI `<site>/auth/google/callback` in Google Cloud (OAuth client, type Web) |
+| `SHOW_LOGIN_CODES=1` | Show codes on screen in a production build with no mail key. For demos and e2e only |
+
+Codes are 4 digits, valid for 10 minutes, five tries, and one new code a minute. Only an HMAC of each code is stored. Google sign-in uses PKCE and a one-time state cookie, and accepts only Google-verified emails. In production with no mail key and no `SHOW_LOGIN_CODES`, sign-in by email fails rather than silently dropping codes.
+
 This is a demonstration practice. Don’t enter a real CHI number or medical details you want kept private.
 
 ## Production notes
 
 - A booking is saved on the server. The same slot cannot be held twice. Cancelling frees it. The doctor’s clinic book and the patient’s appointment list read that record.
-- Sessions are httpOnly cookies, valid for 14 days. Passwords are stored as scrypt hashes.
+- Sessions are httpOnly cookies, valid for 14 days. Patients have no password. The sample accounts keep a scrypt hash for the one-tap staff action.
 - The pages render per request (they depend on the current time and the book), so deploy as a Node server (`next build && next start`) or any host that supports Next.js server rendering. Static export is not supported. On Vercel, set `BLOB_READ_WRITE_TOKEN` from a private Blob store so visits survive across serverless instances.
 - Set `NEXT_PUBLIC_SITE_URL` to the public origin for correct Open Graph URLs.
 - Security headers: a nonce-based CSP is set in `src/proxy.ts`; HSTS, nosniff, frame and permissions policies in `next.config.ts`. Serve over HTTPS.
-- Fonts are self-hosted at build time via `next/font` (Inter, used where SF Pro isn't available); no font requests reach third parties.
+- Fonts are self-hosted at build time via `next/font` (Inter); no font requests reach third parties.
 - `app/error.tsx` has a hook for an error reporter. Do not send patient data to it.

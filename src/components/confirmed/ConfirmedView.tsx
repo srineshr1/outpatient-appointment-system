@@ -49,7 +49,7 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
   const reason = booking ? (reasons.find((item) => item.id === booking.reasonId) ?? null) : null;
 
   useEffect(() => {
-    if (ready && (!booking || !doctor || !reason)) router.replace("/");
+    if (ready && (!booking || !doctor || !reason)) router.replace("/book");
   }, [ready, booking, doctor, reason, router]);
 
   if (!ready || !booking || !doctor || !reason) {
@@ -65,7 +65,7 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
 
   function startOver() {
     dispatch({ type: "startOver" });
-    router.push("/");
+    router.push("/book");
   }
 
   return (

@@ -3,6 +3,7 @@ import type {
   AppointmentRecord,
   AppointmentStatus,
   ClinicStore,
+  LoginCodeRecord,
   NewUser,
   PublicUser,
   StoredUser,
@@ -25,6 +26,10 @@ function sessionPath(tokenHash: string): string {
 
 function appointmentPath(id: string): string {
   return `hsp/appointments/${id}.json`;
+}
+
+function loginCodePath(email: string): string {
+  return `hsp/login-codes/${hashToken(email)}.json`;
 }
 
 function slotPath(slotId: string): string {
@@ -187,6 +192,22 @@ export class BlobClinicStore implements ClinicStore {
       } catch (error) {
         if (!isMissing(error)) throw error;
       }
+    }
+  }
+
+  async putLoginCode(record: LoginCodeRecord): Promise<void> {
+    await writeOver(loginCodePath(record.email), record);
+  }
+
+  async getLoginCode(email: string): Promise<LoginCodeRecord | null> {
+    return readJson<LoginCodeRecord>(loginCodePath(email));
+  }
+
+  async deleteLoginCode(email: string): Promise<void> {
+    try {
+      await del(loginCodePath(email));
+    } catch (error) {
+      if (!isMissing(error)) throw error;
     }
   }
 }

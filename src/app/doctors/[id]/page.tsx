@@ -31,5 +31,13 @@ export default async function DoctorPage({ params, searchParams }: Props) {
   const firstOpen = nextOpening(slots, doctor.id, [], now());
   const initialWeek = clampWeek(requested, window, firstOpen?.date);
 
-  return <ScheduleView doctor={doctor} slots={slots} initialWeek={initialWeek} signedIn={Boolean(user)} />;
+  return (
+    <ScheduleView
+      doctor={doctor}
+      slots={slots}
+      initialWeek={initialWeek}
+      signedIn={Boolean(user)}
+      allDoctorsHref={user?.role === "patient" ? "/book" : "/#doctors"}
+    />
+  );
 }

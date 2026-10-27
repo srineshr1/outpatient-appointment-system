@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Google_Sans, Inter } from "next/font/google";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/providers/Providers";
@@ -11,8 +11,10 @@ import { getCurrentUser } from "@/lib/session";
 import "./globals.css";
 
 // Self-hosted at build time by next/font: no request reaches Google from the browser.
-// Apple devices render SF Pro from the system stack; Inter is the fallback elsewhere.
+// Inter is the face on every platform.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// Bold statement headings, such as the sign-in page.
+const googleSans = Google_Sans({ subsets: ["latin"], weight: ["700"], variable: "--font-google-sans", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -47,7 +49,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const user = await getCurrentUser();
 
   return (
-    <html lang="en-GB" className={inter.variable}>
+    <html lang="en-GB" className={`${inter.variable} ${googleSans.variable}`}>
       <body className="flex min-h-dvh flex-col bg-canvas text-ink">
         <a
           href="#main"

@@ -5,6 +5,7 @@ import type {
   AppointmentRecord,
   AppointmentStatus,
   ClinicStore,
+  LoginCodeRecord,
   NewUser,
   PublicUser,
   Role,
@@ -144,6 +145,15 @@ export class SqliteClinicStore implements ClinicStore {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS login_codes (
+        email TEXT PRIMARY KEY,
+        code_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        sent_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        signup_token_hash TEXT
+      );
+
       CREATE UNIQUE INDEX IF NOT EXISTS appointments_one_held_slot
         ON appointments(slot_id) WHERE status IN ('booked', 'completed');
     `);
@@ -264,5 +274,43 @@ export class SqliteClinicStore implements ClinicStore {
 
   async updateStatus(id: string, status: AppointmentStatus): Promise<void> {
     this.db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, id);
+  }
+
+  async putLoginCode(record: LoginCodeRecord): Promise<void> {
+    this.db
+      .prepare(
+        `INSERT INTO login_codes (email, code_hash, expires_at, sent_at, attempts, signup_token_hash)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(email) DO UPDATE SET
+           code_hash = excluded.code_hash, expires_at = excluded.expires_at, sent_at = excluded.sent_at,
+           attempts = excluded.attempts, signup_token_hash = excluded.signup_token_hash`,
+      )
+      .run(record.email, record.codeHash, record.expiresAt, record.sentAt, record.attempts, record.signupTokenHash);
+  }
+
+  async getLoginCode(email: string): Promise<LoginCodeRecord | null> {
+    const row = this.db.prepare("SELECT * FROM login_codes WHERE email = ?").get(email) as
+      | {
+          email: string;
+          code_hash: string;
+          expires_at: string;
+          sent_at: string;
+          attempts: number;
+          signup_token_hash: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      email: row.email,
+      codeHash: row.code_hash,
+      expiresAt: row.expires_at,
+      sentAt: row.sent_at,
+      attempts: Number(row.attempts),
+      signupTokenHash: row.signup_token_hash,
+    };
+  }
+
+  async deleteLoginCode(email: string): Promise<void> {
+    this.db.prepare("DELETE FROM login_codes WHERE email = ?").run(email);
   }
 }
