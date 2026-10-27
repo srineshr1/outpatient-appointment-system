@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DetailsView } from "@/components/details/DetailsView";
 import { getDoctors } from "@/lib/repository";
+import { getCurrentUser } from "@/lib/session";
 
 export const metadata: Metadata = {
   title: "Your details",
@@ -8,6 +9,11 @@ export const metadata: Metadata = {
 };
 
 export default async function DetailsPage() {
-  const doctors = await getDoctors();
-  return <DetailsView doctors={doctors} />;
+  const [doctors, user] = await Promise.all([getDoctors(), getCurrentUser()]);
+  return (
+    <DetailsView
+      doctors={doctors}
+      account={user ? { name: user.name, dob: user.dob, mobile: user.mobile, email: user.email } : null}
+    />
+  );
 }

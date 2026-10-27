@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { AppointmentSummary } from "@/components/booking/AppointmentSummary";
@@ -88,6 +89,11 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
           </p>
           <p className="mt-6 text-callout text-muted">Booking reference</p>
           <p className="tabular mt-1 text-title2 font-semibold tracking-wide text-ink select-all">{reference}</p>
+          <p className="mt-4 text-callout">
+            <Link href="/appointments" className="text-accent hover:underline underline-offset-4">
+              View your appointments
+            </Link>
+          </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Button
               size="lg"
@@ -137,7 +143,11 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
               {chi ? `Your CHI number (${chi}).` : "Your CHI number, if you have it."} Please arrive five minutes early.
             </Item>
             <Item term="Can’t make it?">
-              Call{" "}
+              Cancel the visit from{" "}
+              <Link href="/appointments" className="text-accent hover:underline underline-offset-4">
+                your appointments
+              </Link>
+              , or call{" "}
               <a href={practice.phoneHref} className="tabular text-accent hover:underline underline-offset-4">
                 {practice.phoneDisplay}
               </a>{" "}

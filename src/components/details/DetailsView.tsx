@@ -17,7 +17,7 @@ import { mondayOf } from "@/lib/clock";
 import { practice, reasons, type Doctor } from "@/lib/data";
 import { ageLabel, formatWhen } from "@/lib/format";
 import { spring } from "@/lib/motion";
-import { confirmBooking, SlotUnavailableError } from "@/lib/repository";
+import { bookAppointment } from "@/server/booking-actions";
 import { FIELD_ORDER, NOTE_LIMIT, validateDob, validatePatient, type PatientErrors, type PatientForm } from "@/lib/validate";
 
 const FIELD_TARGET: Partial<Record<keyof PatientForm, string>> = { reasonId: `reason-${reasons[0]!.id}` };
@@ -26,7 +26,14 @@ function targetId(key: keyof PatientForm): string {
   return FIELD_TARGET[key] ?? key;
 }
 
-export function DetailsView({ doctors }: { doctors: Doctor[] }) {
+export interface BookingAccount {
+  name: string;
+  dob: string;
+  mobile: string;
+  email: string;
+}
+
+export function DetailsView({ doctors, account = null }: { doctors: Doctor[]; account?: BookingAccount | null }) {
   const router = useRouter();
   const { state, dispatch, ready } = useBooking();
   const { window } = useClock();
@@ -35,6 +42,7 @@ export function DetailsView({ doctors }: { doctors: Doctor[] }) {
   const [submitting, setSubmitting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const leaving = useRef(false);
+  const prefilled = useRef(false);
 
   const { held, form } = state;
   const doctor = held ? (doctors.find((item) => item.id === held.doctorId) ?? null) : null;
@@ -45,6 +53,16 @@ export function DetailsView({ doctors }: { doctors: Doctor[] }) {
   useEffect(() => {
     if (ready && (!held || !doctor) && !leaving.current) router.replace("/");
   }, [ready, held, doctor, router]);
+
+  useEffect(() => {
+    if (!ready || !account || prefilled.current) return;
+    prefilled.current = true;
+    const patch: Partial<PatientForm> = {};
+    if (!form.name && account.name) patch.name = account.name;
+    if (!form.dob && account.dob) patch.dob = account.dob;
+    if (!form.mobile && account.mobile) patch.mobile = account.mobile;
+    if (Object.keys(patch).length > 0) dispatch({ type: "updateForm", patch });
+  }, [ready, account, form.name, form.dob, form.mobile, dispatch]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -90,12 +108,28 @@ export function DetailsView({ doctors }: { doctors: Doctor[] }) {
 
     setSubmitting(true);
     try {
-      const result = await confirmBooking({
+      const result = await bookAppointment({
         slot: heldSlot,
         reasonId: form.reasonId,
         patientName: form.name,
+        patientDob: form.dob,
+        patientMobile: form.mobile,
+        patientChi: form.chi,
+        note: form.note,
         takenIds: state.takenIds,
       });
+      if (!result.ok) {
+        if (result.reason === "invalid") {
+          setSubmitting(false);
+          setFailure(result.message);
+          return;
+        }
+        leaving.current = true;
+        const what = result.reason === "past" ? "has closed for online booking" : "was just booked by someone else";
+        dispatch({ type: "slotLost", slot: heldSlot, message: `${formatWhen(heldSlot, window.today)} ${what}.` });
+        router.push(backHref);
+        return;
+      }
       leaving.current = true;
       dispatch({
         type: "confirmed",
@@ -108,15 +142,8 @@ export function DetailsView({ doctors }: { doctors: Doctor[] }) {
         },
       });
       router.push("/book/confirmed");
-    } catch (error) {
+    } catch {
       setSubmitting(false);
-      if (error instanceof SlotUnavailableError) {
-        leaving.current = true;
-        const what = error.reason === "past" ? "has closed for online booking" : "was just booked by someone else";
-        dispatch({ type: "slotLost", slot: heldSlot, message: `${formatWhen(heldSlot, window.today)} ${what}.` });
-        router.push(backHref);
-        return;
-      }
       setFailure("We couldn’t reach the booking system. Nothing has been booked. Please try again.");
     }
   }
@@ -130,6 +157,18 @@ export function DetailsView({ doctors }: { doctors: Doctor[] }) {
       <p className="mt-2 max-w-prose text-body text-ink-2">
         Tell us who’s coming in, so we can find the right record.
       </p>
+      {account ? (
+        <Notice tone="info" className="mt-6">
+          Signed in as {account.name}. This visit is saved to your appointments and to {heldDoctor.short}’s clinic book.
+        </Notice>
+      ) : (
+        <Notice tone="info" className="mt-6">
+          <Link href={`/sign-in?next=${encodeURIComponent("/book/details")}`} className="font-semibold text-accent hover:underline underline-offset-4">
+            Sign in
+          </Link>{" "}
+          before you book to keep this visit on your account. The doctor’s clinic book records it either way.
+        </Notice>
+      )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-12 lg:gap-10">
         <aside className="lg:sticky lg:top-32 lg:order-2 lg:col-span-5 lg:self-start">

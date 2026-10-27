@@ -7,6 +7,7 @@ import { SiteFooter } from "@/components/shell/SiteFooter";
 import { SiteHeader } from "@/components/shell/SiteHeader";
 import { now } from "@/lib/clock";
 import { practice } from "@/lib/data";
+import { getCurrentUser } from "@/lib/session";
 import "./globals.css";
 
 // Self-hosted at build time by next/font: no request reaches Google from the browser.
@@ -43,6 +44,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Availability depends on the current time, so render per request.
   await connection();
   const initialNow = now().getTime();
+  const user = await getCurrentUser();
 
   return (
     <html lang="en-GB" className={inter.variable}>
@@ -54,7 +56,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           Skip to main content
         </a>
         <Providers initialNow={initialNow}>
-          <SiteHeader />
+          <SiteHeader user={user} />
           <main id="main" tabIndex={-1} className="flex-1 outline-none">
             {children}
           </main>

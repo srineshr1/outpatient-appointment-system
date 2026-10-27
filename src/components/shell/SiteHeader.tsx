@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Phone } from "@/components/icons";
 import { StepIndicator } from "@/components/ui/StepIndicator";
+import type { PublicUser } from "@/lib/clinic-types";
 import { practice } from "@/lib/data";
+import { signOutAction } from "@/server/auth-actions";
 
 export function stepFor(pathname: string): number | null {
   if (pathname === "/") return 0;
@@ -14,9 +16,11 @@ export function stepFor(pathname: string): number | null {
   return null;
 }
 
-export function SiteHeader() {
+export function SiteHeader({ user }: { user: PublicUser | null }) {
   const pathname = usePathname();
   const step = stepFor(pathname);
+  const bookHref = user && user.role !== "patient" ? "/dashboard" : "/appointments";
+  const bookLabel = user && user.role !== "patient" ? "Clinic book" : "Appointments";
 
   return (
     <header className="sticky top-0 z-30 border-b border-black/[0.06] bg-canvas/80 backdrop-blur-xl backdrop-saturate-150">
@@ -36,14 +40,41 @@ export function SiteHeader() {
               <span className="font-normal text-muted"> Practice</span>
             </span>
           </Link>
-          <a
-            href={practice.phoneHref}
-            aria-label={`Call the practice on ${practice.phoneDisplay}`}
-            className="tabular inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-callout font-medium text-accent transition-colors hover:bg-accent-soft"
-          >
-            <Phone size={18} />
-            <span className="hidden sm:inline">{practice.phoneDisplay}</span>
-          </a>
+          <div className="flex items-center gap-1">
+            {user ? (
+              <>
+                <Link
+                  href={bookHref}
+                  className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-accent hover:bg-accent-soft"
+                >
+                  {bookLabel}
+                </Link>
+                <form action={signOutAction}>
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-ink-2 hover:bg-fill"
+                  >
+                    Sign out
+                  </button>
+                </form>
+              </>
+            ) : (
+              <Link
+                href="/sign-in"
+                className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-accent hover:bg-accent-soft"
+              >
+                Sign in
+              </Link>
+            )}
+            <a
+              href={practice.phoneHref}
+              aria-label={`Call the practice on ${practice.phoneDisplay}`}
+              className="tabular inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-callout font-medium text-accent transition-colors hover:bg-accent-soft"
+            >
+              <Phone size={18} />
+              <span className="hidden sm:inline">{practice.phoneDisplay}</span>
+            </a>
+          </div>
         </div>
         {step !== null ? (
           <div className="pb-3">

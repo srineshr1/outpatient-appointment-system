@@ -9,6 +9,7 @@ import { now } from "./clock";
 import { bookWindow, doctors, generateSlots, reasons, type BookWindow, type Doctor, type Slot } from "./data";
 import { referenceFor } from "./format";
 import { slotStatus } from "./schedule";
+import { getStore } from "./store";
 
 export class SlotUnavailableError extends Error {
   readonly slotId: string;
@@ -43,7 +44,9 @@ export async function getDoctor(id: string): Promise<Doctor | null> {
 
 export async function getSlots(doctorId?: string): Promise<Slot[]> {
   const all = slotsForWindow(bookWindow(now()));
-  return doctorId ? all.filter((slot) => slot.doctorId === doctorId) : all;
+  const blocked = new Set(await (await getStore()).listBlockedSlotIds());
+  const merged = all.map((slot) => (blocked.has(slot.id) && !slot.taken ? { ...slot, taken: true } : slot));
+  return doctorId ? merged.filter((slot) => slot.doctorId === doctorId) : merged;
 }
 
 /** For each doctor, the next few bookable-looking slots. Used by the directory. */
@@ -63,24 +66,50 @@ export interface ConfirmInput {
   slot: Slot;
   reasonId: string;
   patientName: string;
-  /** Times booked earlier in this session; the stand-in for server-side state. */
+  /** Times booked earlier in this session, as well as the server book. */
   takenIds: readonly string[];
+  patientDob?: string;
+  patientMobile?: string;
+  patientChi?: string;
+  note?: string;
+  patientUserId?: string | null;
 }
 
 export interface ConfirmResult {
   reference: string;
 }
 
-const LATENCY_MS = 650;
-
-export async function confirmBooking(input: ConfirmInput, latency = LATENCY_MS): Promise<ConfirmResult> {
+export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<ConfirmResult> {
   if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
   if (!reasons.some((reason) => reason.id === input.reasonId)) throw new Error("Unknown visit reason.");
 
   const current = slotsForWindow(bookWindow(now())).find((slot) => slot.id === input.slot.id);
   if (!current) throw new SlotUnavailableError(input.slot.id, "missing");
-  const status = slotStatus(current, input.takenIds, now());
+
+  const store = await getStore();
+  const blocked = await store.listBlockedSlotIds();
+  const takenIds = Array.from(new Set([...input.takenIds, ...blocked]));
+  const status = slotStatus(current, takenIds, now());
   if (status !== "open") throw new SlotUnavailableError(current.id, status);
 
-  return { reference: referenceFor(current.id, input.patientName) };
+  const reference = referenceFor(current.id, input.patientName);
+  const outcome = await store.createAppointment({
+    id: crypto.randomUUID(),
+    reference,
+    slotId: current.id,
+    doctorId: current.doctorId,
+    date: current.date,
+    time: current.time,
+    reasonId: input.reasonId,
+    patientName: input.patientName.trim(),
+    patientDob: input.patientDob ?? "",
+    patientMobile: input.patientMobile ?? "",
+    patientChi: (input.patientChi ?? "").replace(/\s/g, ""),
+    note: input.note?.trim() ?? "",
+    status: "booked",
+    patientUserId: input.patientUserId ?? null,
+    createdAt: new Date().toISOString(),
+  });
+  if (outcome === "taken") throw new SlotUnavailableError(current.id, "taken");
+  return { reference };
 }

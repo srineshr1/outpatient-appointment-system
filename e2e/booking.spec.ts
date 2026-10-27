@@ -23,6 +23,18 @@ async function chooseFirstOpenTime(page: Page) {
   throw new Error("No open time in the window");
 }
 
+async function bookUntilConfirmed(page: Page) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.getByRole("button", { name: "Book appointment" }).click();
+    await page.waitForURL(/\/(book\/confirmed|doctors\/)/);
+    if (/\/book\/confirmed$/.test(page.url())) return;
+    await chooseFirstOpenTime(page);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await fillDetails(page);
+  }
+  throw new Error("Could not book an open time");
+}
+
 async function fillDetails(page: Page) {
   await page.getByLabel("Full name").fill("Ann Lee");
   await page.getByLabel("Date of birth").fill("1980-03-14");
@@ -65,8 +77,7 @@ test("full booking flow, with refresh and back", async ({ page }) => {
   await expectAccessible(page);
 
   await fillDetails(page);
-  await page.getByRole("button", { name: "Book appointment" }).click();
-  await expect(page).toHaveURL(/\/book\/confirmed$/);
+  await bookUntilConfirmed(page);
   await expect(page.getByRole("heading", { name: "You’re booked" })).toBeVisible();
   await expect(page.getByText(/^HSP-\d{4}$/)).toBeVisible();
   await expectAccessible(page);
