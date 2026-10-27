@@ -6,7 +6,7 @@ import { destinationFor } from "@/lib/auth-routing";
 import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RESEND_AFTER_MS } from "@/lib/login-codes";
 import { ownMailConfigured, sendLoginCode, showsCodeOnScreen } from "@/lib/mailer";
 import { normaliseEmail } from "@/lib/passwords";
-import { CODE_LENGTH } from "@/lib/sign-in-config";
+import { CODE_LENGTH, SUPABASE_CODE_LENGTH } from "@/lib/sign-in-config";
 import { SEND_FAILED, sendCodeErrorMessage } from "@/lib/sign-in-errors";
 import { destroySession, getCurrentUser, safeNext, startSession } from "@/lib/session";
 import { blockedSignIn, DISABLED_MESSAGE, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
@@ -41,6 +41,8 @@ export type RequestCodeResult =
       email: string;
       /** Milliseconds until another code can be sent. */
       resendInMs: number;
+      /** Digits in the code that was sent: 4 for the app's own codes, 6 when Supabase sent it. */
+      codeLength: number;
       /** Development only, when no mail key is set: the code, so local sign-in works offline. */
       devCode?: string;
     }
@@ -62,7 +64,7 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
       },
     });
     if (error) return { ok: false, error: sendCodeErrorMessage(error) };
-    return { ok: true, email, resendInMs: RESEND_AFTER_MS };
+    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: SUPABASE_CODE_LENGTH };
   }
 
   if (input.mode === "staff") {
@@ -75,16 +77,16 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
   const onScreen = showsCodeOnScreen(email);
   const issued = await issueCode(email, new Date(), !onScreen);
   // A code went out moments ago: carry on to the code step rather than sending another.
-  if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs };
+  if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs, codeLength: CODE_LENGTH };
 
   if (onScreen) {
     console.info(`[sign-in] On-screen code issued for ${email}`);
-    return { ok: true, email, resendInMs: RESEND_AFTER_MS, devCode: issued.code };
+    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH, devCode: issued.code };
   }
 
   try {
     await sendLoginCode(email, issued.code);
-    return { ok: true, email, resendInMs: RESEND_AFTER_MS };
+    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH };
   } catch (error) {
     console.error(`[sign-in] Could not send a code: ${error instanceof Error ? error.message : "unknown error"}`);
     return { ok: false, error: SEND_FAILED };
@@ -104,9 +106,11 @@ export async function verifyCode(input: {
 }): Promise<VerifyCodeResult> {
   const email = normaliseEmail(String(input.email ?? ""));
   const code = String(input.code ?? "").replace(/\D/g, "");
-  if (code.length !== CODE_LENGTH) return { ok: false, error: `Enter the ${CODE_LENGTH}-digit code from the email.` };
+  const viaSupabase = sendsThroughSupabase(email);
+  const length = viaSupabase ? SUPABASE_CODE_LENGTH : CODE_LENGTH;
+  if (code.length !== length) return { ok: false, error: `Enter the ${length}-digit code from the email.` };
 
-  if (sendsThroughSupabase(email)) {
+  if (viaSupabase) {
     const supabase = await createSupabase();
     const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
     if (error || !data.user) {

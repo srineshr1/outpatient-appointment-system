@@ -3,7 +3,7 @@ import { loginEmail } from "./login-email";
 
 describe("loginEmail", () => {
   const email = loginEmail({
-    code: "042917",
+    code: "4291",
     minutes: 10,
     practiceName: "Westbrook Medical Practice",
     practiceShortName: "Westbrook",
@@ -11,10 +11,10 @@ describe("loginEmail", () => {
   });
 
   it("puts the code and expiry in the subject, text and HTML", () => {
-    expect(email.subject).toBe("042917 is your Westbrook sign-in code");
-    expect(email.text).toContain("042917");
+    expect(email.subject).toBe("4291 is your Westbrook sign-in code");
+    expect(email.text).toContain("4291");
     expect(email.text).toContain("expires in 10 minutes");
-    expect(email.html).toContain(">042917<");
+    expect(email.html).toContain(">4291<");
     expect(email.html).toContain("10 minutes");
   });
 

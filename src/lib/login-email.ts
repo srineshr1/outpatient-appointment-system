@@ -52,7 +52,7 @@ export function loginEmail({ code, minutes, practiceName, practiceShortName, add
 <tr><td style="padding:20px 32px 0;font-size:22px;font-weight:600;line-height:1.3;">Your sign-in code</td></tr>
 <tr><td style="padding:12px 32px 0;font-size:15px;line-height:1.5;color:#424245;">Enter this code on the sign-in page to continue.</td></tr>
 <tr><td style="padding:20px 32px;">
-<div style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:32px;font-weight:700;letter-spacing:8px;text-align:center;background:#f4f5f7;border-radius:8px;padding:16px 8px;">${digits}</div>
+<div style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:36px;font-weight:700;letter-spacing:12px;text-align:center;background:#f4f5f7;border-radius:8px;padding:16px 8px;">${digits}</div>
 </td></tr>
 <tr><td style="padding:0 32px;font-size:15px;line-height:1.5;color:#424245;">It expires in <strong>${expiry}</strong>.</td></tr>
 <tr><td style="padding:16px 32px 28px;font-size:13px;line-height:1.5;color:#6e6e73;">If you didn’t ask for this code, you can ignore this email. Nobody can sign in without it. Never share it: the practice will never ask you for it.</td></tr>
