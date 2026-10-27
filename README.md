@@ -70,7 +70,7 @@ npm run make-doctor -- you@example.com cho "Dr Your Name"
 
 ### Email codes through Supabase (the hosted app)
 
-When `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set, Supabase Auth sends the 6-digit code and the Resend settings above are not used. Configure it in the Supabase dashboard, not in code:
+When `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set, Supabase Auth sends the code (Supabase codes are 6 digits, so the sign-in page shows 6 boxes for them) and the Resend settings above are not used. Configure it in the Supabase dashboard, not in code:
 
 - **Authentication → Emails → SMTP settings**: turn on custom SMTP (for example Resend's SMTP, with a sender on a domain you have verified). Supabase's built-in mailer only allows a couple of emails an hour and refuses addresses outside your team, so real patients won't get codes without it.
 - **Authentication → Rate limits**: raise "emails sent per hour" once custom SMTP is on.
