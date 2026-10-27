@@ -22,26 +22,14 @@ export class AdminError extends Error {
 }
 
 /**
- * TESTING ONLY. With OPEN_ADMIN=1 the console needs no sign-in: anyone who isn't an admin acts as
- * the sample practice manager. Remove the setting to put the sign-in back.
+ * The signed-in admin, or null. Pages redirect on null; actions refuse.
+ * There is deliberately no "open console" or demo fallback: only a real session for an
+ * active account with the admin role gets through.
  */
-export function adminOpen(): boolean {
-  return process.env.OPEN_ADMIN === "1";
-}
-
-const OPEN_ADMIN_ID = "user-admin";
-
-async function openAdmin(): Promise<SessionUser | null> {
-  const account = await (await getStore()).getUserById(OPEN_ADMIN_ID);
-  if (!account || account.role !== "admin" || account.disabledAt) return null;
-  return { ...account, expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), sessionId: null };
-}
-
-/** The signed-in admin, or null. Pages redirect on null; actions refuse. */
 export async function currentAdmin(): Promise<SessionUser | null> {
   const user = await getCurrentUser();
-  if (user?.role === "admin") return user;
-  return adminOpen() ? openAdmin() : null;
+  if (user && user.role === "admin" && !user.disabledAt) return user;
+  return null;
 }
 
 export function isActiveAdmin(account: Pick<UserAccount, "role" | "disabledAt">): boolean {

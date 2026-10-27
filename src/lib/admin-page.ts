@@ -12,7 +12,12 @@ export async function requireAdminPage(path: string): Promise<SessionUser> {
   const admin = await currentAdmin();
   if (admin) return admin;
   const user = await getCurrentUser();
-  if (!user) redirect(`/sign-in?as=staff&next=${encodeURIComponent(path)}`);
-  if (user.role !== "admin") redirect(homeFor(user.role));
-  return user;
+  if (!user) redirect(signInPathFor(path));
+  redirect(homeFor(user.role));
+}
+
+/** Staff sign-in that comes back to `path` (an /admin path) afterwards. */
+export function signInPathFor(path: string): string {
+  const safe = path.startsWith("/admin") ? path : "/admin";
+  return `/sign-in?as=staff&next=${encodeURIComponent(safe)}`;
 }

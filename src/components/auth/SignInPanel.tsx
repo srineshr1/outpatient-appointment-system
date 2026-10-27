@@ -278,7 +278,7 @@ function EmailField({
           readOnly={pending}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder={staff ? "name@halden.example" : "Enter your email"}
+          placeholder={staff ? "Enter your practice email" : "Enter your email"}
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={error ? "email-error" : undefined}
           className="field h-14 rounded-full! pr-16 pl-5"
@@ -299,6 +299,11 @@ function EmailField({
         </button>
       </div>
       <ErrorText id="email-error" message={error} />
+      {staff ? null : (
+        <p className="mt-3 px-2 text-callout text-muted">
+          New here? Enter your email and we’ll send you a sign-in code. That creates your account.
+        </p>
+      )}
     </form>
   );
 }

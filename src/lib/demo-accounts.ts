@@ -88,7 +88,7 @@ export const demoAccounts: DemoAccount[] = [
   {
     id: "user-desk",
     email: "desk@halden.example",
-    name: "Halden Street desk",
+    name: "Westbrook reception desk",
     role: "reception",
     doctorId: null,
     mobile: "",

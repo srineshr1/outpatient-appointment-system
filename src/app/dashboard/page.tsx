@@ -26,7 +26,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ doctor?: string | string[]; notice?: string | string[] }>;
 }) {
   const user = await getCurrentUser();
-  if (!user) redirect("/sign-in?next=/dashboard");
+  if (!user) redirect("/sign-in?as=staff&next=/dashboard");
   if (user.role === "patient") redirect("/appointments");
 
   const query = await searchParams;
