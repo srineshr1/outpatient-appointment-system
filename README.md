@@ -68,6 +68,19 @@ npm run make-doctor -- you@example.com cho "Dr Your Name"
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable “Sign in with Google”. Register the redirect URI `<site>/auth/google/callback` in Google Cloud (OAuth client, type Web) |
 | `SHOW_LOGIN_CODES=1` | Show codes on screen in a production build with no mail key. For demos and e2e only |
 
+### Email codes through Supabase (the hosted app)
+
+When `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set, Supabase Auth sends the 6-digit code and the Resend settings above are not used. Configure it in the Supabase dashboard, not in code:
+
+- **Authentication → Emails → SMTP settings**: turn on custom SMTP (for example Resend's SMTP, with a sender on a domain you have verified). Supabase's built-in mailer only allows a couple of emails an hour and refuses addresses outside your team, so real patients won't get codes without it.
+- **Authentication → Rate limits**: raise "emails sent per hour" once custom SMTP is on.
+- **Authentication → Emails → Templates → Magic link and Confirm signup**: include `{{ .Token }}` so the email shows the code the sign-in page asks for.
+- **Authentication → URL configuration**: set the Site URL to the public origin and add `<site>/auth/confirm` to the redirect URLs.
+
+Supabase refuses reserved test domains such as `example.com` (`email_address_invalid`), so test with an inbox you can open. The sign-in page now says which problem it hit, and the server log records the Supabase error code (never the address).
+
+The admin console has no open or demo mode: it always needs a signed-in admin. An old `OPEN_ADMIN` environment variable is ignored and can be deleted.
+
 Codes are 4 digits, valid for 10 minutes, five tries, and one new code a minute. Only an HMAC of each code is stored. Google sign-in uses PKCE and a one-time state cookie, and accepts only Google-verified emails. In production with no mail key and no `SHOW_LOGIN_CODES`, sign-in by email fails rather than silently dropping codes.
 
 This is a demonstration practice. Don’t enter a real CHI number or medical details you want kept private.

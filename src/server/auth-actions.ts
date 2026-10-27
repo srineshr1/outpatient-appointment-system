@@ -7,11 +7,21 @@ import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RE
 import { devCodesAllowed, sendLoginCode } from "@/lib/mailer";
 import { normaliseEmail } from "@/lib/passwords";
 import { CODE_LENGTH } from "@/lib/sign-in-config";
+import { SEND_FAILED, sendCodeErrorMessage } from "@/lib/sign-in-errors";
 import { destroySession, getCurrentUser, safeNext, startSession } from "@/lib/session";
 import { blockedSignIn, DISABLED_MESSAGE, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
 import { createSupabase, supabaseConfigured } from "@/lib/supabase";
 
 export type SignInMode = "patient" | "staff";
+
+/** Where links in Supabase emails point. NEXT_PUBLIC_SITE_URL wins; on Vercel, fall back to the production domain. */
+function siteUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel}`;
+  return "http://localhost:3000";
+}
 
 export type RequestCodeResult =
   | {
@@ -31,7 +41,7 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
 
   if (supabaseConfigured()) {
     const supabase = await createSupabase();
-    const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://halden-street-practice.vercel.app";
+    const site = siteUrl();
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
@@ -39,7 +49,7 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
         emailRedirectTo: `${site}/auth/confirm`,
       },
     });
-    if (error) return { ok: false, error: "We couldn’t send the confirmation email. Try again in a minute." };
+    if (error) return { ok: false, error: sendCodeErrorMessage(error) };
     return { ok: true, email, resendInMs: RESEND_AFTER_MS };
   }
 
@@ -62,8 +72,9 @@ export async function requestCode(input: { email: string; mode: SignInMode }): P
       resendInMs: RESEND_AFTER_MS,
       devCode: sent.via === "console" && devCodesAllowed() ? issued.code : undefined,
     };
-  } catch {
-    return { ok: false, error: "We couldn’t send the email just now. Please try again in a minute." };
+  } catch (error) {
+    console.error(`[sign-in] Could not send a code: ${error instanceof Error ? error.message : "unknown error"}`);
+    return { ok: false, error: SEND_FAILED };
   }
 }
 

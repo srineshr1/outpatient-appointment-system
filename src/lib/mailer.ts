@@ -47,6 +47,11 @@ export async function sendLoginCode(email: string, code: string): Promise<SentCo
       html: `<p>Your sign-in code is</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>It works for 10 minutes. If you didn’t ask for it, you can ignore this email.</p><p>${practice.name}</p>`,
     }),
   });
-  if (!response.ok) throw new Error(`Email provider responded ${response.status}.`);
+  if (!response.ok) {
+    // Resend explains refusals in the body, e.g. an unverified MAIL_FROM domain. It never echoes the key.
+    const detail = await response.text().catch(() => "");
+    const hint = process.env.MAIL_FROM ? "" : " MAIL_FROM is not set, so the test sender onboarding@resend.dev was used; it only delivers to the Resend account owner.";
+    throw new Error(`Email provider responded ${response.status}: ${detail.slice(0, 300)}${hint}`);
+  }
   return { via: "email" };
 }
