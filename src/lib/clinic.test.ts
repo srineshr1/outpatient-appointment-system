@@ -99,6 +99,25 @@ describe("email sign-in codes", () => {
     expect(again.ok && record?.codeHash.includes(again.code)).toBe(false);
   });
 
+  it("stores a code while it is delivered, and drops it again when delivery fails", async () => {
+    const { checkCode, issueCode } = await import("./login-codes");
+    const at = new Date("2026-10-26T10:00:00Z");
+    const sent: string[] = [];
+    const ok = await issueCode("deliver.ok@example.com", at, true, async (code) => void sent.push(code));
+    expect(ok.ok && sent).toEqual([ok.ok ? ok.code : ""]);
+    expect(await (await getStore()).getLoginCode("deliver.ok@example.com")).not.toBeNull();
+
+    await expect(
+      issueCode("deliver.fail@example.com", at, true, async () => {
+        throw new Error("mail down");
+      }),
+    ).rejects.toThrow("mail down");
+    // Nothing is left to throttle the next try, and a new code can be asked for straight away.
+    expect(await (await getStore()).getLoginCode("deliver.fail@example.com")).toBeNull();
+    expect(await issueCode("deliver.fail@example.com", new Date(at.getTime() + 1_000))).toMatchObject({ ok: true });
+    expect(await checkCode("deliver.ok@example.com", "0000", at)).toBeDefined();
+  });
+
   it("expires after ten minutes and locks after five wrong tries", async () => {
     const { checkCode, issueCode } = await import("./login-codes");
     const at = new Date("2026-10-26T11:00:00Z");

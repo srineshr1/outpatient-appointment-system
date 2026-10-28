@@ -16,10 +16,14 @@ export function seesWholeBook(user: Pick<PublicUser, "role">): boolean {
 }
 
 export async function visitsFor(user: PublicUser): Promise<AppointmentRecord[]> {
-  const all = sortVisits(await (await getStore()).listAppointments());
-  if (seesWholeBook(user)) return all;
-  if (user.role === "doctor") return all.filter((visit) => visit.doctorId === user.doctorId);
-  return all.filter((visit) => visit.patientUserId === user.id);
+  const store = await getStore();
+  // Ask the store for just this person's book rather than reading every visit and filtering here.
+  if (seesWholeBook(user)) return sortVisits(await store.listAppointments());
+  if (user.role === "doctor") {
+    if (!user.doctorId) return [];
+    return sortVisits(await store.listAppointments({ doctorId: user.doctorId }));
+  }
+  return sortVisits(await store.listAppointments({ patientUserId: user.id }));
 }
 
 export async function changeAppointmentStatus(

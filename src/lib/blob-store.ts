@@ -1,16 +1,18 @@
 import { BlobPreconditionFailedError, del, get, list, put } from "@vercel/blob";
-import type {
-  AppointmentRecord,
-  AppointmentStatus,
-  AuditEvent,
-  ChargeRecord,
-  ClinicStore,
-  LoginCodeRecord,
-  NewUser,
-  SessionRecord,
-  StoredUser,
-  UserAccount,
-  UserPatch,
+import {
+  matchesFilter,
+  type AppointmentFilter,
+  type AppointmentRecord,
+  type AppointmentStatus,
+  type AuditEvent,
+  type ChargeRecord,
+  type ClinicStore,
+  type LoginCodeRecord,
+  type NewUser,
+  type SessionRecord,
+  type StoredUser,
+  type UserAccount,
+  type UserPatch,
 } from "./clinic-types";
 import { hashToken } from "./passwords";
 
@@ -339,8 +341,12 @@ export class BlobClinicStore implements ClinicStore {
     }
   }
 
-  async listAppointments(): Promise<AppointmentRecord[]> {
-    return (await readAll<AppointmentRecord>("hsp/appointments/")).map((row) => row.value);
+  async listAppointments(filter: AppointmentFilter = {}): Promise<AppointmentRecord[]> {
+    return (await readAll<AppointmentRecord>("hsp/appointments/")).map((row) => row.value).filter((visit) => matchesFilter(visit, filter));
+  }
+
+  async referenceInUse(reference: string): Promise<boolean> {
+    return (await this.listAppointments()).some((visit) => visit.reference === reference);
   }
 
   async getAppointment(id: string): Promise<AppointmentRecord | null> {

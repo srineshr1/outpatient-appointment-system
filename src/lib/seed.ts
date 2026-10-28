@@ -1,14 +1,17 @@
-import type { ClinicStore } from "./clinic-types";
+import type { ClinicStore, UserAccount } from "./clinic-types";
 import { DEMO_PASSWORD, demoAccounts } from "./demo-accounts";
 import { hashPassword, normaliseEmail } from "./passwords";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function seedDemoUsers(store: ClinicStore): Promise<void> {
-  // Each account is independent, so check them together: a cold start reads the store once, not once per account.
+  // One read of the accounts answers every check below (demo accounts, admins, the repair), so a
+  // cold start makes one round trip to the store rather than one per account.
+  const users = await store.listUsers();
+  const byEmail = new Map(users.map((user) => [user.email, user]));
   await Promise.all(
     demoAccounts.map(async (account) => {
-      const existing = await store.getUserByEmail(account.email);
+      const existing = byEmail.get(account.email);
       if (existing) {
         await moveToOwnBook(store, account, existing);
         return;
@@ -26,7 +29,7 @@ export async function seedDemoUsers(store: ClinicStore): Promise<void> {
       });
     }),
   );
-  await Promise.all([bootstrapAdmins(store), repairSharedBooks(store)]);
+  await Promise.all([bootstrapAdmins(store, byEmail), repairSharedBooks(store, users)]);
 }
 
 /**
@@ -38,9 +41,9 @@ export async function seedDemoUsers(store: ClinicStore): Promise<void> {
  */
 export const SHARED_BOOK_REPAIRS: readonly { name: RegExp; from: string }[] = [{ name: /^dr\.?\s+someone$/i, from: "cho" }];
 
-export async function repairSharedBooks(store: ClinicStore): Promise<void> {
+export async function repairSharedBooks(store: ClinicStore, known?: readonly UserAccount[]): Promise<void> {
   const seeded = new Set(demoAccounts.map((account) => account.id));
-  for (const user of await store.listUsers()) {
+  for (const user of known ?? (await store.listUsers())) {
     if (user.role !== "doctor" || seeded.has(user.id) || !user.doctorId || user.doctorId === user.id) continue;
     const repair = SHARED_BOOK_REPAIRS.find((item) => item.from === user.doctorId && item.name.test(user.name.trim()));
     if (!repair) continue;
@@ -99,13 +102,15 @@ export function adminEmailsFromEnv(): string[] {
  * Make sure everyone in ADMIN_EMAILS has an admin account, creating it if needed. Runs while the
  * store opens, so it writes events straight to the store rather than through `recordEvent`.
  */
-async function bootstrapAdmins(store: ClinicStore): Promise<void> {
-  await Promise.all(adminEmailsFromEnv().map((email) => bootstrapAdmin(store, email)));
+async function bootstrapAdmins(store: ClinicStore, byEmail: ReadonlyMap<string, UserAccount>): Promise<void> {
+  await Promise.all(adminEmailsFromEnv().map((email) => bootstrapAdmin(store, email, byEmail)));
 }
 
-async function bootstrapAdmin(store: ClinicStore, email: string): Promise<void> {
+async function bootstrapAdmin(store: ClinicStore, email: string, byEmail: ReadonlyMap<string, UserAccount>): Promise<void> {
   {
-    const existing = await store.getUserByEmail(email);
+    // Accounts seeded a moment ago aren't in the list that was read first, so ask for those.
+    const listed = byEmail.get(email);
+    const existing = listed ?? (demoAccounts.some((account) => account.email === email) ? await store.getUserByEmail(email) : null);
     if (existing?.role === "admin") return;
     let id = existing?.id;
     if (existing) {

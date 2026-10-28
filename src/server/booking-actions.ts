@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { actorOf, recordEvent, visitSummary } from "@/lib/audit";
+import { actorOf, recordEventSoon, visitSummary } from "@/lib/audit";
 import { todayIso, now } from "@/lib/clock";
 import type { Slot } from "@/lib/data";
 import { formatMoney } from "@/lib/fees";
@@ -62,7 +62,7 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
       payNow: input.payNow === true,
     });
     const who = actorOf(user);
-    await recordEvent({
+    await recordEventSoon({
       actor: who,
       action: "appointment.booked",
       subjectType: "appointment",
@@ -70,7 +70,7 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
       summary: visitSummary(result.visit),
     });
     if (result.payment?.paid && result.payment.amountPence > 0) {
-      await recordEvent({
+      await recordEventSoon({
         actor: who,
         action: "payment.received",
         subjectType: "appointment",

@@ -91,10 +91,10 @@ export function newReference(): string {
 }
 
 async function uniqueReference(store: Awaited<ReturnType<typeof getStore>>): Promise<string> {
-  const used = new Set((await store.listAppointments()).map((visit) => visit.reference));
+  // One indexed lookup per candidate, not a read of every visit ever booked.
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const reference = newReference();
-    if (!used.has(reference)) return reference;
+    if (!(await store.referenceInUse(reference))) return reference;
   }
   throw new Error("Could not allocate a booking reference.");
 }
@@ -111,15 +111,17 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
   if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
   if (!reasons.some((reason) => reason.id === input.reasonId)) throw new Error("Unknown visit reason.");
 
-  const current = slotsForWindow(bookWindow(now()), await loadDoctors()).find((slot) => slot.id === input.slot.id);
-  if (!current) throw new SlotUnavailableError(input.slot.id, "missing");
-
+  // The doctors, the held slots and a free reference don't depend on each other: ask for them together.
   const store = await getStore();
-  const blocked = await store.listBlockedSlotIds();
+  const reference$ = uniqueReference(store);
+  reference$.catch(() => undefined); // surfaced below, only if the booking gets that far
+  const [doctors, blocked] = await Promise.all([loadDoctors(), store.listBlockedSlotIds()]);
+  const current = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === input.slot.id);
+  if (!current) throw new SlotUnavailableError(input.slot.id, "missing");
   const status = slotStatus(current, blocked, now());
   if (status !== "open") throw new SlotUnavailableError(current.id, status);
 
-  const reference = await uniqueReference(store);
+  const reference = await reference$;
   const visit: AppointmentRecord = {
     id: crypto.randomUUID(),
     reference,

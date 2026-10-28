@@ -36,8 +36,20 @@ function sameHash(a: string, b: string): boolean {
 
 export type IssueResult = { ok: true; code: string } | { ok: false; reason: "throttled"; retryInMs: number };
 
-/** Make a new code for `email`, replacing any earlier one. */
-export async function issueCode(rawEmail: string, at = new Date(), throttle = true): Promise<IssueResult> {
+/**
+ * Make a new code for `email`, replacing any earlier one.
+ *
+ * `deliver` sends the code (by email). It runs while the code is being stored rather than after,
+ * so the person waits for the slower of the two, not both. If it fails the stored code is removed
+ * again, so the one-a-minute limit doesn't lock them out of asking for another, and the error is
+ * passed on to the caller.
+ */
+export async function issueCode(
+  rawEmail: string,
+  at = new Date(),
+  throttle = true,
+  deliver?: (code: string) => Promise<void>,
+): Promise<IssueResult> {
   const email = normaliseEmail(rawEmail);
   const store = await getStore();
   const existing = await store.getLoginCode(email);
@@ -54,7 +66,16 @@ export async function issueCode(rawEmail: string, at = new Date(), throttle = tr
     attempts: 0,
     signupTokenHash: null,
   };
-  await store.putLoginCode(record);
+  if (!deliver) {
+    await store.putLoginCode(record);
+    return { ok: true, code };
+  }
+  const [stored, delivered] = await Promise.allSettled([store.putLoginCode(record), deliver(code)]);
+  if (stored.status === "rejected") throw stored.reason;
+  if (delivered.status === "rejected") {
+    await store.deleteLoginCode(email).catch(() => undefined);
+    throw delivered.reason;
+  }
   return { ok: true, code };
 }
 
