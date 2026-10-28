@@ -18,6 +18,7 @@ import { practice, reasons, type Doctor } from "@/lib/data";
 import { feeFor, formatMoney } from "@/lib/fees";
 import { ageLabel, formatWhen } from "@/lib/format";
 import { spring } from "@/lib/motion";
+import { PHONE_HINT, PHONE_PLACEHOLDER } from "@/lib/phone";
 import { bookAppointment } from "@/server/booking-actions";
 import { FIELD_ORDER, NOTE_LIMIT, validateDob, validatePatient, type PatientErrors, type PatientForm } from "@/lib/validate";
 
@@ -259,7 +260,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
                 />
               )}
             </Field>
-            <Field id="mobile" label="Mobile number" hint="We’ll text if the clinic is running late." error={errors.mobile}>
+            <Field id="mobile" label="Mobile number" hint={PHONE_HINT} error={errors.mobile}>
               {({ id, describedBy, invalid }) => (
                 <input
                   id={id}
@@ -267,7 +268,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
                   type="tel"
                   inputMode="tel"
                   autoComplete="tel"
-                  placeholder="07700 900123"
+                  placeholder={PHONE_PLACEHOLDER}
                   value={form.mobile}
                   aria-invalid={invalid}
                   aria-describedby={describedBy}

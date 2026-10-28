@@ -139,7 +139,7 @@ describe("DetailsView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Book appointment" }));
     expect(screen.getByRole("alert", { name: /There are 4 things to fix/ })).toBeInTheDocument();
     expect(screen.getByLabelText("Full name")).toHaveFocus();
-    expect(screen.getByLabelText("Mobile number")).toHaveAccessibleDescription("Enter a UK mobile number.");
+    expect(screen.getByLabelText("Mobile number")).toHaveAccessibleDescription("Enter a mobile number.");
   });
 
   it("blocks unregistered patients and points them to the phone", async () => {

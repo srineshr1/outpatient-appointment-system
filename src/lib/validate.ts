@@ -1,4 +1,5 @@
 import { isIsoDate } from "./clock";
+import { validatePhone } from "./phone";
 
 export interface PatientForm {
   name: string;
@@ -44,11 +45,8 @@ export function validatePatient(values: PatientForm, today: string): PatientErro
   const dobError = validateDob(values.dob, today);
   if (dobError) errors.dob = dobError;
 
-  const mobile = values.mobile.replace(/[\s()-]/g, "");
-  if (!values.mobile.trim()) errors.mobile = "Enter a UK mobile number.";
-  else if (!/^(?:07\d{9}|\+447\d{9}|00447\d{9})$/.test(mobile)) {
-    errors.mobile = "Use a UK mobile, such as 07700 900123.";
-  }
+  const mobileError = validatePhone(values.mobile);
+  if (mobileError) errors.mobile = mobileError;
 
   const chi = values.chi.replace(/\s/g, "");
   if (chi) {
