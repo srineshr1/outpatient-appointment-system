@@ -97,16 +97,7 @@ export function ageLabel(dobIso: string, today: string): string {
   return `${age} years old`;
 }
 
-/** Normalise a UK mobile to "07700 900123"; anything else is returned trimmed. */
-export function formatPhone(input: string): string {
-  let local = input.replace(/\D/g, "");
-  if (local.startsWith("0044")) local = `0${local.slice(4)}`;
-  else if (local.startsWith("44")) local = `0${local.slice(2)}`;
-  if (local.length === 11 && local.startsWith("07")) {
-    return `${local.slice(0, 5)} ${local.slice(5)}`;
-  }
-  return input.trim();
-}
+export { formatPhone } from "./phone";
 
 export function pluralise(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;

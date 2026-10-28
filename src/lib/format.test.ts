@@ -32,6 +32,8 @@ describe("format", () => {
     expect(ageLabel("2026-01-01", "2026-10-26")).toBe("Under 1 year old");
     expect(formatPhone("+44 7700 900123")).toBe("07700 900123");
     expect(formatPhone(" 0131 496 0280 ")).toBe("0131 496 0280");
+    expect(formatPhone("9154222171")).toBe("+91 91542 22171");
+    expect(formatPhone("+1 (415) 555-0132")).toBe("+14155550132");
   });
 
 });
@@ -61,7 +63,9 @@ describe("validatePatient", () => {
   });
 
   it("checks mobiles and CHI numbers", () => {
-    expect(validatePatient({ ...valid, mobile: "0131 496 0280" }, today).mobile).toMatch(/UK mobile/);
+    expect(validatePatient({ ...valid, mobile: "12 345" }, today).mobile).toMatch(/7 to 15 digits/);
+    expect(validatePatient({ ...valid, mobile: "call me" }, today).mobile).toMatch(/7 to 15 digits/);
+    expect(validatePatient({ ...valid, mobile: "" }, today).mobile).toBe("Enter a mobile number.");
     expect(validatePatient({ ...valid, chi: "12345" }, today).chi).toMatch(/10 digits/);
     expect(validatePatient({ ...valid, chi: "0101801234" }, today).chi).toMatch(/match/);
   });

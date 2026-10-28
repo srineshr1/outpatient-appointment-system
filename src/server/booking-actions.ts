@@ -6,6 +6,7 @@ import { actorOf, recordEvent, visitSummary } from "@/lib/audit";
 import { todayIso, now } from "@/lib/clock";
 import type { Slot } from "@/lib/data";
 import { formatMoney } from "@/lib/fees";
+import { normalisePhone } from "@/lib/phone";
 import { confirmBooking, SlotUnavailableError } from "@/lib/repository";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { validatePatient, FIELD_ORDER, type PatientForm } from "@/lib/validate";
@@ -54,7 +55,7 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
       reasonId: input.reasonId,
       patientName: input.patientName,
       patientDob: input.patientDob,
-      patientMobile: input.patientMobile,
+      patientMobile: normalisePhone(input.patientMobile) ?? input.patientMobile.trim(),
       patientChi: input.patientChi,
       note: input.note,
       patientUserId: user.id,

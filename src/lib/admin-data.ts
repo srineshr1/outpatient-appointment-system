@@ -3,6 +3,7 @@
  * The demo practice is small; a live one would push these filters into the database.
  */
 import { actionLabel, inGroup } from "./audit-labels";
+import { phoneSearchText } from "./phone";
 import type {
   AppointmentRecord,
   AppointmentStatus,
@@ -172,7 +173,7 @@ export function matchesVisit(row: VisitRow, rawQuery: string): boolean {
   const text = [visit.patientName, visit.reference, row.patient?.email ?? "", row.doctorName].join(" ").toLowerCase();
   if (text.includes(query)) return true;
   const numbers = digits(query);
-  return numbers.length >= 4 && (digits(visit.patientChi).includes(numbers) || digits(visit.patientMobile).includes(numbers));
+  return numbers.length >= 4 && (digits(visit.patientChi).includes(numbers) || phoneSearchText(visit.patientMobile).includes(numbers));
 }
 
 export function filterVisits(rows: readonly VisitRow[], filters: VisitFilters, today: string): VisitRow[] {
@@ -281,7 +282,7 @@ export function matchesPerson(row: PersonRow, rawQuery: string): boolean {
   return (
     row.user.name.toLowerCase().includes(query) ||
     row.user.email.includes(query) ||
-    (numbers.length >= 4 && digits(row.user.mobile).includes(numbers))
+    (numbers.length >= 4 && phoneSearchText(row.user.mobile).includes(numbers))
   );
 }
 
