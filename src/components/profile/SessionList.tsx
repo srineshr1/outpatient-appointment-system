@@ -3,7 +3,8 @@ import { describeSession } from "@/lib/sessions";
 import { buttonClass } from "@/components/ui/button-styles";
 import { PendingButton } from "@/components/ui/PendingButton";
 import { archiveSession } from "@/server/profile-actions";
-import { SessionForm, defaultsFor } from "./SessionForm";
+import { defaultsFor } from "@/lib/session-defaults";
+import { SessionForm } from "./SessionForm";
 
 /** One session the doctor already set up: a summary, a way to change it and a way to remove it. */
 export function SessionCard({ session, room }: { session: ConsultSession; room: string }) {

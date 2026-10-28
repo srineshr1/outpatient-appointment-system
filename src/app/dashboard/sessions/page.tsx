@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { SessionForm, defaultsFor } from "@/components/profile/SessionForm";
+import { SessionForm } from "@/components/profile/SessionForm";
+import { defaultsFor } from "@/lib/session-defaults";
 import { SessionCard } from "@/components/profile/SessionList";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { Notice } from "@/components/ui/Card";
