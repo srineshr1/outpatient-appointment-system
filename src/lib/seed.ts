@@ -5,26 +5,28 @@ import { hashPassword, normaliseEmail } from "./passwords";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function seedDemoUsers(store: ClinicStore): Promise<void> {
-  for (const account of demoAccounts) {
-    const existing = await store.getUserByEmail(account.email);
-    if (existing) {
-      await moveToOwnBook(store, account, existing);
-      continue;
-    }
-    await store.createUser({
-      id: account.id,
-      email: account.email,
-      // The sample admin signs in by email code only: no shared demo password for the console.
-      passwordHash: account.role === "admin" ? "" : hashPassword(DEMO_PASSWORD),
-      name: account.name,
-      role: account.role,
-      doctorId: account.doctorId,
-      mobile: account.mobile,
-      dob: account.dob,
-    });
-  }
-  await bootstrapAdmins(store);
-  await repairSharedBooks(store);
+  // Each account is independent, so check them together: a cold start reads the store once, not once per account.
+  await Promise.all(
+    demoAccounts.map(async (account) => {
+      const existing = await store.getUserByEmail(account.email);
+      if (existing) {
+        await moveToOwnBook(store, account, existing);
+        return;
+      }
+      await store.createUser({
+        id: account.id,
+        email: account.email,
+        // The sample admin signs in by email code only: no shared demo password for the console.
+        passwordHash: account.role === "admin" ? "" : hashPassword(DEMO_PASSWORD),
+        name: account.name,
+        role: account.role,
+        doctorId: account.doctorId,
+        mobile: account.mobile,
+        dob: account.dob,
+      });
+    }),
+  );
+  await Promise.all([bootstrapAdmins(store), repairSharedBooks(store)]);
 }
 
 /**
@@ -98,9 +100,13 @@ export function adminEmailsFromEnv(): string[] {
  * store opens, so it writes events straight to the store rather than through `recordEvent`.
  */
 async function bootstrapAdmins(store: ClinicStore): Promise<void> {
-  for (const email of adminEmailsFromEnv()) {
+  await Promise.all(adminEmailsFromEnv().map((email) => bootstrapAdmin(store, email)));
+}
+
+async function bootstrapAdmin(store: ClinicStore, email: string): Promise<void> {
+  {
     const existing = await store.getUserByEmail(email);
-    if (existing?.role === "admin") continue;
+    if (existing?.role === "admin") return;
     let id = existing?.id;
     if (existing) {
       await store.updateUser(existing.id, { role: "admin", doctorId: null });

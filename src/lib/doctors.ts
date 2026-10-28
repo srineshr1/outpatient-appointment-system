@@ -2,7 +2,7 @@ import { allDoctors, setStaffDoctors, staffDoctorProfile, type Doctor } from "./
 import { getStore } from "./store";
 
 /** Re-read the accounts at most this often per server instance. */
-const FRESH_MS = 3000;
+const FRESH_MS = 10_000;
 let loadedAt = 0;
 let pending: Promise<void> | null = null;
 

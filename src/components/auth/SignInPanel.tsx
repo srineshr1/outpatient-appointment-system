@@ -16,6 +16,7 @@ import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { buttonClass } from "@/components/ui/button-styles";
+import { Spinner as ButtonSpinner } from "@/components/ui/Spinner";
 import type { Doctor } from "@/lib/data";
 import { practice } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
@@ -49,6 +50,8 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   const [error, setError] = useState<string | null>(notice);
   const [resendAt, setResendAt] = useState(0);
   const [pending, startTransition] = useTransition();
+  /** What the work in flight is, in words: "Sending code…", "Checking…". Spoken and shown while pending. */
+  const [busyLabel, setBusyLabel] = useState("");
   const [, forceTick] = useState(0);
 
   // Count down to "Send again".
@@ -61,6 +64,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   function sendCode(event?: FormEvent) {
     event?.preventDefault();
     if (pending) return;
+    setBusyLabel(step === "code" ? "Sending a new code…" : "Sending code…");
     startTransition(async () => {
       const result = await requestCode({ email, mode });
       if (!result.ok) {
@@ -82,6 +86,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
 
   function submitCode(code: string) {
     if (pending || code.length !== codeLength) return;
+    setBusyLabel("Checking…");
     startTransition(async () => {
       const result = await verifyCode({ email, code, next: nextPath, mode });
       // A successful sign-in redirects, so only problems and new patients come back here.
@@ -100,6 +105,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   function submitName(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
+    setBusyLabel("Creating your account…");
     startTransition(async () => {
       const result = await completeSignup({ email, name, signupToken, next: nextPath });
       if (!result) return;
@@ -148,6 +154,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
         setEmail={setEmail}
         error={error}
         pending={pending}
+        busyLabel={busyLabel}
         onSubmit={sendCode}
       />
     ) : (
@@ -157,6 +164,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
         setDigits={setDigits}
         error={error}
         pending={pending}
+        busyLabel={busyLabel}
         devCode={devCode}
         resendIn={resendIn}
         split={split}
@@ -255,6 +263,7 @@ function EmailField({
   setEmail,
   error,
   pending,
+  busyLabel,
   onSubmit,
 }: {
   staff: boolean;
@@ -262,6 +271,7 @@ function EmailField({
   setEmail: (value: string) => void;
   error: string | null;
   pending: boolean;
+  busyLabel: string;
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
@@ -288,7 +298,8 @@ function EmailField({
         />
         <button
           type="submit"
-          aria-label="Continue with email"
+          aria-label={pending ? busyLabel : "Continue with email"}
+          disabled={pending}
           aria-busy={pending || undefined}
           className="absolute top-1.5 right-1.5 grid size-11 place-items-center rounded-full bg-accent text-white transition-[background-color,transform] hover:bg-accent-hover active:scale-90"
         >
@@ -301,6 +312,9 @@ function EmailField({
           )}
         </button>
       </div>
+      <span role="status" aria-live="polite" className="sr-only">
+        {pending ? busyLabel : ""}
+      </span>
       <ErrorText id="email-error" message={error} />
       {staff ? null : (
         <p className="mt-3 px-2 text-callout text-muted">
@@ -334,6 +348,7 @@ function CodeBoxes({
   setDigits,
   error,
   pending,
+  busyLabel,
   devCode,
   resendIn,
   split,
@@ -346,6 +361,7 @@ function CodeBoxes({
   setDigits: (digits: string[]) => void;
   error: string | null;
   pending: boolean;
+  busyLabel: string;
   devCode: string | null;
   resendIn: number;
   split: boolean;
@@ -491,8 +507,9 @@ function CodeBoxes({
       ) : null}
 
       <div className="mt-3 flex items-center justify-between gap-2 px-2 text-callout">
-        <span className="text-muted" role="status">
-          {pending ? "Checking…" : ""}
+        <span className="flex items-center gap-2 text-muted" role="status" aria-live="polite">
+          {pending ? <ButtonSpinner className="size-3.5" /> : null}
+          {pending ? busyLabel : ""}
         </span>
         {resendIn > 0 ? (
           <span className="tabular text-muted">Send again in {resendIn}s</span>
@@ -501,6 +518,7 @@ function CodeBoxes({
             type="button"
             onClick={onResend}
             disabled={pending}
+            aria-busy={pending || undefined}
             className="min-h-11 text-accent hover:underline underline-offset-4"
           >
             Send a new code
@@ -548,9 +566,18 @@ function NameStep({
           className="field h-14 rounded-full! px-5"
         />
         <ErrorText id="name-error" message={error} />
-        <button type="submit" aria-busy={pending || undefined} className={buttonClass("primary", "lg", "mt-3 w-full")}>
+        <button
+          type="submit"
+          disabled={pending}
+          aria-busy={pending || undefined}
+          className={buttonClass("primary", "lg", "mt-3 w-full disabled:cursor-progress")}
+        >
+          {pending ? <ButtonSpinner /> : null}
           {pending ? "Creating your account…" : "Continue"}
         </button>
+        <span role="status" aria-live="polite" className="sr-only">
+          {pending ? "Creating your account…" : ""}
+        </span>
       </form>
     </>
   );

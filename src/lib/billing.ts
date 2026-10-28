@@ -196,8 +196,12 @@ export async function restoreFee(actor: Actor, appointmentId: string): Promise<C
 }
 
 /** The payment line for each visit that has one, keyed by visit id. */
-export async function paymentLabels(visits: readonly AppointmentRecord[]): Promise<Record<string, string>> {
-  const charges = new Map((await (await getStore()).listCharges()).map((charge) => [charge.appointmentId, charge]));
+export async function paymentLabels(
+  visitsOrPending: readonly AppointmentRecord[] | Promise<readonly AppointmentRecord[]>,
+): Promise<Record<string, string>> {
+  // Fetch the charges while the visits are still loading.
+  const [visits, rows] = await Promise.all([visitsOrPending, (async () => (await getStore()).listCharges())()]);
+  const charges = new Map(rows.map((charge) => [charge.appointmentId, charge]));
   const labels: Record<string, string> = {};
   for (const visit of visits) {
     const line = paymentLine(summarise(charges.get(visit.id), visit.status));
