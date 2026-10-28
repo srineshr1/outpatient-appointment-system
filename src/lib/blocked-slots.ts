@@ -17,6 +17,10 @@ export async function blockedSlotIds(): Promise<string[]> {
       const ids = await (await getStore()).listBlockedSlotIds();
       loaded = { at: Date.now(), ids };
       return ids;
+    } catch (error) {
+      // Availability is a nicety for browsing: show the times as open rather than an error page.
+      console.error(`[slots] Could not read booked times: ${error instanceof Error ? error.message : "unknown error"}`);
+      return [];
     } finally {
       pending = null;
     }

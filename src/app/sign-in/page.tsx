@@ -4,6 +4,7 @@ import { SignInPanel } from "@/components/auth/SignInPanel";
 import { destinationFor } from "@/lib/auth-routing";
 import { getDoctors } from "@/lib/repository";
 import { getCurrentUser, safeNext } from "@/lib/session";
+import { STORE_UNAVAILABLE_MESSAGE, storeAvailable } from "@/lib/store";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -29,7 +30,12 @@ export default async function SignInPage({ searchParams }: Props) {
   if (user) redirect(destinationFor(user.role, nextPath));
 
   const mode = query.as === "staff" || nextPath.startsWith("/dashboard") ? "staff" : "patient";
-  const notice = typeof query.error === "string" ? (NOTICES[query.error] ?? null) : null;
+  const unavailable = !(await storeAvailable());
+  const notice = unavailable
+    ? STORE_UNAVAILABLE_MESSAGE
+    : typeof query.error === "string"
+      ? (NOTICES[query.error] ?? null)
+      : null;
   const doctors = await getDoctors();
 
   return (

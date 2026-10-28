@@ -37,8 +37,14 @@ async function readToken(): Promise<string | null> {
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   // Pages and actions look doctors up by id; make sure ones added in the admin console are known.
   // That refresh and the session lookup don't depend on each other, so they run together.
-  const [user] = await Promise.all([lookupUser(), loadDoctors()]);
-  return user;
+  try {
+    const [user] = await Promise.all([lookupUser(), loadDoctors()]);
+    return user;
+  } catch (error) {
+    // When the data store is down, public pages still render, as a signed-out visitor.
+    console.error(`[session] Could not read the signed-in user: ${error instanceof Error ? error.message : "unknown error"}`);
+    return null;
+  }
 });
 
 async function lookupUser(): Promise<SessionUser | null> {

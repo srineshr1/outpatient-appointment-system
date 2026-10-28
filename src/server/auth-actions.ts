@@ -14,6 +14,7 @@ import { destroySession, getCurrentUser, safeNext, SESSION_COOKIE, startSession 
 import { blockedSignIn, DISABLED_MESSAGE, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
 import { createSupabase, isAuthCookie, supabaseConfigured } from "@/lib/supabase";
 import { isDemoSignInEmail } from "@/lib/demo-accounts";
+import { STORE_UNAVAILABLE_MESSAGE, StoreUnavailableError } from "@/lib/store";
 
 /**
  * Who sends the email code. With RESEND_API_KEY and MAIL_FROM set, the app sends its own codes
@@ -51,6 +52,15 @@ export type RequestCodeResult =
   | { ok: false; error: string };
 
 export async function requestCode(input: { email: string; mode: SignInMode }): Promise<RequestCodeResult> {
+  try {
+    return await requestCodeInner(input);
+  } catch (error) {
+    if (error instanceof StoreUnavailableError) return { ok: false, error: STORE_UNAVAILABLE_MESSAGE };
+    throw error;
+  }
+}
+
+async function requestCodeInner(input: { email: string; mode: SignInMode }): Promise<RequestCodeResult> {
   const email = normaliseEmail(String(input.email ?? ""));
   if (!email) return { ok: false, error: "Enter your email address." };
   if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
@@ -101,6 +111,21 @@ export type VerifyCodeResult =
 
 /** Check the code. Signs in and redirects, or asks a new patient for their name. */
 export async function verifyCode(input: {
+  email: string;
+  code: string;
+  next: string;
+  mode: SignInMode;
+}): Promise<VerifyCodeResult> {
+  try {
+    return await verifyCodeInner(input);
+  } catch (error) {
+    // Redirects are thrown by Next and must pass through untouched.
+    if (error instanceof StoreUnavailableError) return { ok: false, error: STORE_UNAVAILABLE_MESSAGE };
+    throw error;
+  }
+}
+
+async function verifyCodeInner(input: {
   email: string;
   code: string;
   next: string;
