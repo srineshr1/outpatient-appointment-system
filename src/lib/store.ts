@@ -10,16 +10,22 @@ function databaseFile(): string {
 
 let opening: Promise<ClinicStore> | null = null;
 
-/** One store per process. SQLite locally and in tests; Vercel Blob when a token is set. */
+/**
+ * One store per process. DATA_STORE=supabase picks the practice's Supabase Postgres. Otherwise
+ * Vercel Blob when a token is set, and SQLite locally and in tests.
+ */
 export function getStore(): Promise<ClinicStore> {
   opening ??= openStore();
   return opening;
 }
 
 async function openStore(): Promise<ClinicStore> {
-  const store = process.env.BLOB_READ_WRITE_TOKEN
-    ? new (await import("./blob-store")).BlobClinicStore()
-    : new (await import("./sqlite-store")).SqliteClinicStore(databaseFile());
+  const store: ClinicStore =
+    process.env.DATA_STORE === "supabase"
+      ? new (await import("./supabase-store")).SupabaseClinicStore()
+      : process.env.BLOB_READ_WRITE_TOKEN
+        ? new (await import("./blob-store")).BlobClinicStore()
+        : new (await import("./sqlite-store")).SqliteClinicStore(databaseFile());
   await store.ensureReady();
   await seedDemoUsers(store);
   return store;

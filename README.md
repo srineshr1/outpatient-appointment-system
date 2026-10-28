@@ -2,7 +2,7 @@
 
 Online appointment booking for a demonstration GP practice: create an account, choose a doctor, pick a time, and see the visit on that doctor’s clinic book.
 
-Built with Next.js 16 (App Router), TypeScript, Tailwind CSS v4 and Motion. Accounts, sessions and visits are stored in SQLite (`data/clinic.sqlite`). Set `BLOB_READ_WRITE_TOKEN` to store them in a private Vercel Blob store instead, which is what the hosted app uses.
+Built with Next.js 16 (App Router), TypeScript, Tailwind CSS v4 and Motion. Accounts, sessions and visits are stored in SQLite (`data/clinic.sqlite`). Set `BLOB_READ_WRITE_TOKEN` to store them in a private Vercel Blob store instead, Set `DATA_STORE=supabase` (with `NEXT_PUBLIC_SUPABASE_URL` and a server-only `SUPABASE_SERVICE_ROLE_KEY`) to store them in Supabase Postgres instead; apply `supabase/migrations/20261028_clinic_store.sql` first. The tables have row level security on and no public policies, so only the server can read them.
 
 ## Getting started
 
@@ -89,7 +89,7 @@ This is a demonstration practice. Don’t enter a real CHI number or medical det
 
 - A booking is saved on the server. The same slot cannot be held twice. Cancelling frees it. The doctor’s clinic book and the patient’s appointment list read that record.
 - Sessions are httpOnly cookies, valid for 14 days. Patients have no password. The sample accounts keep a scrypt hash for the one-tap staff action.
-- The pages render per request (they depend on the current time and the book), so deploy as a Node server (`next build && next start`) or any host that supports Next.js server rendering. Static export is not supported. On Vercel, set `BLOB_READ_WRITE_TOKEN` from a private Blob store so visits survive across serverless instances.
+- The pages render per request (they depend on the current time and the book), so deploy as a Node server (`next build && next start`) or any host that supports Next.js server rendering. Static export is not supported. On Vercel, use `DATA_STORE=supabase` (or `BLOB_READ_WRITE_TOKEN` from a private Blob store) so visits survive across serverless instances.
 - Set `NEXT_PUBLIC_SITE_URL` to the public origin for correct Open Graph URLs.
 - Security headers: a nonce-based CSP is set in `src/proxy.ts`; HSTS, nosniff, frame and permissions policies in `next.config.ts`. Serve over HTTPS.
 - Fonts are self-hosted at build time via `next/font` (Inter); no font requests reach third parties.
