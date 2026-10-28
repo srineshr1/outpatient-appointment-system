@@ -5,6 +5,7 @@ import { addMinutes } from "@/lib/clock";
 import type { Doctor, Reason, Slot } from "@/lib/data";
 import { practice } from "@/lib/data";
 import { formatFull } from "@/lib/format";
+import { slotTimeLabel } from "@/lib/sessions";
 import type { ReactNode } from "react";
 
 interface Props {
@@ -13,9 +14,11 @@ interface Props {
   reason?: Reason | null;
   title?: string;
   footer?: ReactNode;
+  /** Wave bookings: the patient's token. */
+  token?: number | null;
 }
 
-export function AppointmentSummary({ doctor, slot, reason, title = "Your appointment", footer }: Props) {
+export function AppointmentSummary({ doctor, slot, reason, title = "Your appointment", footer, token }: Props) {
   return (
     <Card className="p-5 md:p-6">
       <h2 className="text-callout font-semibold text-muted">{title}</h2>
@@ -31,11 +34,22 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
           {formatFull(slot.date)}
         </Row>
         <Row icon={<Clock size={20} />} term="Time">
-          <span className="tabular">
-            {slot.time}
-            {reason ? `–${addMinutes(slot.time, reason.minutes)}` : ""}
-          </span>
-          <span className="text-muted">{reason ? ` · ${reason.minutes} minutes` : " · length depends on the reason"}</span>
+          {slot.mode === "wave" ? (
+            <>
+              <span className="tabular">{slotTimeLabel(slot)}</span>
+              <span className="text-muted">
+                {token ? ` · token ${token}, seen in token order` : " · seen in token order"}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="tabular">
+                {slot.time}
+                {reason ? `–${addMinutes(slot.time, reason.minutes)}` : ""}
+              </span>
+              <span className="text-muted">{reason ? ` · ${reason.minutes} minutes` : " · length depends on the reason"}</span>
+            </>
+          )}
         </Row>
         <Row icon={<Pin size={20} />} term="Where">
           {doctor.room}, {practice.name}

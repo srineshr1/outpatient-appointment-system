@@ -11,9 +11,15 @@ import {
   type AuditEvent,
   type ChargeRecord,
   type ClinicStore,
+  type ConsultSession,
   type LoginCodeRecord,
   type NewUser,
   type PaymentEntry,
+  type Placement,
+  type ProfileKind,
+  type ProfileRecord,
+  type RescheduleRecord,
+  type SessionMode,
   type SessionRecord,
   type StoredUser,
   type UserAccount,
@@ -60,6 +66,55 @@ interface AppointmentRow {
   status: string;
   patient_user_id: string | null;
   created_at: string;
+  session_id?: string | null;
+  token?: number | null;
+  wave_capacity?: number | null;
+  end_time?: string | null;
+}
+
+interface ProfileRow {
+  user_id: string;
+  kind: string;
+  data: string;
+  updated_at: string;
+}
+
+interface ConsultSessionRow {
+  id: string;
+  doctor_id: string;
+  label: string;
+  weekdays: string;
+  start_time: string;
+  end_time: string;
+  room: string;
+  mode: string;
+  slot_minutes: number | null;
+  wave_minutes: number | null;
+  wave_capacity: number | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RescheduleRow {
+  id: string;
+  appointment_id: string;
+  reference: string;
+  doctor_id: string;
+  patient_user_id: string | null;
+  by_user_id: string | null;
+  by_name: string;
+  by_role: string;
+  from_slot_id: string;
+  from_date: string;
+  from_time: string;
+  from_token: number | null;
+  to_slot_id: string;
+  to_date: string;
+  to_time: string;
+  to_token: number | null;
+  reason: string;
+  at: string;
 }
 
 interface LoginCodeRow {
@@ -154,6 +209,66 @@ function toAppointment(row: AppointmentRow): AppointmentRecord {
     status: row.status,
     patientUserId: row.patient_user_id,
     createdAt: row.created_at,
+    sessionId: row.session_id ?? null,
+    token: row.token ?? null,
+    waveCapacity: row.wave_capacity ?? null,
+    endTime: row.end_time ?? null,
+  };
+}
+
+function toProfile(row: ProfileRow): ProfileRecord {
+  let data: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(row.data);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) data = parsed as Record<string, unknown>;
+  } catch {
+    // A damaged profile reads as empty, so the person is asked to fill it in again.
+  }
+  return { userId: row.user_id, kind: row.kind === "doctor" ? "doctor" : "patient", data, updatedAt: row.updated_at };
+}
+
+function toConsultSession(row: ConsultSessionRow): ConsultSession {
+  return {
+    id: row.id,
+    doctorId: row.doctor_id,
+    label: row.label,
+    weekdays: row.weekdays
+      .split(",")
+      .map((day) => Number(day))
+      .filter((day) => Number.isInteger(day)),
+    startTime: row.start_time,
+    endTime: row.end_time,
+    room: row.room,
+    mode: (row.mode === "wave" ? "wave" : "stream") satisfies SessionMode,
+    slotMinutes: row.slot_minutes,
+    waveMinutes: row.wave_minutes,
+    waveCapacity: row.wave_capacity,
+    archivedAt: row.archived_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toReschedule(row: RescheduleRow): RescheduleRecord {
+  return {
+    id: row.id,
+    appointmentId: row.appointment_id,
+    reference: row.reference,
+    doctorId: row.doctor_id,
+    patientUserId: row.patient_user_id,
+    byUserId: row.by_user_id,
+    byName: row.by_name,
+    byRole: row.by_role,
+    fromSlotId: row.from_slot_id,
+    fromDate: row.from_date,
+    fromTime: row.from_time,
+    fromToken: row.from_token,
+    toSlotId: row.to_slot_id,
+    toDate: row.to_date,
+    toTime: row.to_time,
+    toToken: row.to_token,
+    reason: row.reason,
+    at: row.at,
   };
 }
 
@@ -332,6 +447,58 @@ export class SqliteClinicStore implements ClinicStore {
 
       CREATE INDEX IF NOT EXISTS audit_events_by_time ON audit_events(at);
 
+      CREATE TABLE IF NOT EXISTS profiles (
+        user_id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('patient', 'doctor')),
+        data TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS consult_sessions (
+        id TEXT PRIMARY KEY,
+        doctor_id TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        weekdays TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        room TEXT NOT NULL DEFAULT '',
+        mode TEXT NOT NULL CHECK (mode IN ('stream', 'wave')),
+        slot_minutes INTEGER,
+        wave_minutes INTEGER,
+        wave_capacity INTEGER,
+        archived_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (start_time < end_time)
+      );
+      CREATE INDEX IF NOT EXISTS consult_sessions_by_doctor ON consult_sessions(doctor_id);
+
+      CREATE TABLE IF NOT EXISTS reschedules (
+        id TEXT PRIMARY KEY,
+        appointment_id TEXT NOT NULL,
+        reference TEXT NOT NULL,
+        doctor_id TEXT NOT NULL,
+        patient_user_id TEXT,
+        by_user_id TEXT,
+        by_name TEXT NOT NULL DEFAULT '',
+        by_role TEXT NOT NULL DEFAULT '',
+        from_slot_id TEXT NOT NULL,
+        from_date TEXT NOT NULL,
+        from_time TEXT NOT NULL,
+        from_token INTEGER,
+        to_slot_id TEXT NOT NULL,
+        to_date TEXT NOT NULL,
+        to_time TEXT NOT NULL,
+        to_token INTEGER,
+        reason TEXT NOT NULL DEFAULT '',
+        at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS reschedules_by_appointment ON reschedules(appointment_id, at);
+      CREATE TRIGGER IF NOT EXISTS reschedules_no_update BEFORE UPDATE ON reschedules
+        BEGIN SELECT RAISE(ABORT, 'Reschedule history is append-only.'); END;
+      CREATE TRIGGER IF NOT EXISTS reschedules_no_delete BEFORE DELETE ON reschedules
+        BEGIN SELECT RAISE(ABORT, 'Reschedule history is append-only.'); END;
+
       -- The activity log and the money trail are append-only.
       CREATE TRIGGER IF NOT EXISTS audit_events_no_update BEFORE UPDATE ON audit_events
         BEGIN SELECT RAISE(ABORT, 'The activity log is append-only.'); END;
@@ -348,6 +515,10 @@ export class SqliteClinicStore implements ClinicStore {
     this.addColumn("users", "sessions_revoked_at", "TEXT");
     this.addColumn("users", "doctor_room", "TEXT");
     this.addColumn("users", "doctor_interest", "TEXT");
+    this.addColumn("appointments", "session_id", "TEXT");
+    this.addColumn("appointments", "token", "INTEGER");
+    this.addColumn("appointments", "wave_capacity", "INTEGER");
+    this.addColumn("appointments", "end_time", "TEXT");
     this.addColumn("sessions", "id", "TEXT");
     this.addColumn("sessions", "created_at", "TEXT");
     this.addColumn("sessions", "device", "TEXT NOT NULL DEFAULT ''");
@@ -403,6 +574,8 @@ export class SqliteClinicStore implements ClinicStore {
       sessionsRevokedAt: "sessions_revoked_at",
       doctorRoom: "doctor_room",
       doctorInterest: "doctor_interest",
+      mobile: "mobile",
+      dob: "dob",
     };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((key) => patch[key] !== undefined);
     if (patch.role !== undefined && !isRole(patch.role)) throw new Error("Unknown role.");
@@ -480,8 +653,8 @@ export class SqliteClinicStore implements ClinicStore {
           `INSERT INTO appointments (
             id, reference, slot_id, doctor_id, date, time, reason_id,
             patient_name, patient_dob, patient_mobile, patient_chi, note,
-            status, patient_user_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            status, patient_user_id, created_at, session_id, token, wave_capacity, end_time
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           appointment.id,
@@ -499,6 +672,10 @@ export class SqliteClinicStore implements ClinicStore {
           appointment.status,
           appointment.patientUserId,
           appointment.createdAt,
+          appointment.sessionId ?? null,
+          appointment.token ?? null,
+          appointment.waveCapacity ?? null,
+          appointment.endTime ?? null,
         );
       this.db.exec("COMMIT");
       return "ok";
@@ -701,5 +878,167 @@ export class SqliteClinicStore implements ClinicStore {
       .prepare("SELECT * FROM audit_events ORDER BY at DESC, rowid DESC LIMIT ?")
       .all(Math.max(1, Math.floor(limit))) as unknown as EventRow[];
     return rows.map(toEvent);
+  }
+
+  async getProfile(userId: string): Promise<ProfileRecord | null> {
+    const row = this.db.prepare("SELECT * FROM profiles WHERE user_id = ?").get(userId) as ProfileRow | undefined;
+    return row ? toProfile(row) : null;
+  }
+
+  async putProfile(profile: ProfileRecord): Promise<void> {
+    this.db
+      .prepare(
+        `INSERT INTO profiles (user_id, kind, data, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET kind = excluded.kind, data = excluded.data, updated_at = excluded.updated_at`,
+      )
+      .run(profile.userId, profile.kind, JSON.stringify(profile.data), profile.updatedAt);
+  }
+
+  async listProfiles(kind?: ProfileKind): Promise<ProfileRecord[]> {
+    const rows = (
+      kind
+        ? this.db.prepare("SELECT * FROM profiles WHERE kind = ?").all(kind)
+        : this.db.prepare("SELECT * FROM profiles").all()
+    ) as unknown as ProfileRow[];
+    return rows.map(toProfile);
+  }
+
+  async listConsultSessions(doctorId?: string): Promise<ConsultSession[]> {
+    const rows = (
+      doctorId
+        ? this.db.prepare("SELECT * FROM consult_sessions WHERE doctor_id = ? ORDER BY created_at, id").all(doctorId)
+        : this.db.prepare("SELECT * FROM consult_sessions ORDER BY created_at, id").all()
+    ) as unknown as ConsultSessionRow[];
+    return rows.map(toConsultSession);
+  }
+
+  async getConsultSession(id: string): Promise<ConsultSession | null> {
+    const row = this.db.prepare("SELECT * FROM consult_sessions WHERE id = ?").get(id) as ConsultSessionRow | undefined;
+    return row ? toConsultSession(row) : null;
+  }
+
+  private writeConsultSession(session: ConsultSession, replace: boolean): void {
+    this.db
+      .prepare(
+        `INSERT INTO consult_sessions (id, doctor_id, label, weekdays, start_time, end_time, room, mode,
+           slot_minutes, wave_minutes, wave_capacity, archived_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ${
+           replace
+             ? `ON CONFLICT(id) DO UPDATE SET label = excluded.label, weekdays = excluded.weekdays,
+                  start_time = excluded.start_time, end_time = excluded.end_time, room = excluded.room, mode = excluded.mode,
+                  slot_minutes = excluded.slot_minutes, wave_minutes = excluded.wave_minutes,
+                  wave_capacity = excluded.wave_capacity, archived_at = excluded.archived_at, updated_at = excluded.updated_at`
+             : ""
+         }`,
+      )
+      .run(
+        session.id,
+        session.doctorId,
+        session.label,
+        session.weekdays.join(","),
+        session.startTime,
+        session.endTime,
+        session.room,
+        session.mode,
+        session.slotMinutes,
+        session.waveMinutes,
+        session.waveCapacity,
+        session.archivedAt,
+        session.createdAt,
+        session.updatedAt,
+      );
+  }
+
+  async putConsultSession(session: ConsultSession): Promise<void> {
+    this.writeConsultSession(session, true);
+  }
+
+  async createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists"> {
+    if (await this.getConsultSession(session.id)) return "exists";
+    try {
+      this.writeConsultSession(session, false);
+      return "ok";
+    } catch (error) {
+      if (/UNIQUE|constraint/i.test(error instanceof Error ? error.message : "")) return "exists";
+      throw error;
+    }
+  }
+
+  async rescheduleAppointment(
+    id: string,
+    fromSlotId: string,
+    to: Placement,
+    history: RescheduleRecord,
+  ): Promise<"ok" | "taken" | "stale"> {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.db.prepare("SELECT status, slot_id FROM appointments WHERE id = ?").get(id) as
+        | { status: string; slot_id: string }
+        | undefined;
+      if (!current || current.status !== "booked" || current.slot_id !== fromSlotId) {
+        this.db.exec("ROLLBACK");
+        return "stale";
+      }
+      const held = this.db
+        .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed')")
+        .get(to.slotId);
+      if (held) {
+        this.db.exec("ROLLBACK");
+        return "taken";
+      }
+      this.db
+        .prepare(
+          `UPDATE appointments SET slot_id = ?, date = ?, time = ?, end_time = ?, session_id = ?, token = ?, wave_capacity = ?
+           WHERE id = ?`,
+        )
+        .run(to.slotId, to.date, to.time, to.endTime, to.sessionId, to.token, to.waveCapacity, id);
+      this.db
+        .prepare(
+          `INSERT INTO reschedules (id, appointment_id, reference, doctor_id, patient_user_id, by_user_id, by_name, by_role,
+             from_slot_id, from_date, from_time, from_token, to_slot_id, to_date, to_time, to_token, reason, at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          history.id,
+          id,
+          history.reference,
+          history.doctorId,
+          history.patientUserId,
+          history.byUserId,
+          history.byName,
+          history.byRole,
+          history.fromSlotId,
+          history.fromDate,
+          history.fromTime,
+          history.fromToken,
+          history.toSlotId,
+          history.toDate,
+          history.toTime,
+          history.toToken,
+          history.reason,
+          history.at,
+        );
+      this.db.exec("COMMIT");
+      return "ok";
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      if (/UNIQUE/i.test(error instanceof Error ? error.message : "")) return "taken";
+      throw error;
+    }
+  }
+
+  async listReschedules(
+    filter: { appointmentId?: string; doctorId?: string; patientUserId?: string } = {},
+  ): Promise<RescheduleRecord[]> {
+    const rows = this.db.prepare("SELECT * FROM reschedules ORDER BY at, rowid").all() as unknown as RescheduleRow[];
+    return rows
+      .map(toReschedule)
+      .filter(
+        (move) =>
+          (filter.appointmentId === undefined || move.appointmentId === filter.appointmentId) &&
+          (filter.doctorId === undefined || move.doctorId === filter.doctorId) &&
+          (filter.patientUserId === undefined || move.patientUserId === filter.patientUserId),
+      );
   }
 }

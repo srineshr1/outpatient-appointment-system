@@ -29,7 +29,7 @@ import { noticeText } from "@/lib/admin-notices";
 import { requireAdminPage } from "@/lib/admin-page";
 import { REASON_LIMIT } from "@/lib/billing";
 import { addMinutes } from "@/lib/clock";
-import { reasons } from "@/lib/data";
+import { findDoctor, reasons } from "@/lib/data";
 import { feeFor, formatMoney, penceToInput } from "@/lib/fees";
 import { ageLabel, formatPhone } from "@/lib/format";
 import { METHOD_LABELS, refundableByMethod } from "@/lib/payments";
@@ -203,7 +203,7 @@ export default async function VisitPage({
                     <input type="hidden" name="appointmentId" value={visit.id} />
                     <input type="hidden" name="return" value={path} />
                     <SubmitButton variant="secondary" pendingLabel="Adding…">
-                      Add the {formatMoney(feeFor(visit.reasonId))} fee
+                      Add the {formatMoney(feeFor(visit.reasonId, findDoctor(visit.doctorId)?.feePence))} fee
                     </SubmitButton>
                   </ActionForm>
                 ) : null}

@@ -61,6 +61,6 @@ export async function patientSignedUp(user: Pick<PublicUser, "id" | "name" | "ro
     action: "account.created",
     subjectType: "user",
     subjectId: user.id,
-    summary: `${user.name} · ${user.email} · ${method}`,
+    summary: `${user.name} · ${user.email} · ${method}${user.role === "doctor" ? " · signed up as a doctor" : ""}`,
   });
 }

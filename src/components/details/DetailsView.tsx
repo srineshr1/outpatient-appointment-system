@@ -51,7 +51,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
   const { held, form } = state;
   const doctor = held ? (doctors.find((item) => item.id === held.doctorId) ?? null) : null;
   const reason = reasons.find((item) => item.id === form.reasonId) ?? null;
-  const fee = reason ? feeFor(reason.id) : 0;
+  const fee = reason ? feeFor(reason.id, doctor?.feePence) : 0;
   const backHref = held ? `/doctors/${held.doctorId}?week=${mondayOf(held.date)}` : "/book";
 
   // Nothing held (fresh tab, or the booking just finished): start from the directory.
@@ -150,6 +150,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
           doctorId: heldDoctor.id,
           slot: heldSlot,
           reasonId: form.reasonId,
+          ...(result.token ? { token: result.token } : {}),
           patient: form,
           payment: result.payment ?? undefined,
         },

@@ -6,7 +6,26 @@ type Row = { id: string; email: string; role: string; doctorId: string | null; n
 
 function fakeStore(rows: Row[]) {
   const events: unknown[] = [];
+  const profiles = new Map<string, unknown>();
+  const sessions = new Map<string, { id: string; doctorId: string }>();
   const store = {
+    async getProfile(id: string) {
+      return profiles.get(id) ?? null;
+    },
+    async listProfiles() {
+      return [...profiles.values()];
+    },
+    async putProfile(record: { userId: string }) {
+      profiles.set(record.userId, record);
+    },
+    async listConsultSessions(doctorId?: string) {
+      return [...sessions.values()].filter((session) => !doctorId || session.doctorId === doctorId);
+    },
+    async createConsultSessionIfAbsent(session: { id: string; doctorId: string }) {
+      if (sessions.has(session.id)) return "exists";
+      sessions.set(session.id, session);
+      return "ok";
+    },
     async getUserByEmail(email: string) {
       return rows.find((row) => row.email === email) ?? null;
     },
@@ -27,7 +46,7 @@ function fakeStore(rows: Row[]) {
       events.push(event);
     },
   } as unknown as ClinicStore;
-  return { store, rows, events };
+  return { store, rows, events, profiles, sessions };
 }
 
 const EMAIL = "rudraksha.srinesh@gmail.com";

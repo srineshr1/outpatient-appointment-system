@@ -7,7 +7,7 @@ import { Notice } from "@/components/ui/Card";
 import { todayIso, now } from "@/lib/clock";
 import { getCurrentUser } from "@/lib/session";
 import { paymentLabels } from "@/lib/billing";
-import { visitsFor } from "@/lib/visits";
+import { reschedulesFor, visitsFor } from "@/lib/visits";
 
 export const metadata: Metadata = {
   title: "Your appointments",
@@ -17,6 +17,7 @@ export const metadata: Metadata = {
 const notices: Record<string, string> = {
   unavailable: "That visit can’t be changed.",
   missing: "That visit is no longer on the book.",
+  moved: "Visit moved. The other side has been told by email.",
 };
 
 export default async function AppointmentsPage({ searchParams }: { searchParams: Promise<{ notice?: string | string[] }> }) {
@@ -26,7 +27,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   const noticeKey = typeof query.notice === "string" ? query.notice : "";
   const notice = notices[noticeKey];
   const all = visitsFor({ ...user, role: "patient", doctorId: null });
-  const [visits, payments] = await Promise.all([all, paymentLabels(all)]);
+  const [visits, payments, moves] = await Promise.all([all, paymentLabels(all), reschedulesFor({ ...user, role: "patient", doctorId: null })]);
   const today = todayIso(now());
 
   return (
@@ -56,11 +57,11 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
         ) : null}
       </p>
       {notice ? (
-        <Notice tone="danger" role="alert" className="mt-6">
+        <Notice tone={noticeKey === "moved" ? "success" : "danger"} role={noticeKey === "moved" ? "status" : "alert"} className="mt-6">
           {notice}
         </Notice>
       ) : null}
-      <VisitList visits={visits} today={today} mode="patient" returnTo="/appointments" payments={payments} />
+      <VisitList visits={visits} today={today} mode="patient" returnTo="/appointments" payments={payments} moves={moves} />
     </div>
   );
 }

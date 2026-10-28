@@ -1,6 +1,9 @@
 import type { ClinicStore, UserAccount } from "./clinic-types";
+import { doctors as practiceDoctors } from "./data";
 import { DEMO_PASSWORD, demoAccounts } from "./demo-accounts";
 import { hashPassword, normaliseEmail } from "./passwords";
+import { giveStarterSchedule } from "./doctor-setup";
+import { demoSessions } from "./sessions";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -30,6 +33,35 @@ export async function seedDemoUsers(store: ClinicStore): Promise<void> {
     }),
   );
   await Promise.all([bootstrapAdmins(store, byEmail), repairSharedBooks(store, users)]);
+  await seedSchedules(store, users);
+}
+
+/**
+ * Doctor accounts made before profiles and sessions existed (an admin added them, or they are
+ * the owner's own doctor account) were already bookable. Give each a profile and one weekday
+ * stream session so they stay that way. Accounts made after this date are never touched: a doctor
+ * who signed up must finish their own profile and set up their own sessions.
+ */
+export const LEGACY_DOCTORS_BEFORE = "2026-10-28T14:00:00.000Z";
+
+/** The practice's own doctors start with their weekly stream sessions, and older staff doctors get a default. */
+export async function seedSchedules(store: ClinicStore, users: readonly UserAccount[]): Promise<void> {
+  const [sessions, profiles] = await Promise.all([store.listConsultSessions(), store.listProfiles("doctor")]);
+  const sessionIds = new Set(sessions.map((session) => session.id));
+  const hasSessions = new Set(sessions.map((session) => session.doctorId));
+  const hasProfile = new Set(profiles.map((profile) => profile.userId));
+  const now = new Date().toISOString();
+  const work: Promise<unknown>[] = [];
+  // Only the sessions of a practice doctor with no rows at all: a doctor who removed one never gets it back.
+  for (const session of demoSessions(practiceDoctors, now)) {
+    if (!hasSessions.has(session.doctorId) && !sessionIds.has(session.id)) work.push(store.createConsultSessionIfAbsent(session));
+  }
+  for (const user of users) {
+    if (user.role !== "doctor" || user.disabledAt || user.doctorId !== user.id) continue;
+    if (user.createdAt && user.createdAt >= LEGACY_DOCTORS_BEFORE) continue;
+    if (!hasProfile.has(user.id) || !hasSessions.has(user.id)) work.push(giveStarterSchedule(store, user, now));
+  }
+  await Promise.all(work);
 }
 
 /**

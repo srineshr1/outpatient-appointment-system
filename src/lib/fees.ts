@@ -11,7 +11,9 @@ export const FEES_PENCE: Readonly<Record<string, number>> = {
   bp: 2500,
 };
 
-export function feeFor(reasonId: string): number {
+/** The practice's fee for the visit reason, or the doctor's own consultation fee when they set one. */
+export function feeFor(reasonId: string, doctorFeePence?: number | null): number {
+  if (doctorFeePence && doctorFeePence > 0) return doctorFeePence;
   return FEES_PENCE[reasonId] ?? 0;
 }
 

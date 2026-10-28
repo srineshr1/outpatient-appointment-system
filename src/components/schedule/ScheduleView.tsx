@@ -12,7 +12,9 @@ import { PageHeading } from "@/components/shell/PageHeading";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Card";
 import { addDays, dayOfMonth, mondayOf } from "@/lib/clock";
+import type { ConsultSession } from "@/lib/clinic-types";
 import { practice, type Doctor, type Slot } from "@/lib/data";
+import { describeSession, placesLabel, slotTimeLabel } from "@/lib/sessions";
 import {
   formatShortDate,
   formatWeekRange,
@@ -33,6 +35,8 @@ interface Props {
   signedIn?: boolean;
   /** Where "All doctors" goes: the booking page for patients, the landing page otherwise. */
   allDoctorsHref?: string;
+  /** The doctor's consulting sessions, shown above the times. */
+  sessions?: ConsultSession[];
 }
 
 const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
@@ -41,7 +45,7 @@ const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
   teaching: "teaching session",
 };
 
-export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, allDoctorsHref = "/#doctors" }: Props) {
+export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, allDoctorsHref = "/#doctors", sessions = [] }: Props) {
   const router = useRouter();
   const [continuing, startContinue] = useTransition();
   const { state, dispatch } = useBooking();
@@ -132,6 +136,33 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      {sessions.length > 0 ? (
+        <section aria-labelledby="sessions-title" className="mt-8">
+          <h2 id="sessions-title" className="text-title3 font-semibold text-ink">
+            Consulting sessions
+          </h2>
+          <ul className="mt-3 grid gap-2 md:grid-cols-2">
+            {sessions.map((session) => (
+              <li key={session.id} className="rounded-card bg-surface p-4 shadow-card">
+                <p className="flex flex-wrap items-center gap-2 text-body font-semibold text-ink">
+                  {session.label}
+                  <span className="rounded-full bg-accent-soft px-2 py-px text-caption font-semibold text-accent">
+                    {session.mode === "wave" ? "Wave" : "Stream"}
+                  </span>
+                </p>
+                <p className="tabular mt-1 text-callout text-ink-2">{describeSession(session)}</p>
+                <p className="mt-1 text-caption text-muted">
+                  {session.room}.{" "}
+                  {session.mode === "wave"
+                    ? "Arrive within your wave. You are seen in token order."
+                    : "Your time is yours alone."}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section aria-labelledby="week-title" className="mt-10">
         <div className="flex items-end justify-between gap-4">
@@ -230,8 +261,13 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
               <div aria-live="polite">
                 <p className="text-caption text-muted">Your time</p>
                 <p className="tabular text-body font-semibold text-ink">
-                  {weekdayLong(held.date)} {dayOfMonth(held.date)} {monthLong(held.date)}, {held.time}
+                  {weekdayLong(held.date)} {dayOfMonth(held.date)} {monthLong(held.date)}, {slotTimeLabel(held)}
                 </p>
+                {held.mode === "wave" ? (
+                  <p className="mt-0.5 text-caption text-muted">
+                    This is a wave. You’ll get a token number and be seen in arrival order.
+                  </p>
+                ) : null}
                 {signedIn ? null : (
                   <p className="mt-0.5 text-caption text-muted">Next, sign in. We’ll keep this time for you.</p>
                 )}
@@ -363,7 +399,7 @@ function SlotPill({
       <motion.span
         whileTap={open ? { scale: 0.95 } : undefined}
         transition={spring.press}
-        className={`tabular relative isolate flex h-11 items-center justify-center rounded-field text-callout font-medium transition-colors duration-200 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55 ${
+        className={`tabular relative isolate flex ${slot.mode === "wave" ? "min-h-14 flex-col py-1" : "h-11"} items-center justify-center rounded-field text-callout font-medium transition-colors duration-200 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55 ${
           checked
             ? "text-white"
             : open
@@ -379,7 +415,8 @@ function SlotPill({
             className="absolute inset-0 -z-10 rounded-field bg-accent"
           />
         ) : null}
-        {slot.time}
+        {slotTimeLabel(slot)}
+        {slot.mode === "wave" ? <span className={`text-caption font-normal ${checked ? "text-white/90" : "text-muted"}`}>{placesLabel(slot)}</span> : null}
         {open ? null : <span className="sr-only">, {STATUS_TEXT[status]}</span>}
       </motion.span>
     </label>

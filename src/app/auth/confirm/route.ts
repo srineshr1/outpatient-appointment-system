@@ -34,7 +34,9 @@ export async function GET(request: NextRequest) {
       await supabase.auth.signOut();
       return NextResponse.redirect(new URL("/sign-in?error=google-failed", url.origin));
     }
+    let created = false;
     if (!existing) {
+      created = true;
       const metaName = typeof data.user?.user_metadata?.full_name === "string" ? data.user.user_metadata.full_name : "";
       const name = metaName || email.split("@")[0] || "Patient";
       await patientSignedUp(await createPatient(email, name), method);
@@ -42,7 +44,10 @@ export async function GET(request: NextRequest) {
     const user = await findUserByEmail(email);
     if (user) {
       await signedIn(user, method);
-      return NextResponse.redirect(new URL(destinationFor(user.role, next), url.origin));
+      const target = created
+        ? `/profile?welcome=1${next === "/" ? "" : `&next=${encodeURIComponent(next)}`}`
+        : destinationFor(user.role, next);
+      return NextResponse.redirect(new URL(target, url.origin));
     }
   }
   return NextResponse.redirect(new URL(next, url.origin));

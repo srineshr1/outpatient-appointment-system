@@ -23,7 +23,8 @@ import { formatWhen } from "@/lib/format";
 import { CODE_LENGTH } from "@/lib/sign-in-config";
 import { completeSignup, requestCode, verifyCode, type SignInMode } from "@/server/auth-actions";
 
-type Step = "email" | "code" | "name";
+type Step = "email" | "code" | "role" | "name";
+type SignupRole = "patient" | "doctor";
 
 const emptyDigits = (length: number = CODE_LENGTH) => Array.from({ length }, () => "");
 
@@ -45,6 +46,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   const [codeLength, setCodeLength] = useState(CODE_LENGTH);
   const [digits, setDigits] = useState<string[]>(() => emptyDigits());
   const [name, setName] = useState("");
+  const [role, setRole] = useState<SignupRole>("patient");
   const [signupToken, setSignupToken] = useState("");
   const [devCode, setDevCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(notice);
@@ -98,16 +100,16 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
       }
       setError(null);
       setSignupToken(result.signupToken);
-      setStep("name");
+      setStep("role");
     });
   }
 
   function submitName(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
-    setBusyLabel("Creating your account…");
+    setBusyLabel(role === "doctor" ? "Creating your doctor account…" : "Creating your account…");
     startTransition(async () => {
-      const result = await completeSignup({ email, name, signupToken, next: nextPath });
+      const result = await completeSignup({ email, name, signupToken, next: nextPath, role });
       if (!result) return;
       if (result.spent) {
         setSignupToken("");
@@ -198,7 +200,23 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
         {/* Right: Google, or, email, stacked */}
         <div className="w-full">
           <AnimatePresence mode="wait" initial={false}>
-            {step === "name" ? (
+            {step === "role" ? (
+              <motion.div
+                key="role"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+              >
+                <RoleStep
+                  onChoose={(chosen) => {
+                    setRole(chosen);
+                    setError(null);
+                    setStep("name");
+                  }}
+                />
+              </motion.div>
+            ) : step === "name" ? (
               <motion.div
                 key="name"
                 initial={{ opacity: 0, y: 8 }}
@@ -206,7 +224,18 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2 }}
               >
-                <NameStep name={name} setName={setName} error={error} pending={pending} onSubmit={submitName} />
+                <NameStep
+                  name={name}
+                  setName={setName}
+                  role={role}
+                  error={error}
+                  pending={pending}
+                  onSubmit={submitName}
+                  onBack={() => {
+                    setError(null);
+                    setStep("role");
+                  }}
+                />
               </motion.div>
             ) : (
               <motion.div key="auth" exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
@@ -529,25 +558,60 @@ function CodeBoxes({
   );
 }
 
+function RoleStep({ onChoose }: { onChoose: (role: SignupRole) => void }) {
+  return (
+    <>
+      <h2 className="px-2 text-title3 font-semibold text-ink">Welcome. Who is signing up?</h2>
+      <p className="mt-1 px-2 text-callout text-ink-2">Pick one. You’ll get the right set-up for it.</p>
+      <div className="mt-4 grid gap-3">
+        <button
+          type="button"
+          onClick={() => onChoose("patient")}
+          className="rounded-card border border-control bg-surface p-4 text-left hover:border-accent focus-visible:border-accent"
+        >
+          <span className="block text-body font-semibold text-ink">I’m a patient</span>
+          <span className="mt-0.5 block text-callout text-ink-2">Book, move and cancel visits with our doctors.</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onChoose("doctor")}
+          className="rounded-card border border-control bg-surface p-4 text-left hover:border-accent focus-visible:border-accent"
+        >
+          <span className="block text-body font-semibold text-ink">I’m a doctor</span>
+          <span className="mt-0.5 block text-callout text-ink-2">Set up your profile and consulting sessions, then take bookings.</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
 function NameStep({
   name,
   setName,
+  role,
   error,
   pending,
   onSubmit,
+  onBack,
 }: {
   name: string;
   setName: (value: string) => void;
+  role: SignupRole;
   error: string | null;
   pending: boolean;
   onSubmit: (event: FormEvent) => void;
+  onBack: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => inputRef.current?.focus(), []);
   return (
     <>
       <h2 className="px-2 text-title3 font-semibold text-ink">One last thing</h2>
-      <p className="mt-1 px-2 text-callout text-ink-2">What’s your name? We’ll use it on your bookings.</p>
+      <p className="mt-1 px-2 text-callout text-ink-2">
+        {role === "doctor"
+          ? "What’s your name? Patients will see it on your profile. Next you’ll add your specialty and sessions."
+          : "What’s your name? We’ll use it on your bookings."}
+      </p>
       <form onSubmit={onSubmit} noValidate className="mt-4">
         <label htmlFor="name" className="sr-only">
           Full name
@@ -558,7 +622,7 @@ function NameStep({
           name="name"
           autoComplete="name"
           maxLength={100}
-          placeholder="Full name"
+          placeholder={role === "doctor" ? "Full name, e.g. Asha Rao" : "Full name"}
           value={name}
           onChange={(event) => setName(event.target.value)}
           aria-invalid={Boolean(error) || undefined}
@@ -573,7 +637,10 @@ function NameStep({
           className={buttonClass("primary", "lg", "mt-3 w-full disabled:cursor-progress")}
         >
           {pending ? <ButtonSpinner /> : null}
-          {pending ? "Creating your account…" : "Continue"}
+          {pending ? "Creating your account…" : role === "doctor" ? "Create doctor account" : "Continue"}
+        </button>
+        <button type="button" onClick={onBack} disabled={pending} className="mt-2 min-h-11 w-full text-callout text-accent hover:underline underline-offset-4">
+          Back: signing up as {role === "doctor" ? "a doctor" : "a patient"}
         </button>
         <span role="status" aria-live="polite" className="sr-only">
           {pending ? "Creating your account…" : ""}

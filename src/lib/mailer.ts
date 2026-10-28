@@ -86,3 +86,64 @@ function loginEmailFor(code: string) {
     address: practice.address,
   });
 }
+
+/** Domains that never reach a person: the sample accounts, reserved test domains and throwaway inboxes. */
+const UNDELIVERABLE_DOMAINS = [
+  "halden.example",
+  "example.com",
+  "example.org",
+  "example.net",
+  "mailinator.com",
+  "guerrillamail.com",
+  "10minutemail.com",
+  "yopmail.com",
+  "tempmail.com",
+  "temp-mail.org",
+  "trashmail.com",
+  "sharklasers.com",
+  "getnada.com",
+  "dispostable.com",
+  "maildrop.cc",
+  "throwawaymail.com",
+];
+
+/** Whether it is worth sending a notice to this address. Anything else is skipped quietly. */
+export function isDeliverableEmail(email: string): boolean {
+  const address = email.trim().toLowerCase();
+  const at = address.lastIndexOf("@");
+  if (at < 1 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return false;
+  const domain = address.slice(at + 1);
+  if (domain.endsWith(".example") || domain.endsWith(".test") || domain.endsWith(".invalid") || domain.endsWith(".localhost")) return false;
+  return !UNDELIVERABLE_DOMAINS.some((blocked) => domain === blocked || domain.endsWith(`.${blocked}`));
+}
+
+export type NoticeResult = "sent" | "skipped" | "failed";
+
+/**
+ * Send a plain notice by Resend. Never throws: a notice is a courtesy, and the change it describes
+ * has already happened. Addresses that cannot receive mail are skipped.
+ */
+export async function sendNotice(to: string, message: { subject: string; text: string; html: string }): Promise<NoticeResult> {
+  if (!isDeliverableEmail(to)) return "skipped";
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    console.info(`[notice] Would email ${to}: ${message.subject}`);
+    return "skipped";
+  }
+  try {
+    const from = process.env.MAIL_FROM ?? `${practice.name} <onboarding@resend.dev>`;
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: [to], ...message }),
+    });
+    if (!response.ok) {
+      console.error(`[notice] Email provider responded ${response.status} for "${message.subject}"`);
+      return "failed";
+    }
+    return "sent";
+  } catch (error) {
+    console.error(`[notice] Could not send "${message.subject}": ${error instanceof Error ? error.message : "unknown error"}`);
+    return "failed";
+  }
+}

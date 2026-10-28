@@ -2,6 +2,7 @@
  * What an admin can do to accounts, and the rules that keep the practice from locking
  * itself out. Every change is written to the activity log.
  */
+import { giveStarterSchedule } from "./doctor-setup";
 import { actorOf, recordEvent } from "./audit";
 import { ROLE_LABELS } from "./audit-labels";
 import { isRole, type Role, type SessionUser, type UserAccount } from "./clinic-types";
@@ -114,8 +115,9 @@ export async function createStaff(admin: SessionUser, input: NewStaff): Promise<
   // No password: staff sign in with a code sent to this email (or Google, when that's on).
   const created = await store.createUser({ id, email, passwordHash: "", name, role: input.role, doctorId, mobile: "", dob: "", ...details });
   if (created === "exists") throw new AdminError("That email already has an account.");
-  await loadDoctors(true);
   const account = await load(id);
+  await giveStarterSchedule(store, account, now().toISOString());
+  await loadDoctors(true);
   await recordEvent({
     actor: actorOf(admin),
     action: "staff.created",
@@ -149,6 +151,7 @@ export async function changeRole(
   const store = await getStore();
   const updated = await store.updateUser(target.id, { role, doctorId: nextDoctor, ...details });
   if (!updated) throw new AdminError("That account no longer exists.");
+  await giveStarterSchedule(store, updated, now().toISOString());
   await loadDoctors(true);
   // Their pages change with the role, so make them sign in again.
   const ended = await store.deleteSessionsForUser(target.id);

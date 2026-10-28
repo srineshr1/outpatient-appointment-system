@@ -8,6 +8,7 @@
 import { recordEvent, visitSummary, type Actor } from "./audit";
 import type { AppointmentRecord, ChargeRecord, PaymentEntry, PaymentMethod } from "./clinic-types";
 import { now } from "./clock";
+import { findDoctor } from "./data";
 import { feeFor, formatMoney } from "./fees";
 import { METHOD_LABELS, paymentLine, refundableByMethod, summarise, totals } from "./payments";
 import { getStore } from "./store";
@@ -57,7 +58,7 @@ function checkReason(reason: string): string {
 
 /** The fee is fixed when the visit is booked. Paying now records a demo card payment at once. */
 export async function openCharge(visit: AppointmentRecord, payNow: boolean): Promise<ChargeRecord | null> {
-  const amountPence = feeFor(visit.reasonId);
+  const amountPence = feeFor(visit.reasonId, findDoctor(visit.doctorId)?.feePence);
   const charge: ChargeRecord = {
     appointmentId: visit.id,
     reference: visit.reference,

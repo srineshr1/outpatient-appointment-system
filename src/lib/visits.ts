@@ -1,6 +1,6 @@
 import { actorOf, recordEvent, visitSummary } from "./audit";
 import { settleCancelledVisit } from "./billing";
-import type { AppointmentRecord, AppointmentStatus, PublicUser } from "./clinic-types";
+import type { AppointmentRecord, AppointmentStatus, PublicUser, RescheduleRecord } from "./clinic-types";
 import { forgetBlockedSlots } from "./blocked-slots";
 import { getStore } from "./store";
 
@@ -60,4 +60,16 @@ export async function changeAppointmentStatus(
     });
   }
   return "ok";
+}
+
+/** The moves made to the visits `user` can see, oldest first, grouped by visit. */
+export async function reschedulesFor(user: PublicUser): Promise<Record<string, RescheduleRecord[]>> {
+  const store = await getStore();
+  let moves: RescheduleRecord[];
+  if (seesWholeBook(user)) moves = await store.listReschedules();
+  else if (user.role === "doctor") moves = user.doctorId ? await store.listReschedules({ doctorId: user.doctorId }) : [];
+  else moves = await store.listReschedules({ patientUserId: user.id });
+  const grouped: Record<string, RescheduleRecord[]> = {};
+  for (const move of moves) (grouped[move.appointmentId] ??= []).push(move);
+  return grouped;
 }

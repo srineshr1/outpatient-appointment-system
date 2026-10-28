@@ -49,5 +49,7 @@ export async function GET(request: NextRequest) {
   if (!existing) await patientSignedUp(user, "Google");
   await startSession(user.id);
   await signedIn(user, "Google");
+  // A new Google account is a patient: take them through the patient profile first.
+  if (!existing) redirect(`/profile?welcome=1${next === "/" ? "" : `&next=${encodeURIComponent(next)}`}`);
   redirect(destinationFor(user.role, next));
 }

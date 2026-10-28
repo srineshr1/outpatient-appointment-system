@@ -16,6 +16,7 @@ import type {
 import { addDays, isIsoDate, mondayOf, now, todayIso } from "./clock";
 import { generateSlots, bookWindow, reasons, findDoctor, allDoctors } from "./data";
 import { londonDay, summarise, type ChargeSummary, type PaymentState } from "./payments";
+import { applyHeld } from "./sessions";
 import { getStore } from "./store";
 import { sortVisits } from "./visits";
 
@@ -215,8 +216,10 @@ export function weekLoad(rows: readonly VisitRow[], today: string): { weekStart:
   const weekStart = mondayOf(today) < window.firstWeek ? window.firstWeek : mondayOf(today);
   const weekEnd = addDays(weekStart, 6);
   const inWeek = rows.filter((row) => row.visit.status !== "cancelled" && row.visit.date >= weekStart && row.visit.date <= weekEnd);
-  const held = new Set(inWeek.map((row) => row.visit.slotId));
-  const slots = generateSlots(window).filter((slot) => slot.date >= weekStart && slot.date <= weekEnd && !slot.teaching);
+  const slots = applyHeld(
+    generateSlots(window).filter((slot) => slot.date >= weekStart && slot.date <= weekEnd && !slot.teaching),
+    inWeek.map((row) => row.visit.slotId),
+  );
   return {
     weekStart,
     doctors: allDoctors().map((doctor) => {
@@ -226,8 +229,9 @@ export function weekLoad(rows: readonly VisitRow[], today: string): { weekStart:
         name: doctor.name,
         short: doctor.short,
         online: inWeek.filter((row) => row.visit.doctorId === doctor.id).length,
-        taken: own.filter((slot) => slot.taken || held.has(slot.id)).length,
-        capacity: own.length,
+        // A stream slot is one place. A wave has as many places as it takes patients.
+        taken: own.reduce((sum, slot) => sum + (slot.mode === "wave" ? (slot.booked ?? 0) : slot.taken ? 1 : 0), 0),
+        capacity: own.reduce((sum, slot) => sum + (slot.mode === "wave" ? (slot.capacity ?? 1) : 1), 0),
       };
     }),
   };
