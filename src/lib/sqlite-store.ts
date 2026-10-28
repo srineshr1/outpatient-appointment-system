@@ -4,6 +4,8 @@ import { DatabaseSync } from "node:sqlite";
 import {
   isPaymentMethod,
   isRole,
+  matchesFilter,
+  type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
   type AuditEvent,
@@ -508,9 +510,13 @@ export class SqliteClinicStore implements ClinicStore {
     }
   }
 
-  async listAppointments(): Promise<AppointmentRecord[]> {
+  async listAppointments(filter: AppointmentFilter = {}): Promise<AppointmentRecord[]> {
     const rows = this.db.prepare("SELECT * FROM appointments").all() as unknown as AppointmentRow[];
-    return rows.map(toAppointment);
+    return rows.map(toAppointment).filter((visit) => matchesFilter(visit, filter));
+  }
+
+  async referenceInUse(reference: string): Promise<boolean> {
+    return this.db.prepare("SELECT 1 AS found FROM appointments WHERE reference = ? LIMIT 1").get(reference) !== undefined;
   }
 
   async getAppointment(id: string): Promise<AppointmentRecord | null> {

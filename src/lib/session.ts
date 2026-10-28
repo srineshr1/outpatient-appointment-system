@@ -38,7 +38,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   // Pages and actions look doctors up by id; make sure ones added in the admin console are known.
   // That refresh and the session lookup don't depend on each other, so they run together.
   try {
-    const [user] = await Promise.all([lookupUser(), loadDoctors()]);
+    const [user] = await Promise.all([lookupWithRetry(), loadDoctors()]);
     return user;
   } catch (error) {
     // When the data store is down, public pages still render, as a signed-out visitor.
@@ -46,6 +46,20 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
     return null;
   }
 });
+
+/**
+ * A store hiccup right after sign-in must not look like "signed out": that sends the person back
+ * to the sign-in page with a session that is in fact valid. Try once more before giving up.
+ */
+async function lookupWithRetry(): Promise<SessionUser | null> {
+  try {
+    return await lookupUser();
+  } catch (first) {
+    console.error(`[session] Retrying the sign-in lookup: ${first instanceof Error ? first.message : "unknown error"}`);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return lookupUser();
+  }
+}
 
 async function lookupUser(): Promise<SessionUser | null> {
   if (supabaseConfigured()) {
@@ -108,13 +122,17 @@ async function deviceLabel(): Promise<string> {
   }
 }
 
-export async function startSession(userId: string): Promise<void> {
+/**
+ * Sign `userId` in on this browser. Callers that just read the account pass it as `known`, so the
+ * disabled check doesn't read it again.
+ */
+export async function startSession(userId: string, known?: { disabledAt: string | null }): Promise<void> {
   const token = newToken();
   const store = await getStore();
-  const account = await store.getUserById(userId);
+  const [account, device] = await Promise.all([known ?? store.getUserById(userId), deviceLabel()]);
   if (account?.disabledAt) throw new AccountDisabledError();
   const expiresAt = sessionExpiry();
-  await store.createSession(hashToken(token), userId, expiresAt, await deviceLabel());
+  await store.createSession(hashToken(token), userId, expiresAt, device);
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,

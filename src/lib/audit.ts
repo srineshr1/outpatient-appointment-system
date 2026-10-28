@@ -3,6 +3,7 @@
  * blocks the action it describes: if the store is down, the action still happens and
  * the failure is reported to the server log (without the event's details).
  */
+import { after } from "next/server";
 import type { ActorRole, AppointmentRecord, AuditEvent, PublicUser } from "./clinic-types";
 import { now } from "./clock";
 import { practice, findDoctor } from "./data";
@@ -57,6 +58,19 @@ export async function recordEvent(input: NewEvent): Promise<void> {
     await (await getStore()).appendEvent(event);
   } catch (error) {
     console.error(`[activity] Could not record ${event.action}: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+}
+
+/**
+ * Record an event after the response has gone out, so the person isn't waiting on the log write.
+ * Outside a request (unit tests, scripts) there is no "after the response", so it is written now.
+ */
+export function recordEventSoon(input: NewEvent): Promise<void> {
+  try {
+    after(() => recordEvent(input));
+    return Promise.resolve();
+  } catch {
+    return recordEvent(input);
   }
 }
 

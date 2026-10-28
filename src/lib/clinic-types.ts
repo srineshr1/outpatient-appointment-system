@@ -170,6 +170,17 @@ export interface AuditEvent {
   reason: string;
 }
 
+export function matchesFilter(visit: Pick<AppointmentRecord, "patientUserId" | "doctorId">, filter: AppointmentFilter): boolean {
+  if (filter.patientUserId !== undefined && visit.patientUserId !== filter.patientUserId) return false;
+  if (filter.doctorId !== undefined && visit.doctorId !== filter.doctorId) return false;
+  return true;
+}
+
+export interface AppointmentFilter {
+  patientUserId?: string;
+  doctorId?: string;
+}
+
 export interface ClinicStore {
   ensureReady(): Promise<void>;
   getUserByEmail(email: string): Promise<StoredUser | null>;
@@ -188,8 +199,11 @@ export interface ClinicStore {
   deleteSessionsForUser(userId: string, keepId?: string | null): Promise<number>;
   listBlockedSlotIds(): Promise<string[]>;
   createAppointment(appointment: AppointmentRecord): Promise<"ok" | "taken">;
-  listAppointments(): Promise<AppointmentRecord[]>;
+  /** Every visit, or only one patient's or one doctor's book when a filter is given. */
+  listAppointments(filter?: AppointmentFilter): Promise<AppointmentRecord[]>;
   getAppointment(id: string): Promise<AppointmentRecord | null>;
+  /** True when a visit already uses this booking reference. */
+  referenceInUse(reference: string): Promise<boolean>;
   updateStatus(id: string, status: AppointmentStatus): Promise<void>;
   putLoginCode(record: LoginCodeRecord): Promise<void>;
   getLoginCode(email: string): Promise<LoginCodeRecord | null>;

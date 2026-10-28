@@ -87,19 +87,29 @@ async function requestCodeInner(input: { email: string; mode: SignInMode }): Pro
   }
 
   const onScreen = showsCodeOnScreen(email);
-  const issued = await issueCode(email, new Date(), !onScreen);
-  // A code went out moments ago: carry on to the code step rather than sending another.
-  if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs, codeLength: CODE_LENGTH };
-
   if (onScreen) {
+    const issued = await issueCode(email, new Date(), false);
+    if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs, codeLength: CODE_LENGTH };
     console.info(`[sign-in] On-screen code issued for ${email}`);
     return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH, devCode: issued.code };
   }
 
+  // The code is stored and emailed together; a send that fails is reported and the stored code is dropped.
+  let sendFailure: unknown;
   try {
-    await sendLoginCode(email, issued.code);
+    const issued = await issueCode(email, new Date(), true, async (code) => {
+      try {
+        await sendLoginCode(email, code);
+      } catch (error) {
+        sendFailure = error;
+        throw error;
+      }
+    });
+    // A code went out moments ago: carry on to the code step rather than sending another.
+    if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs, codeLength: CODE_LENGTH };
     return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH };
   } catch (error) {
+    if (sendFailure === undefined || error !== sendFailure) throw error;
     console.error(`[sign-in] Could not send a code: ${error instanceof Error ? error.message : "unknown error"}`);
     return { ok: false, error: SEND_FAILED };
   }
@@ -186,7 +196,7 @@ async function verifyCodeInner(input: {
     return { ok: true, needsName: true, signupToken: await issueSignupToken(email) };
   }
   if (await blockedSignIn(user, "Email code")) return { ok: false, error: DISABLED_MESSAGE, spent: true };
-  await startSession(user.id);
+  await startSession(user.id, user);
   await signedIn(user, "Email code");
   redirect(destinationFor(user.role, safeNext(String(input.next ?? "/"))));
 }
@@ -206,8 +216,10 @@ export async function completeSignup(input: {
   const existing = await findUserByEmail(email);
   if (await blockedSignIn(existing, "Email code")) return { ok: false, error: DISABLED_MESSAGE, spent: true };
   const user = existing ?? (await createPatient(email, String(input.name)));
+  // The session comes first: it is what keeps this person signed in. The log entries follow it
+  // after the response, so a slow or failing log write can't hold up or abort the sign-in.
+  await startSession(user.id, user);
   if (!existing) await patientSignedUp(user, "Email code");
-  await startSession(user.id);
   await signedIn(user, "Email code");
   redirect(destinationFor(user.role, safeNext(String(input.next ?? "/"))));
 }

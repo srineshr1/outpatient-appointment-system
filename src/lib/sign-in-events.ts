@@ -1,6 +1,6 @@
 /** Activity-log entries for signing in and out. Never records codes, tokens or passwords. */
 import { findUserByEmail } from "./accounts";
-import { actorOf, anonymousActor, recordEvent } from "./audit";
+import { actorOf, anonymousActor, recordEvent, recordEventSoon } from "./audit";
 import type { PublicUser, UserAccount } from "./clinic-types";
 import { practice } from "./data";
 import { normaliseEmail } from "./passwords";
@@ -10,7 +10,8 @@ export const DISABLED_MESSAGE = `This account is turned off. Please call the pra
 export type SignInMethod = "Email code" | "Google" | "Password" | "Supabase email link";
 
 export async function signedIn(user: Pick<PublicUser, "id" | "name" | "role" | "email">, method: SignInMethod): Promise<void> {
-  await recordEvent({
+  // The session is already set: the log entry follows after the response rather than delaying it.
+  await recordEventSoon({
     actor: actorOf(user),
     action: "signin.succeeded",
     subjectType: "user",
@@ -55,7 +56,7 @@ export async function blockedSignIn(account: UserAccount | null, method: SignInM
 }
 
 export async function patientSignedUp(user: Pick<PublicUser, "id" | "name" | "role" | "email">, method: SignInMethod): Promise<void> {
-  await recordEvent({
+  await recordEventSoon({
     actor: actorOf(user),
     action: "account.created",
     subjectType: "user",

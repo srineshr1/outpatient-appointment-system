@@ -2,6 +2,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   isPaymentMethod,
   isRole,
+  matchesFilter,
+  type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
   type AuditEvent,
@@ -362,21 +364,8 @@ export class SupabaseClinicStore implements ClinicStore {
   }
 
   async createSession(tokenHash: string, userId: string, expiresAt: string, device = ""): Promise<void> {
-    // On a repeat of the same token only the owner and expiry change; its id and start stay.
-    const { data, error: readError } = await this.db
-      .from("clinic_sessions")
-      .select("token_hash")
-      .eq("token_hash", tokenHash)
-      .maybeSingle();
-    fail(readError);
-    if (data) {
-      const { error } = await this.db
-        .from("clinic_sessions")
-        .update({ user_id: userId, expires_at: expiresAt })
-        .eq("token_hash", tokenHash);
-      fail(error);
-      return;
-    }
+    // One request in the normal case. A repeat of the same token (a unique violation) only changes
+    // the owner and expiry; its id and start stay.
     const { error } = await this.db.from("clinic_sessions").insert({
       token_hash: tokenHash,
       id: crypto.randomUUID(),
@@ -385,6 +374,14 @@ export class SupabaseClinicStore implements ClinicStore {
       created_at: new Date().toISOString(),
       device: device.slice(0, 80),
     });
+    if (error?.code === UNIQUE_VIOLATION) {
+      const { error: updateError } = await this.db
+        .from("clinic_sessions")
+        .update({ user_id: userId, expires_at: expiresAt })
+        .eq("token_hash", tokenHash);
+      fail(updateError);
+      return;
+    }
     fail(error);
   }
 
@@ -472,11 +469,20 @@ export class SupabaseClinicStore implements ClinicStore {
     return "ok";
   }
 
-  async listAppointments(): Promise<AppointmentRecord[]> {
-    const rows = await this.readAll<AppointmentRow>((from, to) =>
-      this.db.from("clinic_appointments").select("*").order("created_at").order("id").range(from, to),
-    );
+  async listAppointments(filter: AppointmentFilter = {}): Promise<AppointmentRecord[]> {
+    const rows = await this.readAll<AppointmentRow>((from, to) => {
+      let query = this.db.from("clinic_appointments").select("*");
+      if (filter.patientUserId !== undefined) query = query.eq("patient_user_id", filter.patientUserId);
+      if (filter.doctorId !== undefined) query = query.eq("doctor_id", filter.doctorId);
+      return query.order("created_at").order("id").range(from, to);
+    });
     return rows.map(toAppointment);
+  }
+
+  async referenceInUse(reference: string): Promise<boolean> {
+    const { data, error } = await this.db.from("clinic_appointments").select("id").eq("reference", reference).limit(1);
+    fail(error);
+    return (data?.length ?? 0) > 0;
   }
 
   async getAppointment(id: string): Promise<AppointmentRecord | null> {
