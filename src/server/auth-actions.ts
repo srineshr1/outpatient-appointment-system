@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { authenticate, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
+import { authenticate, createDoctorSelfSignup, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
 import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RESEND_AFTER_MS } from "@/lib/login-codes";
 import { ownMailConfigured, sendLoginCode, showsCodeOnScreen } from "@/lib/mailer";
@@ -206,6 +206,8 @@ export async function completeSignup(input: {
   name: string;
   signupToken: string;
   next: string;
+  /** What they said they are. Defaults to a patient. */
+  role?: "patient" | "doctor";
 }): Promise<{ ok: false; error: string; spent?: boolean }> {
   const problem = nameError(String(input.name ?? ""));
   if (problem) return { ok: false, error: problem };
@@ -215,13 +217,20 @@ export async function completeSignup(input: {
   }
   const existing = await findUserByEmail(email);
   if (await blockedSignIn(existing, "Email code")) return { ok: false, error: DISABLED_MESSAGE, spent: true };
-  const user = existing ?? (await createPatient(email, String(input.name)));
+  const asDoctor = input.role === "doctor";
+  const user = existing ?? (asDoctor ? await createDoctorSelfSignup(email, String(input.name)) : await createPatient(email, String(input.name)));
   // The session comes first: it is what keeps this person signed in. The log entries follow it
   // after the response, so a slow or failing log write can't hold up or abort the sign-in.
   await startSession(user.id, user);
   if (!existing) await patientSignedUp(user, "Email code");
   await signedIn(user, "Email code");
-  redirect(destinationFor(user.role, safeNext(String(input.next ?? "/"))));
+  const next = safeNext(String(input.next ?? "/"));
+  if (!existing) {
+    // New accounts start with their own set-up: a doctor's profile and sessions, a patient's phone and details.
+    if (user.role === "doctor") redirect("/dashboard/profile?welcome=1");
+    if (user.role === "patient") redirect(next === "/" ? "/profile?welcome=1" : `/profile?welcome=1&next=${encodeURIComponent(next)}`);
+  }
+  redirect(destinationFor(user.role, next));
 }
 
 /** Plain form action for the one-tap sample staff accounts. */

@@ -89,8 +89,8 @@ describe("ScheduleView", () => {
     renderWithProviders(<ScheduleView doctor={cho} slots={await getSlots("cho")} initialWeek="2026-10-26" signedIn />);
 
     expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled();
-    // 09:20 today has passed at 13:40.
-    expect(screen.getAllByRole("radio", { name: /09:20, closed/ })[0]).toBeDisabled();
+    // Dr Cho's 09:30 slot today has passed at 13:40.
+    expect(screen.getAllByRole("radio", { name: /09:30, closed/ })[0]).toBeDisabled();
 
     const open = screen.getAllByRole("radio").find((radio) => !(radio as HTMLInputElement).disabled)!;
     await userEvent.click(open);

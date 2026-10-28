@@ -4,6 +4,7 @@ import { ScheduleView } from "@/components/schedule/ScheduleView";
 import { isIsoDate, now } from "@/lib/clock";
 import { clampWeek, nextOpening } from "@/lib/schedule";
 import { getDoctor, getSlots, getWindow } from "@/lib/repository";
+import { sessionsOf } from "@/lib/data";
 import { getCurrentUser } from "@/lib/session";
 
 interface Props {
@@ -36,6 +37,7 @@ export default async function DoctorPage({ params, searchParams }: Props) {
       doctor={doctor}
       slots={slots}
       initialWeek={initialWeek}
+      sessions={sessionsOf(doctor.id)}
       signedIn={Boolean(user)}
       allDoctorsHref={user?.role === "patient" ? "/book" : "/#doctors"}
     />

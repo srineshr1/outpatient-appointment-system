@@ -7,8 +7,13 @@ import {
   type AuditEvent,
   type ChargeRecord,
   type ClinicStore,
+  type ConsultSession,
   type LoginCodeRecord,
   type NewUser,
+  type Placement,
+  type ProfileKind,
+  type ProfileRecord,
+  type RescheduleRecord,
   type SessionRecord,
   type StoredUser,
   type UserAccount,
@@ -42,8 +47,21 @@ function loginCodePath(email: string): string {
   return `hsp/login-codes/${hashToken(email)}.json`;
 }
 
+/** A wave booking's slot id is "<wave>#<token>"; "#" is not safe in a pathname, so it is stored as "~". */
 function slotPath(slotId: string): string {
-  return `hsp/slots/${slotId}.json`;
+  return `hsp/slots/${slotId.replace(/#/g, "~")}.json`;
+}
+
+function profilePath(userId: string): string {
+  return `hsp/profiles/${userId}.json`;
+}
+
+function consultSessionPath(id: string): string {
+  return `hsp/consult-sessions/${id}.json`;
+}
+
+function reschedulePath(move: RescheduleRecord): string {
+  return `hsp/reschedules/${move.at.replace(/[^0-9]/g, "")}-${move.id}.json`;
 }
 
 function chargePath(appointmentId: string): string {
@@ -326,7 +344,7 @@ export class BlobClinicStore implements ClinicStore {
 
   async listBlockedSlotIds(): Promise<string[]> {
     const pathnames = await listPathnames("hsp/slots/");
-    return pathnames.map((pathname) => pathname.slice("hsp/slots/".length).replace(/\.json$/, ""));
+    return pathnames.map((pathname) => pathname.slice("hsp/slots/".length).replace(/\.json$/, "").replace(/~/g, "#"));
   }
 
   async createAppointment(appointment: AppointmentRecord): Promise<"ok" | "taken"> {
@@ -412,5 +430,73 @@ export class BlobClinicStore implements ClinicStore {
     const newest = (await listPathnames("hsp/audit/")).sort().slice(0, Math.max(1, Math.floor(limit)));
     const events = await mapLimit(newest, READ_CONCURRENCY, (pathname) => readJson<AuditEvent>(pathname));
     return events.filter((event): event is AuditEvent => event !== null);
+  }
+
+  async getProfile(userId: string): Promise<ProfileRecord | null> {
+    return readJson<ProfileRecord>(profilePath(userId));
+  }
+
+  async putProfile(profile: ProfileRecord): Promise<void> {
+    await writeOver(profilePath(profile.userId), profile);
+  }
+
+  async listProfiles(kind?: ProfileKind): Promise<ProfileRecord[]> {
+    const rows = (await readAll<ProfileRecord>("hsp/profiles/")).map((row) => row.value);
+    return kind ? rows.filter((row) => row.kind === kind) : rows;
+  }
+
+  async listConsultSessions(doctorId?: string): Promise<ConsultSession[]> {
+    const rows = (await readAll<ConsultSession>("hsp/consult-sessions/")).map((row) => row.value);
+    return rows
+      .filter((row) => doctorId === undefined || row.doctorId === doctorId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  }
+
+  async getConsultSession(id: string): Promise<ConsultSession | null> {
+    return readJson<ConsultSession>(consultSessionPath(id));
+  }
+
+  async putConsultSession(session: ConsultSession): Promise<void> {
+    await writeOver(consultSessionPath(session.id), session);
+  }
+
+  async createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists"> {
+    return (await writeNew(consultSessionPath(session.id), session)) ? "ok" : "exists";
+  }
+
+  async rescheduleAppointment(
+    id: string,
+    fromSlotId: string,
+    to: Placement,
+    history: RescheduleRecord,
+  ): Promise<"ok" | "taken" | "stale"> {
+    const current = await readJson<AppointmentRecord>(appointmentPath(id));
+    if (!current || current.status !== "booked" || current.slotId !== fromSlotId) return "stale";
+    // Claim the new slot first: the claim file is what stops two people holding it.
+    if (!(await writeNew(slotPath(to.slotId), { appointmentId: id }))) return "taken";
+    const moved = await updateTagged<AppointmentRecord>(appointmentPath(id), (existing) =>
+      existing.status === "booked" && existing.slotId === fromSlotId ? { ...existing, ...to } : null,
+    );
+    if (!moved?.changed) {
+      await remove(slotPath(to.slotId));
+      return "stale";
+    }
+    await remove(slotPath(fromSlotId));
+    await writeNew(reschedulePath(history), history);
+    return "ok";
+  }
+
+  async listReschedules(
+    filter: { appointmentId?: string; doctorId?: string; patientUserId?: string } = {},
+  ): Promise<RescheduleRecord[]> {
+    const rows = (await readAll<RescheduleRecord>("hsp/reschedules/")).map((row) => row.value);
+    return rows
+      .filter(
+        (move) =>
+          (filter.appointmentId === undefined || move.appointmentId === filter.appointmentId) &&
+          (filter.doctorId === undefined || move.doctorId === filter.doctorId) &&
+          (filter.patientUserId === undefined || move.patientUserId === filter.patientUserId),
+      )
+      .sort((a, b) => a.at.localeCompare(b.at));
   }
 }

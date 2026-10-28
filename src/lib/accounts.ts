@@ -1,4 +1,5 @@
 import type { StoredUser, UserAccount } from "./clinic-types";
+import { doctorProfileRecord, EMPTY_DOCTOR_PROFILE } from "./profiles";
 import { hashPassword, normaliseEmail, verifyPassword } from "./passwords";
 import { getStore } from "./store";
 
@@ -50,5 +51,30 @@ export async function createPatient(rawEmail: string, rawName: string): Promise<
   });
   const user = await store.getUserByEmail(email);
   if (!user) throw new Error(created === "exists" ? "Account vanished." : "Could not create the account.");
+  return toPublic(user);
+}
+
+/**
+ * Create a doctor who signed up themselves. They get their own clinic book and an empty profile,
+ * and stay out of the patient directory until they have filled the profile in and set up at least
+ * one consulting session. No password: they sign in with an emailed code.
+ */
+export async function createDoctorSelfSignup(rawEmail: string, rawName: string): Promise<UserAccount> {
+  const email = normaliseEmail(rawEmail);
+  const store = await getStore();
+  const id = crypto.randomUUID();
+  const created = await store.createUser({
+    id,
+    email,
+    passwordHash: "",
+    name: rawName.trim().slice(0, 100),
+    role: "doctor",
+    doctorId: id,
+    mobile: "",
+    dob: "",
+  });
+  const user = await store.getUserByEmail(email);
+  if (!user) throw new Error(created === "exists" ? "Account vanished." : "Could not create the account.");
+  await store.putProfile(doctorProfileRecord(user.id, { ...EMPTY_DOCTOR_PROFILE }, new Date().toISOString()));
   return toPublic(user);
 }

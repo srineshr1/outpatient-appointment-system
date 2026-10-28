@@ -9,10 +9,21 @@ import { openCharge } from "./billing";
 import { blockedSlotIds, forgetBlockedSlots } from "./blocked-slots";
 import type { AppointmentRecord } from "./clinic-types";
 import { now } from "./clock";
-import { bookWindow, findDoctor, generateSlots, reasons, type BookWindow, type Doctor, type Slot } from "./data";
+import {
+  bookWindow,
+  findDoctor,
+  generateSlots,
+  isListed,
+  reasons,
+  scheduleVersion,
+  type BookWindow,
+  type Doctor,
+  type Slot,
+} from "./data";
 import { loadDoctors } from "./doctors";
 import { totals } from "./payments";
 import { slotStatus } from "./schedule";
+import { applyHeld, freeToken, heldId } from "./sessions";
 import { getStore } from "./store";
 
 export class SlotUnavailableError extends Error {
@@ -31,7 +42,7 @@ let cache: { key: string; slots: Slot[] } | null = null;
 
 /** Call after `loadDoctors`: the cache is keyed by the week and the doctors listed. */
 function slotsForWindow(window: BookWindow, list: readonly Doctor[]): Slot[] {
-  const key = `${window.firstWeek}|${list.map((doctor) => doctor.id).join(",")}`;
+  const key = `${window.firstWeek}|${scheduleVersion()}|${list.map((doctor) => doctor.id).join(",")}`;
   if (cache?.key !== key) cache = { key, slots: generateSlots(window) };
   return cache.slots;
 }
@@ -53,9 +64,16 @@ export async function getSlots(doctorId?: string): Promise<Slot[]> {
   // The doctor list and the booked-slot list are separate reads: fetch them together.
   const [list, taken] = await Promise.all([loadDoctors(), blockedSlotIds()]);
   const all = slotsForWindow(bookWindow(now()), list);
-  const blocked = new Set(taken);
-  const merged = all.map((slot) => (blocked.has(slot.id) && !slot.taken ? { ...slot, taken: true } : slot));
+  const merged = applyHeld(all, taken);
   return doctorId ? merged.filter((slot) => slot.doctorId === doctorId) : merged;
+}
+
+/** One slot or wave by id, as it stands now (bookings applied), or null when no such time exists. */
+export async function getSlot(id: string): Promise<Slot | null> {
+  const store = await getStore();
+  const [doctors, held] = await Promise.all([loadDoctors(), store.listBlockedSlotIds()]);
+  const found = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === id);
+  return found ? (applyHeld([found], held)[0] ?? null) : null;
 }
 
 /** For each doctor, the next few bookable-looking slots. Used by the directory. */
@@ -116,16 +134,38 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
   const reference$ = uniqueReference(store);
   reference$.catch(() => undefined); // surfaced below, only if the booking gets that far
   const [doctors, blocked] = await Promise.all([loadDoctors(), store.listBlockedSlotIds()]);
-  const current = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === input.slot.id);
-  if (!current) throw new SlotUnavailableError(input.slot.id, "missing");
+  const found = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === input.slot.id);
+  if (!found || !isListed(found.doctorId)) throw new SlotUnavailableError(input.slot.id, "missing");
+  const current = applyHeld([found], blocked)[0]!;
   const status = slotStatus(current, blocked, now());
   if (status !== "open") throw new SlotUnavailableError(current.id, status);
 
   const reference = await reference$;
-  const visit: AppointmentRecord = {
+  let held = blocked;
+  let attempt = 0;
+  for (;;) {
+    // A wave booking holds "<wave>#<token>": the lowest token nobody holds. A stream slot holds its own id.
+    const token = current.mode === "wave" ? freeToken(current.id, current.capacity ?? 1, held) : null;
+    if (current.mode === "wave" && token === null) throw new SlotUnavailableError(current.id, "taken");
+    const visit = buildVisit(input, current, reference, token);
+    const outcome = await store.createAppointment(visit);
+    if (outcome === "ok") {
+      forgetBlockedSlots();
+      return finishBooking(visit, input, reference);
+    }
+    forgetBlockedSlots();
+    // Someone took that token a moment ago: read what is held now and try the next one.
+    attempt += 1;
+    if (current.mode !== "wave" || attempt >= 5) throw new SlotUnavailableError(current.id, "taken");
+    held = await store.listBlockedSlotIds();
+  }
+}
+
+function buildVisit(input: ConfirmInput, current: Slot, reference: string, token: number | null): AppointmentRecord {
+  return {
     id: crypto.randomUUID(),
     reference,
-    slotId: current.id,
+    slotId: token === null ? current.id : heldId(current.id, token),
     doctorId: current.doctorId,
     date: current.date,
     time: current.time,
@@ -138,10 +178,14 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
     status: "booked",
     patientUserId: input.patientUserId ?? null,
     createdAt: new Date().toISOString(),
+    sessionId: current.sessionId ?? null,
+    token,
+    waveCapacity: current.mode === "wave" ? (current.capacity ?? 1) : null,
+    endTime: current.endTime ?? null,
   };
-  const outcome = await store.createAppointment(visit);
-  forgetBlockedSlots();
-  if (outcome === "taken") throw new SlotUnavailableError(current.id, "taken");
+}
+
+async function finishBooking(visit: AppointmentRecord, input: ConfirmInput, reference: string): Promise<ConfirmResult> {
 
   // The visit is booked either way. A fee that fails to save shows as "No fee recorded" to staff.
   const charge = await openCharge(visit, Boolean(input.payNow)).catch((error: unknown) => {

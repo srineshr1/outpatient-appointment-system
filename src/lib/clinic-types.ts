@@ -57,7 +57,10 @@ export interface NewUser {
 }
 
 export type UserPatch = Partial<
-  Pick<UserAccount, "name" | "role" | "doctorId" | "disabledAt" | "sessionsRevokedAt" | "doctorRoom" | "doctorInterest">
+  Pick<
+    UserAccount,
+    "name" | "role" | "doctorId" | "disabledAt" | "sessionsRevokedAt" | "doctorRoom" | "doctorInterest" | "mobile" | "dob"
+  >
 >;
 
 /** A practice sign-in session. The cookie token itself is never stored, only its hash. */
@@ -88,6 +91,83 @@ export interface AppointmentRecord {
   status: AppointmentStatus;
   patientUserId: string | null;
   createdAt: string;
+  /** The consulting session this visit sits in. Absent on visits booked before sessions existed. */
+  sessionId?: string | null;
+  /** Wave visits only: the patient's token in the wave, 1 up to the wave's capacity. */
+  token?: number | null;
+  /** Wave visits only: how many patients the wave takes. A database check keeps the token within it. */
+  waveCapacity?: number | null;
+  /** Wave visits only: when the wave ends (HH:MM). `time` is when it starts. */
+  endTime?: string | null;
+}
+
+/** What changes when a booked visit moves. The reference, patient, doctor and fee stay as they are. */
+export interface Placement {
+  slotId: string;
+  date: string;
+  time: string;
+  sessionId: string | null;
+  token: number | null;
+  waveCapacity: number | null;
+  endTime: string | null;
+}
+
+/** One move of a visit: who did it, from where, to where, and when. Append-only. */
+export interface RescheduleRecord {
+  id: string;
+  appointmentId: string;
+  reference: string;
+  doctorId: string;
+  patientUserId: string | null;
+  byUserId: string | null;
+  byName: string;
+  byRole: string;
+  fromSlotId: string;
+  fromDate: string;
+  fromTime: string;
+  fromToken: number | null;
+  toSlotId: string;
+  toDate: string;
+  toTime: string;
+  toToken: number | null;
+  reason: string;
+  at: string;
+}
+
+export type SessionMode = "stream" | "wave";
+
+/** A doctor's weekly consulting session. */
+export interface ConsultSession {
+  id: string;
+  doctorId: string;
+  label: string;
+  /** 1 = Monday … 5 = Friday. */
+  weekdays: number[];
+  /** HH:MM, London time. */
+  startTime: string;
+  endTime: string;
+  room: string;
+  mode: SessionMode;
+  /** Stream: minutes per slot, one patient each. */
+  slotMinutes: number | null;
+  /** Wave: minutes per wave. */
+  waveMinutes: number | null;
+  /** Wave: patients per wave. */
+  waveCapacity: number | null;
+  /** Set when the doctor removes the session. Kept so earlier visits still make sense. */
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ProfileKind = "patient" | "doctor";
+
+/** A stored profile: the fields depend on `kind` (see profiles.ts). */
+export interface ProfileRecord {
+  userId: string;
+  kind: ProfileKind;
+  data: Record<string, unknown>;
+  updatedAt: string;
 }
 
 /** A pending email sign-in. Only a hash of the code is kept. */
@@ -221,4 +301,28 @@ export interface ClinicStore {
   appendEvent(event: AuditEvent): Promise<void>;
   /** Newest first, at most `limit`. */
   listEvents(limit?: number): Promise<AuditEvent[]>;
+  getProfile(userId: string): Promise<ProfileRecord | null>;
+  /** Create or replace one account's profile. */
+  putProfile(profile: ProfileRecord): Promise<void>;
+  listProfiles(kind?: ProfileKind): Promise<ProfileRecord[]>;
+  /** Every consulting session, removed ones included, or one doctor's. */
+  listConsultSessions(doctorId?: string): Promise<ConsultSession[]>;
+  getConsultSession(id: string): Promise<ConsultSession | null>;
+  /** Create or replace one session. */
+  putConsultSession(session: ConsultSession): Promise<void>;
+  /** Create a session only when its id is new: seeding must never undo a doctor's removal. */
+  createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists">;
+  /**
+   * Move a booked visit. `fromSlotId` is the slot the caller read: "stale" when the visit has since
+   * changed or been cancelled, "taken" when the new slot or token is already held. The history line
+   * is stored together with the move, never without it.
+   */
+  rescheduleAppointment(
+    id: string,
+    fromSlotId: string,
+    to: Placement,
+    history: RescheduleRecord,
+  ): Promise<"ok" | "taken" | "stale">;
+  /** Oldest first. */
+  listReschedules(filter?: { appointmentId?: string; doctorId?: string; patientUserId?: string }): Promise<RescheduleRecord[]>;
 }

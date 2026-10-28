@@ -1,4 +1,6 @@
+import type { ConsultSession } from "./clinic-types";
 import { addDays, mondayOf, todayIso, weekdayIndex } from "./clock";
+import { demoSessions, slotId as streamSlotId, slotsForSession, weekdaysLabel } from "./sessions";
 
 export interface Practice {
   name: string;
@@ -44,6 +46,8 @@ export interface Doctor {
   /** Days the doctor is usually in clinic. */
   days: string;
   portrait: Portrait;
+  /** Consultation fee in pence, when the doctor sets one. Otherwise the practice's fee for the visit reason applies. */
+  feePence?: number;
 }
 
 export interface Slot {
@@ -56,6 +60,16 @@ export interface Slot {
   taken?: boolean;
   /** Registrar teaching session: on the list but not bookable. */
   teaching?: boolean;
+  /** When the slot or wave ends, HH:MM. */
+  endTime?: string;
+  /** "stream": one patient at `time`. "wave": up to `capacity` patients, seen in token order. */
+  mode?: "stream" | "wave";
+  /** Wave: how many patients the wave takes. */
+  capacity?: number;
+  /** Wave: how many tokens are taken. */
+  booked?: number;
+  sessionId?: string;
+  room?: string;
 }
 
 export const practice: Practice = {
@@ -158,58 +172,6 @@ export const doctors: Doctor[] = [
 /** How many weeks ahead the book is open. */
 export const WEEKS_OPEN = 4;
 
-/** Weekly clinic templates, keyed by weekday (1 = Monday … 5 = Friday). */
-interface Template {
-  sessions: Partial<Record<1 | 2 | 3 | 4 | 5, string[]>>;
-  /** Share of sessions already booked, 0–1. */
-  busy: number;
-  /** Share of sessions that are teaching, 0–1. */
-  teaching?: number;
-}
-
-const FULL_DAY = ["09:00", "09:20", "09:40", "10:30", "11:00", "14:00", "14:20", "15:00", "15:40", "16:10"];
-
-const templates: Record<string, Template> = {
-  adeyemi: { sessions: { 1: FULL_DAY, 2: FULL_DAY, 3: FULL_DAY, 4: FULL_DAY, 5: FULL_DAY }, busy: 0.6 },
-  reid: {
-    sessions: {
-      1: ["09:00", "10:20", "11:40", "14:00", "14:50", "16:20"],
-      2: ["09:00", "10:20", "11:40", "14:00", "15:30"],
-      3: ["09:10", "10:20", "11:40", "15:30", "16:20"],
-      4: ["09:10", "10:20", "14:00", "14:50"],
-      5: ["09:10", "09:30", "10:10", "11:30", "15:00"],
-    },
-    busy: 0.75,
-  },
-  cho: {
-    sessions: {
-      1: ["09:20", "09:40", "11:40", "14:20", "15:10"],
-      2: ["09:40", "10:00", "11:30", "14:20", "16:00"],
-      3: ["10:00", "11:30", "14:10", "16:00"],
-      4: ["09:20", "09:40", "10:00"],
-      5: ["09:40", "11:30", "14:10", "15:10"],
-    },
-    busy: 0.45,
-  },
-  rahman: {
-    sessions: { 2: ["14:00", "14:30", "15:00", "15:30", "16:00"], 4: ["10:00", "10:40", "11:20"] },
-    busy: 0.8,
-  },
-  macleod: {
-    sessions: {
-      1: ["09:30", "10:40", "15:20", "15:50"],
-      2: ["09:30", "11:00", "14:40"],
-      3: ["10:40", "11:00", "15:20"],
-      5: ["09:50", "11:00", "15:20"],
-    },
-    busy: 0.35,
-    teaching: 0.3,
-  },
-};
-
-/** A doctor added from the admin console: a full week, nothing booked by phone yet. */
-const STAFF_TEMPLATE: Template = { sessions: { 1: FULL_DAY, 2: FULL_DAY, 3: FULL_DAY, 4: FULL_DAY, 5: FULL_DAY }, busy: 0 };
-
 /* ---------- Doctors added in the admin console ---------- */
 
 /**
@@ -218,19 +180,72 @@ const STAFF_TEMPLATE: Template = { sessions: { 1: FULL_DAY, 2: FULL_DAY, 3: FULL
  * store (`loadDoctors` in `doctors.ts`) before it renders or changes anything.
  */
 let staffDoctors: Doctor[] = [];
+/** Doctor accounts that exist but are not shown to patients yet (profile or sessions unfinished). */
+let unlistedDoctors: Doctor[] = [];
+let consultSessions: ConsultSession[] = demoSessions(doctors);
+let sessionsVersion = 0;
 
-export function setStaffDoctors(list: Doctor[]): void {
+export function setStaffDoctors(list: Doctor[], unlisted: Doctor[] = []): void {
+  const before = JSON.stringify([staffDoctors, unlistedDoctors]);
   staffDoctors = list;
+  unlistedDoctors = unlisted;
+  if (JSON.stringify([staffDoctors, unlistedDoctors]) !== before) sessionsVersion += 1;
 }
 
-/** The practice's doctors, then those added in the admin console. */
+/**
+ * Every session the server knows, removed ones included. The practice's own doctors fall back to
+ * their starting sessions until the store has any rows for them.
+ */
+export function setConsultSessions(list: readonly ConsultSession[]): void {
+  const have = new Set(list.map((session) => session.doctorId));
+  const merged = [...list, ...demoSessions(doctors).filter((session) => !have.has(session.doctorId))];
+  if (JSON.stringify(merged) === JSON.stringify(consultSessions)) return;
+  consultSessions = merged;
+  sessionsVersion += 1;
+}
+
+/** Changes whenever the doctors or sessions change, so caches built from them can be dropped. */
+export function scheduleVersion(): number {
+  return sessionsVersion;
+}
+
+export function sessionsOf(doctorId: string): ConsultSession[] {
+  return consultSessions.filter((session) => session.doctorId === doctorId && !session.archivedAt);
+}
+
+export function findSession(id: string | null | undefined): ConsultSession | undefined {
+  return id ? consultSessions.find((session) => session.id === id) : undefined;
+}
+
+/** The days a doctor sees patients, from their live sessions. */
+export function daysFromSessions(sessions: readonly ConsultSession[]): string {
+  const days = sessions.filter((session) => !session.archivedAt).flatMap((session) => session.weekdays);
+  return days.length ? weekdaysLabel(days, true) : "";
+}
+
+/** The practice's doctors, then those who signed up or were added and are ready for patients. */
 export function allDoctors(): Doctor[] {
-  return staffDoctors.length ? [...doctors, ...staffDoctors] : doctors;
+  return (staffDoctors.length ? [...doctors, ...staffDoctors] : doctors).map(withSessionDays);
 }
 
+function withSessionDays(doctor: Doctor): Doctor {
+  const days = daysFromSessions(sessionsOf(doctor.id));
+  return days && days !== doctor.days ? { ...doctor, days } : doctor;
+}
+
+/** A doctor patients can book. */
+export function isListed(id: string | null | undefined): boolean {
+  return Boolean(id) && (isPracticeDoctor(id as string) || staffDoctors.some((doctor) => doctor.id === id));
+}
+
+/** Any doctor we know, listed or not, so visits that already exist still show who they are with. */
 export function findDoctor(id: string | null | undefined): Doctor | undefined {
   if (!id) return undefined;
-  return doctors.find((doctor) => doctor.id === id) ?? staffDoctors.find((doctor) => doctor.id === id);
+  const found =
+    doctors.find((doctor) => doctor.id === id) ??
+    staffDoctors.find((doctor) => doctor.id === id) ??
+    unlistedDoctors.find((doctor) => doctor.id === id);
+  return found ? withSessionDays(found) : undefined;
 }
 
 export function isPracticeDoctor(id: string): boolean {
@@ -249,14 +264,20 @@ function pick<T>(list: readonly T[], seed: string): T {
   return list[Math.floor(unitHash(seed) * list.length)]!;
 }
 
-/** A listing for a doctor account that has its own book. */
-export function staffDoctorProfile(account: {
-  id: string;
-  name: string;
-  doctorRoom?: string;
-  doctorInterest?: string;
-}): Doctor {
-  const interest = account.doctorInterest?.trim() || "General practice";
+/** A listing for a doctor account that has its own book, from what the doctor wrote in their profile. */
+export function staffDoctorProfile(
+  account: { id: string; name: string; doctorRoom?: string; doctorInterest?: string },
+  profile?: {
+    specialty: string;
+    qualification: string;
+    years: number | null;
+    room: string;
+    feePence: number | null;
+    bio: string;
+    languages: string[];
+  },
+): Doctor {
+  const interest = profile?.specialty.trim() || account.doctorInterest?.trim() || "General practice";
   const clean = account.name.replace(/\s+/g, " ").trim() || "New doctor";
   const name = /^dr\.?\s/i.test(clean) ? clean.replace(/^dr\.?\s+/i, "Dr ") : `Dr ${clean}`;
   const surname = name.split(" ").slice(-1)[0] ?? clean;
@@ -264,13 +285,13 @@ export function staffDoctorProfile(account: {
     id: account.id,
     name,
     short: name.split(" ").length > 2 ? `Dr ${surname}` : name,
-    qualification: "MRCGP",
+    qualification: profile?.qualification.trim() || "MRCGP",
     interest,
-    years: 1,
-    note: interest === "General practice" ? "General practice." : `General practice, with an interest in ${interest.toLowerCase()}.`,
-    room: account.doctorRoom?.trim() || "Room 6",
-    bio: "Recently joined the practice. Happy to see anything, from a new worry to a long-running condition.",
-    languages: ["English"],
+    years: profile?.years ?? 1,
+    note: interest === "General practice" ? "General practice." : `${interest}.`,
+    room: profile?.room.trim() || account.doctorRoom?.trim() || "Room 6",
+    bio: profile?.bio.trim() || "Recently joined the practice. Happy to see anything, from a new worry to a long-running condition.",
+    languages: profile?.languages.length ? profile.languages : ["English"],
     days: "Monday to Friday",
     portrait: {
       background: pick(PALETTE.background, `${account.id}#bg`),
@@ -279,6 +300,7 @@ export function staffDoctorProfile(account: {
       hairStyle: pick(PALETTE.hairStyle, `${account.id}#style`),
       shirt: pick(PALETTE.shirt, `${account.id}#shirt`),
     },
+    ...(profile?.feePence ? { feePence: profile.feePence } : {}),
   };
 }
 
@@ -292,9 +314,10 @@ export function unitHash(input: string): number {
   return hash / 0x100000000;
 }
 
-export function slotId(doctorId: string, date: string, time: string): string {
-  return `${doctorId}-${date}-${time.replace(":", "")}`;
-}
+export const slotId = streamSlotId;
+
+/** Share of the registrar's stream slots that are teaching sessions, so not bookable. */
+const TEACHING_SHARE: Record<string, number> = { macleod: 0.3 };
 
 /** The Monday the bookable window starts on. At the weekend, the book opens on next week. */
 export function firstWeekFor(today: string): string {
@@ -315,21 +338,18 @@ export function bookWindow(instant?: Date): BookWindow {
 }
 
 /**
- * Generate every slot in the window. Deterministic: the same date always yields the
- * same schedule, so server and browser agree and a reload never reshuffles times.
+ * Generate every slot or wave in the window from the doctors' consulting sessions. Deterministic:
+ * the same sessions always yield the same schedule, so server and browser agree. Nothing here
+ * says who has booked: `applyHeld` (sessions.ts) adds that from the bookings.
  */
 export function generateSlots(window: BookWindow): Slot[] {
   const slots: Slot[] = [];
+  const lastDate = addDays(window.firstWeek, WEEKS_OPEN * 7 - 1);
   for (const doctor of allDoctors()) {
-    const template = templates[doctor.id] ?? STAFF_TEMPLATE;
-    for (let offset = 0; offset < WEEKS_OPEN * 7; offset += 1) {
-      const date = addDays(window.firstWeek, offset);
-      const weekday = weekdayIndex(date) as 1 | 2 | 3 | 4 | 5;
-      for (const time of template.sessions[weekday] ?? []) {
-        const id = slotId(doctor.id, date, time);
-        const slot: Slot = { id, doctorId: doctor.id, date, time };
-        if (template.teaching && unitHash(`${id}#teach`) < template.teaching) slot.teaching = true;
-        else if (unitHash(id) < template.busy) slot.taken = true;
+    const teaching = TEACHING_SHARE[doctor.id];
+    for (const session of sessionsOf(doctor.id)) {
+      for (const slot of slotsForSession(session, doctor.id, window.firstWeek, lastDate)) {
+        if (teaching && slot.mode === "stream" && unitHash(`${slot.id}#teach`) < teaching) slot.teaching = true;
         slots.push(slot);
       }
     }

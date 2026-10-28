@@ -1,5 +1,6 @@
 "use client";
 
+import { slotTimeLabel } from "@/lib/sessions";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -17,6 +18,11 @@ import { formatMoney } from "@/lib/fees";
 import { ageLabel, formatPhone, monthLong, weekdayLong } from "@/lib/format";
 import { downloadIcs } from "@/lib/ics";
 import { spring } from "@/lib/motion";
+
+function waveMinutes(from: string, to: string): number {
+  const at = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+  return Math.max(10, at(to) - at(from));
+}
 
 function SuccessMark() {
   return (
@@ -86,8 +92,14 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
             {slot.date === window.today
               ? "today"
               : `on ${weekdayLong(slot.date)} ${dayOfMonth(slot.date)} ${monthLong(slot.date)}`}{" "}
-            at <span className="tabular">{slot.time}</span> with {doctor.short}.
+            at <span className="tabular">{slotTimeLabel(slot)}</span> with {doctor.short}.
           </p>
+          {slot.mode === "wave" && booking.token ? (
+            <p className="mt-3 text-callout text-ink-2">
+              Your token is <span className="tabular font-semibold text-ink">{booking.token}</span>. Arrive any time in your
+              wave and you’ll be seen in token order.
+            </p>
+          ) : null}
           <p className="mt-6 text-callout text-muted">Booking reference</p>
           <p className="tabular mt-1 text-title2 font-semibold tracking-wide text-ink select-all">{reference}</p>
           <p className="mt-4 text-callout">
@@ -106,7 +118,7 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
                     room: doctor.room,
                     date: slot.date,
                     time: slot.time,
-                    minutes: reason.minutes,
+                    minutes: slot.mode === "wave" && slot.endTime ? waveMinutes(slot.time, slot.endTime) : reason.minutes,
                     reasonLabel: reason.label,
                   },
                   now,
@@ -129,7 +141,7 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
         transition={{ ...spring.gentle, delay: 0.3 }}
         className="mx-auto mt-12 grid max-w-4xl gap-4 md:grid-cols-2"
       >
-        <AppointmentSummary doctor={doctor} slot={slot} reason={reason} />
+        <AppointmentSummary doctor={doctor} slot={slot} reason={reason} token={booking.token} />
         <Card className="p-5 md:p-6">
           <h2 className="text-callout font-semibold text-muted">Before you come</h2>
           <dl className="mt-4 grid gap-4 text-body">

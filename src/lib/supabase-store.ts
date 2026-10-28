@@ -9,9 +9,14 @@ import {
   type AuditEvent,
   type ChargeRecord,
   type ClinicStore,
+  type ConsultSession,
   type LoginCodeRecord,
   type NewUser,
   type PaymentEntry,
+  type Placement,
+  type ProfileKind,
+  type ProfileRecord,
+  type RescheduleRecord,
   type SessionRecord,
   type StoredUser,
   type UserAccount,
@@ -68,6 +73,55 @@ interface AppointmentRow {
   status: string;
   patient_user_id: string | null;
   created_at: string;
+  session_id: string | null;
+  token: number | null;
+  wave_capacity: number | null;
+  end_time: string | null;
+}
+
+interface ProfileRow {
+  user_id: string;
+  kind: string;
+  data: unknown;
+  updated_at: string;
+}
+
+interface ConsultSessionRow {
+  id: string;
+  doctor_id: string;
+  label: string;
+  weekdays: string;
+  start_time: string;
+  end_time: string;
+  room: string;
+  mode: string;
+  slot_minutes: number | null;
+  wave_minutes: number | null;
+  wave_capacity: number | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RescheduleRow {
+  id: string;
+  appointment_id: string;
+  reference: string;
+  doctor_id: string;
+  patient_user_id: string | null;
+  by_user_id: string | null;
+  by_name: string;
+  by_role: string;
+  from_slot_id: string;
+  from_date: string;
+  from_time: string;
+  from_token: number | null;
+  to_slot_id: string;
+  to_date: string;
+  to_time: string;
+  to_token: number | null;
+  reason: string;
+  at: string;
 }
 
 interface LoginCodeRow {
@@ -175,6 +229,79 @@ function toAppointment(row: AppointmentRow): AppointmentRecord {
     status: row.status,
     patientUserId: row.patient_user_id,
     createdAt: row.created_at,
+    sessionId: row.session_id ?? null,
+    token: row.token ?? null,
+    waveCapacity: row.wave_capacity ?? null,
+    endTime: row.end_time ?? null,
+  };
+}
+
+function toProfile(row: ProfileRow): ProfileRecord {
+  const data = row.data && typeof row.data === "object" && !Array.isArray(row.data) ? (row.data as Record<string, unknown>) : {};
+  return { userId: row.user_id, kind: row.kind === "doctor" ? "doctor" : "patient", data, updatedAt: row.updated_at };
+}
+
+function toConsultSession(row: ConsultSessionRow): ConsultSession {
+  return {
+    id: row.id,
+    doctorId: row.doctor_id,
+    label: row.label,
+    weekdays: row.weekdays
+      .split(",")
+      .map((day) => Number(day))
+      .filter((day) => Number.isInteger(day)),
+    startTime: row.start_time,
+    endTime: row.end_time,
+    room: row.room,
+    mode: row.mode === "wave" ? "wave" : "stream",
+    slotMinutes: row.slot_minutes,
+    waveMinutes: row.wave_minutes,
+    waveCapacity: row.wave_capacity,
+    archivedAt: row.archived_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function sessionPayload(session: ConsultSession): Row {
+  return {
+    id: session.id,
+    doctor_id: session.doctorId,
+    label: session.label,
+    weekdays: session.weekdays.join(","),
+    start_time: session.startTime,
+    end_time: session.endTime,
+    room: session.room,
+    mode: session.mode,
+    slot_minutes: session.slotMinutes,
+    wave_minutes: session.waveMinutes,
+    wave_capacity: session.waveCapacity,
+    archived_at: session.archivedAt,
+    created_at: session.createdAt,
+    updated_at: session.updatedAt,
+  };
+}
+
+function toReschedule(row: RescheduleRow): RescheduleRecord {
+  return {
+    id: row.id,
+    appointmentId: row.appointment_id,
+    reference: row.reference,
+    doctorId: row.doctor_id,
+    patientUserId: row.patient_user_id,
+    byUserId: row.by_user_id,
+    byName: row.by_name,
+    byRole: row.by_role,
+    fromSlotId: row.from_slot_id,
+    fromDate: row.from_date,
+    fromTime: row.from_time,
+    fromToken: row.from_token,
+    toSlotId: row.to_slot_id,
+    toDate: row.to_date,
+    toTime: row.to_time,
+    toToken: row.to_token,
+    reason: row.reason,
+    at: row.at,
   };
 }
 
@@ -351,6 +478,8 @@ export class SupabaseClinicStore implements ClinicStore {
       sessionsRevokedAt: "sessions_revoked_at",
       doctorRoom: "doctor_room",
       doctorInterest: "doctor_interest",
+      mobile: "mobile",
+      dob: "dob",
     };
     if (patch.role !== undefined && !isRole(patch.role)) throw new Error("Unknown role.");
     const changes: Row = {};
@@ -463,6 +592,10 @@ export class SupabaseClinicStore implements ClinicStore {
       status: appointment.status,
       patient_user_id: appointment.patientUserId,
       created_at: appointment.createdAt,
+      session_id: appointment.sessionId ?? null,
+      token: appointment.token ?? null,
+      wave_capacity: appointment.waveCapacity ?? null,
+      end_time: appointment.endTime ?? null,
     });
     if (error?.code === UNIQUE_VIOLATION) return "taken";
     fail(error);
@@ -622,5 +755,110 @@ export class SupabaseClinicStore implements ClinicStore {
       Math.max(1, Math.floor(limit)),
     );
     return rows.map(toEvent);
+  }
+
+  async getProfile(userId: string): Promise<ProfileRecord | null> {
+    const { data, error } = await this.db.from("clinic_profiles").select("*").eq("user_id", userId).maybeSingle();
+    fail(error);
+    return data ? toProfile(data as ProfileRow) : null;
+  }
+
+  async putProfile(profile: ProfileRecord): Promise<void> {
+    const { error } = await this.db
+      .from("clinic_profiles")
+      .upsert({ user_id: profile.userId, kind: profile.kind, data: profile.data, updated_at: profile.updatedAt });
+    fail(error);
+  }
+
+  async listProfiles(kind?: ProfileKind): Promise<ProfileRecord[]> {
+    const rows = await this.readAll<ProfileRow>((from, to) => {
+      let query = this.db.from("clinic_profiles").select("*");
+      if (kind) query = query.eq("kind", kind);
+      return query.order("user_id").range(from, to);
+    });
+    return rows.map(toProfile);
+  }
+
+  async listConsultSessions(doctorId?: string): Promise<ConsultSession[]> {
+    const rows = await this.readAll<ConsultSessionRow>((from, to) => {
+      let query = this.db.from("clinic_consult_sessions").select("*");
+      if (doctorId !== undefined) query = query.eq("doctor_id", doctorId);
+      return query.order("created_at").order("id").range(from, to);
+    });
+    return rows.map(toConsultSession);
+  }
+
+  async getConsultSession(id: string): Promise<ConsultSession | null> {
+    const { data, error } = await this.db.from("clinic_consult_sessions").select("*").eq("id", id).maybeSingle();
+    fail(error);
+    return data ? toConsultSession(data as ConsultSessionRow) : null;
+  }
+
+  async putConsultSession(session: ConsultSession): Promise<void> {
+    const { error } = await this.db.from("clinic_consult_sessions").upsert(sessionPayload(session));
+    fail(error);
+  }
+
+  async createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists"> {
+    const { error } = await this.db.from("clinic_consult_sessions").insert(sessionPayload(session));
+    if (error?.code === UNIQUE_VIOLATION) return "exists";
+    fail(error);
+    return "ok";
+  }
+
+  async rescheduleAppointment(
+    id: string,
+    fromSlotId: string,
+    to: Placement,
+    history: RescheduleRecord,
+  ): Promise<"ok" | "taken" | "stale"> {
+    // One database function moves the visit and writes the history line in a single transaction.
+    const { data, error } = await this.db.rpc("clinic_reschedule", {
+      p_id: id,
+      p_from_slot: fromSlotId,
+      p_to: {
+        slot_id: to.slotId,
+        date: to.date,
+        time: to.time,
+        end_time: to.endTime,
+        session_id: to.sessionId,
+        token: to.token,
+        wave_capacity: to.waveCapacity,
+      },
+      p_history: {
+        id: history.id,
+        reference: history.reference,
+        doctor_id: history.doctorId,
+        patient_user_id: history.patientUserId,
+        by_user_id: history.byUserId,
+        by_name: history.byName,
+        by_role: history.byRole,
+        from_slot_id: history.fromSlotId,
+        from_date: history.fromDate,
+        from_time: history.fromTime,
+        from_token: history.fromToken,
+        to_slot_id: history.toSlotId,
+        to_date: history.toDate,
+        to_time: history.toTime,
+        to_token: history.toToken,
+        reason: history.reason,
+        at: history.at,
+      },
+    });
+    fail(error);
+    return data === "ok" ? "ok" : data === "taken" ? "taken" : "stale";
+  }
+
+  async listReschedules(
+    filter: { appointmentId?: string; doctorId?: string; patientUserId?: string } = {},
+  ): Promise<RescheduleRecord[]> {
+    const rows = await this.readAll<RescheduleRow>((from, to) => {
+      let query = this.db.from("clinic_reschedules").select("*");
+      if (filter.appointmentId !== undefined) query = query.eq("appointment_id", filter.appointmentId);
+      if (filter.doctorId !== undefined) query = query.eq("doctor_id", filter.doctorId);
+      if (filter.patientUserId !== undefined) query = query.eq("patient_user_id", filter.patientUserId);
+      return query.order("at").order("id").range(from, to);
+    });
+    return rows.map(toReschedule);
   }
 }

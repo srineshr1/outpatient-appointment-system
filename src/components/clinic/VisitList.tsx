@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { reasons, findDoctor } from "@/lib/data";
-import type { AppointmentRecord } from "@/lib/clinic-types";
-import { formatPhone, formatWhen } from "@/lib/format";
+import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
+import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
+import { slotTimeLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
 import { buttonClass } from "@/components/ui/button-styles";
 import { PendingButton } from "@/components/ui/PendingButton";
@@ -19,6 +21,22 @@ function statusLabel(status: AppointmentRecord["status"]): string {
   if (status === "completed") return "Completed";
   if (status === "cancelled") return "Cancelled";
   return "Booked";
+}
+
+function whenLabel(visit: AppointmentRecord): string {
+  return visit.endTime && visit.token ? slotTimeLabel({ time: visit.time, endTime: visit.endTime, mode: "wave" }) : visit.time;
+}
+
+function spot(date: string, time: string, token: number | null): string {
+  return `${formatShortDate(date)}, ${time}${token ? ` (token ${token})` : ""}`;
+}
+
+function roleLabel(role: string): string {
+  return role === "patient" ? "patient" : role === "doctor" ? "doctor" : "clinic desk";
+}
+
+function movedOn(at: string): string {
+  return `${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }).format(new Date(at))}`;
 }
 
 export function groupVisits(visits: readonly AppointmentRecord[], today: string) {
@@ -42,6 +60,7 @@ export function VisitList({
   mode,
   returnTo,
   payments = {},
+  moves = {},
 }: {
   visits: AppointmentRecord[];
   today: string;
@@ -49,6 +68,8 @@ export function VisitList({
   returnTo: string;
   /** A short payment line per visit id, such as "Paid £40.00". */
   payments?: Readonly<Record<string, string>>;
+  /** Moves made to each visit, oldest first, keyed by visit id. */
+  moves?: Readonly<Record<string, RescheduleRecord[]>>;
 }) {
   const groups = groupVisits(visits, today);
   const sections = [
@@ -90,7 +111,7 @@ export function VisitList({
                       <p className="text-callout font-medium text-muted">{statusLabel(visit.status)}</p>
                     </div>
                     <p className="mt-1 text-body text-ink-2">
-                      <span className="tabular">{formatWhen(visit, today)}</span>
+                      <span className="tabular">{formatWhen({ date: visit.date, time: whenLabel(visit) }, today)}</span>
                       {mode === "clinic" ? ` · ${doctorName(visit.doctorId)}` : null}
                       {` · ${reasonLabel(visit.reasonId)}`}
                     </p>
@@ -115,6 +136,25 @@ export function VisitList({
                         </>
                       ) : null}
                     </p>
+                    {visit.token ? (
+                      <p className="mt-1 text-callout text-ink-2">
+                        Token <span className="tabular font-semibold text-ink">{visit.token}</span> of {visit.waveCapacity ?? "?"} in
+                        this wave. Seen in token order.
+                      </p>
+                    ) : null}
+                    {(moves[visit.id] ?? []).length > 0 ? (
+                      <ul aria-label="History of moves" className="mt-2 grid gap-1 text-callout text-muted">
+                        {(moves[visit.id] ?? []).map((move) => (
+                          <li key={move.id}>
+                            Moved by {move.byName} ({roleLabel(move.byRole)}) from{" "}
+                            <span className="tabular text-ink-2">{spot(move.fromDate, move.fromTime, move.fromToken)}</span> to{" "}
+                            <span className="tabular text-ink-2">{spot(move.toDate, move.toTime, move.toToken)}</span> on{" "}
+                            <span className="tabular">{movedOn(move.at)}</span>
+                            {move.reason ? `. “${move.reason}”` : "."}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                     {visit.note ? <p className="mt-3 text-callout whitespace-pre-line text-ink-2">{visit.note}</p> : null}
                     {visit.status === "booked" ? (
                       <div className="group mt-4 flex flex-wrap gap-2">
@@ -131,6 +171,15 @@ export function VisitList({
                               Mark complete
                             </PendingButton>
                           </form>
+                        ) : null}
+                        {visit.date >= today ? (
+                          <Link
+                            href={`/reschedule/${visit.id}?return=${encodeURIComponent(returnTo)}`}
+                            className={buttonClass("secondary", "md")}
+                            aria-label={`Reschedule ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
+                          >
+                            Reschedule
+                          </Link>
                         ) : null}
                         <form action={updateVisit}>
                           <input type="hidden" name="id" value={visit.id} />

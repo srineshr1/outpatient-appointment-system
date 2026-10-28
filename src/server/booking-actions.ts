@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { actorOf, recordEventSoon, visitSummary } from "@/lib/audit";
 import { todayIso, now } from "@/lib/clock";
@@ -11,9 +12,10 @@ import { confirmBooking, SlotUnavailableError } from "@/lib/repository";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { validatePatient, FIELD_ORDER, type PatientForm } from "@/lib/validate";
 import { changeAppointmentStatus } from "@/lib/visits";
+import { notifyRescheduled, rescheduleVisit } from "@/lib/reschedule";
 
 export type BookAppointmentResult =
-  | { ok: true; reference: string; payment: { amountPence: number; paid: boolean } | null }
+  | { ok: true; reference: string; token: number | null; payment: { amountPence: number; paid: boolean } | null }
   | { ok: false; reason: "past" | "taken" | "teaching" | "missing" | "invalid" | "signed-out" | "staff"; message: string };
 
 export interface BookAppointmentInput {
@@ -79,7 +81,7 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
       });
     }
     await refreshBook();
-    return { ok: true, reference: result.reference, payment: result.payment };
+    return { ok: true, reference: result.reference, token: result.visit.token ?? null, payment: result.payment };
   } catch (error) {
     if (error instanceof SlotUnavailableError) {
       const message =
@@ -120,4 +122,29 @@ async function refreshBook(): Promise<void> {
   } catch {
     // Unit tests run outside the Next.js cache.
   }
+}
+
+/**
+ * Move a visit to another time with the same doctor. Used by the reschedule page for patients,
+ * doctors and the desk. On a clash the person goes back to the same page with the reason.
+ */
+export async function rescheduleAction(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  const slot = String(formData.get("slot") ?? "");
+  const returnTo = safeNext(String(formData.get("return") ?? "/appointments"));
+  const here = `/reschedule/${encodeURIComponent(id)}?return=${encodeURIComponent(returnTo)}`;
+  const user = await getCurrentUser();
+  if (!user) redirect(`/sign-in?next=${encodeURIComponent(here)}`);
+  if (!slot) redirect(withNotice(here, "pick"));
+
+  const outcome = await rescheduleVisit(user, id, slot, String(formData.get("reason") ?? ""));
+  await refreshBook();
+  if (!outcome.ok) redirect(withNotice(here, outcome.reason));
+  const { visit, history } = outcome;
+  try {
+    after(() => notifyRescheduled(user, visit, history));
+  } catch {
+    await notifyRescheduled(user, visit, history);
+  }
+  redirect(withNotice(returnTo, "moved"));
 }

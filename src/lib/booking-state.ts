@@ -12,6 +12,8 @@ export interface Booking {
   doctorId: string;
   slot: Slot;
   reasonId: string;
+  /** Wave bookings: the patient's place in the wave (token 1 is seen first). */
+  token?: number;
   /** The visit's fee. Absent if it couldn't be recorded. */
   payment?: BookingPayment;
   /** Held in memory only. Absent after a reload. */
@@ -101,6 +103,7 @@ export function toPersisted(state: BookingState): PersistedState {
         doctorId: state.booking.doctorId,
         slot: state.booking.slot,
         reasonId: state.booking.reasonId,
+        ...(state.booking.token ? { token: state.booking.token } : {}),
         ...(state.booking.payment ? { payment: state.booking.payment } : {}),
       }
     : null;
@@ -151,6 +154,7 @@ export function parsePersisted(raw: string | null): PersistedState | null {
         doctorId: candidate.doctorId,
         reasonId: candidate.reasonId,
         slot: candidate.slot,
+        ...(typeof candidate.token === "number" && candidate.token > 0 ? { token: candidate.token } : {}),
         ...(isPayment(candidate.payment) ? { payment: { amountPence: candidate.payment.amountPence, paid: candidate.payment.paid } } : {}),
       };
     }

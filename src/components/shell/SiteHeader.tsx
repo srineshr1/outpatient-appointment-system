@@ -13,7 +13,13 @@ import { spring } from "@/lib/motion";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { signOutAction } from "@/server/auth-actions";
 
-type HeaderUser = Pick<PublicUser, "name" | "email" | "role" | "doctorId">;
+type HeaderUser = Pick<PublicUser, "name" | "email" | "role" | "doctorId"> & Partial<Pick<PublicUser, "id">>;
+type LinkUser = Pick<PublicUser, "role"> & Partial<Pick<PublicUser, "id" | "doctorId">>;
+
+/** A doctor with their own clinic book: they set up their own profile and sessions. */
+function keepsOwnBook(user: LinkUser): boolean {
+  return user.role === "doctor" && Boolean(user.id) && user.doctorId === user.id;
+}
 
 export interface NavLink {
   href: string;
@@ -21,7 +27,7 @@ export interface NavLink {
 }
 
 /** The main links for whoever is signed in. Roles the header doesn't know get the clinic book. */
-export function navLinks(user: Pick<PublicUser, "role"> | null): NavLink[] {
+export function navLinks(user: LinkUser | null): NavLink[] {
   if (!user) {
     return [
       { href: "/#doctors", label: "Our doctors" },
@@ -40,14 +46,31 @@ export function navLinks(user: Pick<PublicUser, "role"> | null): NavLink[] {
       { href: "/dashboard", label: "Clinic book" },
     ];
   }
+  if (keepsOwnBook(user)) {
+    return [
+      { href: "/dashboard", label: "Clinic book" },
+      { href: "/dashboard/sessions", label: "Sessions" },
+      { href: "/dashboard/profile", label: "Profile" },
+    ];
+  }
   return [{ href: "/dashboard", label: "Clinic book" }];
 }
 
 /** Links in the account menu: the account's own pages. */
-function accountLinks(user: Pick<PublicUser, "role">): NavLink[] {
+function accountLinks(user: LinkUser): NavLink[] {
   if (user.role === "admin") return [{ href: "/admin", label: "Admin console" }];
-  return user.role === "patient"
-    ? [{ href: "/appointments", label: "Your appointments" }]
+  if (user.role === "patient") {
+    return [
+      { href: "/appointments", label: "Your appointments" },
+      { href: "/profile", label: "Your profile" },
+    ];
+  }
+  return keepsOwnBook(user)
+    ? [
+        { href: "/dashboard", label: "Clinic book" },
+        { href: "/dashboard/sessions", label: "Consulting sessions" },
+        { href: "/dashboard/profile", label: "Your profile" },
+      ]
     : [{ href: "/dashboard", label: "Clinic book" }];
 }
 
