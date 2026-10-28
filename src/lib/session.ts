@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { cache } from "react";
 import type { SessionUser } from "./clinic-types";
 import { createPatient } from "./accounts";
 import { describeDevice } from "./device";
@@ -29,9 +30,18 @@ async function readToken(): Promise<string | null> {
   }
 }
 
-export async function getCurrentUser(): Promise<SessionUser | null> {
+/**
+ * The signed-in person for this request. The layout, the page and the admin guard all ask, so the
+ * answer is remembered for the rest of the request instead of reading the session again each time.
+ */
+export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   // Pages and actions look doctors up by id; make sure ones added in the admin console are known.
-  await loadDoctors();
+  // That refresh and the session lookup don't depend on each other, so they run together.
+  const [user] = await Promise.all([lookupUser(), loadDoctors()]);
+  return user;
+});
+
+async function lookupUser(): Promise<SessionUser | null> {
   if (supabaseConfigured()) {
     try {
       const supabase = await createSupabase();

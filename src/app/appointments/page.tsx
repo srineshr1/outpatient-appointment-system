@@ -25,8 +25,8 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   const query = await searchParams;
   const noticeKey = typeof query.notice === "string" ? query.notice : "";
   const notice = notices[noticeKey];
-  const visits = await visitsFor({ ...user, role: "patient", doctorId: null });
-  const payments = await paymentLabels(visits);
+  const all = visitsFor({ ...user, role: "patient", doctorId: null });
+  const [visits, payments] = await Promise.all([all, paymentLabels(all)]);
   const today = todayIso(now());
 
   return (

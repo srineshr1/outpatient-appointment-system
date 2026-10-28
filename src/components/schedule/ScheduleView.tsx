@@ -3,7 +3,7 @@
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { Alert, ChevronLeft, ChevronRight } from "@/components/icons";
 import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { useBooking } from "@/components/providers/BookingProvider";
@@ -43,6 +43,7 @@ const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
 
 export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, allDoctorsHref = "/#doctors" }: Props) {
   const router = useRouter();
+  const [continuing, startContinue] = useTransition();
   const { state, dispatch } = useBooking();
   const { now, window } = useClock();
   const [week, setWeek] = useState(initialWeek);
@@ -238,8 +239,12 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
               <Button
                 size="lg"
                 className="w-full sm:w-auto"
+                loading={continuing}
+                loadingLabel="Continuing…"
                 onClick={() =>
-                  router.push(signedIn ? "/book/details" : `/sign-in?next=${encodeURIComponent("/book/details")}`)
+                  startContinue(() =>
+                    router.push(signedIn ? "/book/details" : `/sign-in?next=${encodeURIComponent("/book/details")}`),
+                  )
                 }
               >
                 Continue

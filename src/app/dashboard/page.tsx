@@ -35,7 +35,9 @@ export default async function DashboardPage({
   const filter = wholeBook && Boolean(findDoctor(requested)) ? requested : "";
   const noticeKey = typeof query.notice === "string" ? query.notice : "";
   const notice = notices[noticeKey];
-  const visits = (await visitsFor(user)).filter((visit) => (filter ? visit.doctorId === filter : true));
+  const all = visitsFor(user);
+  const [everyVisit, payments] = await Promise.all([all, paymentLabels(all)]);
+  const visits = everyVisit.filter((visit) => (filter ? visit.doctorId === filter : true));
   const today = todayIso(now());
   const returnTo = filter ? `/dashboard?doctor=${filter}` : "/dashboard";
   const doctor = user.doctorId ? findDoctor(user.doctorId) : null;
@@ -78,7 +80,7 @@ export default async function DashboardPage({
           {notice}
         </Notice>
       ) : null}
-      <VisitList visits={visits} today={today} mode="clinic" returnTo={returnTo} payments={await paymentLabels(visits)} />
+      <VisitList visits={visits} today={today} mode="clinic" returnTo={returnTo} payments={payments} />
     </div>
   );
 }

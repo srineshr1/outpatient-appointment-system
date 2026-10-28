@@ -6,6 +6,7 @@
  * API calls; every caller already treats them as asynchronous.
  */
 import { openCharge } from "./billing";
+import { blockedSlotIds, forgetBlockedSlots } from "./blocked-slots";
 import type { AppointmentRecord } from "./clinic-types";
 import { now } from "./clock";
 import { bookWindow, findDoctor, generateSlots, reasons, type BookWindow, type Doctor, type Slot } from "./data";
@@ -49,8 +50,10 @@ export async function getDoctor(id: string): Promise<Doctor | null> {
 }
 
 export async function getSlots(doctorId?: string): Promise<Slot[]> {
-  const all = slotsForWindow(bookWindow(now()), await loadDoctors());
-  const blocked = new Set(await (await getStore()).listBlockedSlotIds());
+  // The doctor list and the booked-slot list are separate reads: fetch them together.
+  const [list, taken] = await Promise.all([loadDoctors(), blockedSlotIds()]);
+  const all = slotsForWindow(bookWindow(now()), list);
+  const blocked = new Set(taken);
   const merged = all.map((slot) => (blocked.has(slot.id) && !slot.taken ? { ...slot, taken: true } : slot));
   return doctorId ? merged.filter((slot) => slot.doctorId === doctorId) : merged;
 }
@@ -135,6 +138,7 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
     createdAt: new Date().toISOString(),
   };
   const outcome = await store.createAppointment(visit);
+  forgetBlockedSlots();
   if (outcome === "taken") throw new SlotUnavailableError(current.id, "taken");
 
   // The visit is booked either way. A fee that fails to save shows as "No fee recorded" to staff.

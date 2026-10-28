@@ -3,6 +3,7 @@
 import { createContext, startTransition, useActionState, useContext, type FormEvent, type ReactNode } from "react";
 import { AlertIcon } from "@/components/admin/icons";
 import { adminButton, type AdminButtonVariant } from "@/components/admin/ui";
+import { Spinner } from "@/components/ui/Spinner";
 import type { ActionResult } from "@/lib/action-result";
 
 type Action = (previous: ActionResult, formData: FormData) => Promise<ActionResult>;
@@ -62,8 +63,14 @@ export function SubmitButton({
   const pending = useContext(Pending);
   // aria-disabled rather than disabled, so focus stays on the button while it works.
   return (
-    <button type="submit" aria-disabled={pending || undefined} className={adminButton(variant, className)}>
-      {pending ? pendingLabel : children}
-    </button>
+    <>
+      <button type="submit" aria-disabled={pending || undefined} aria-busy={pending || undefined} className={adminButton(variant, className)}>
+        {pending ? <Spinner className="size-3.5" /> : null}
+        {pending ? pendingLabel : children}
+      </button>
+      <span role="status" aria-live="polite" className="sr-only">
+        {pending ? pendingLabel : ""}
+      </span>
+    </>
   );
 }

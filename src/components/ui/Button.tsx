@@ -3,19 +3,11 @@
 import Link from "next/link";
 import { motion, type HTMLMotionProps } from "motion/react";
 import type { ComponentProps, ReactNode } from "react";
+import { Spinner } from "@/components/ui/Spinner";
 import { spring } from "@/lib/motion";
 import { buttonClass, type ButtonSize, type ButtonVariant } from "./button-styles";
 
 export { buttonClass, type ButtonSize, type ButtonVariant };
-
-function Spinner() {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-4 rounded-full border-2 border-current border-r-transparent [animation:spin_700ms_linear_infinite]"
-    />
-  );
-}
 
 type ButtonProps = Omit<HTMLMotionProps<"button">, "children"> & {
   variant?: ButtonVariant;

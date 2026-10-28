@@ -227,7 +227,9 @@ export default async function VisitPage({
                 <input type="hidden" name="status" value="completed" />
                 <input type="hidden" name="return" value={path} />
                 <p className="mb-3 text-sm text-ink-2">After the patient has been seen.</p>
-                <SubmitButton variant="secondary">Mark complete</SubmitButton>
+                <SubmitButton variant="secondary" pendingLabel="Completing…">
+                  Mark complete
+                </SubmitButton>
               </ActionForm>
               <ActionForm action={visitStatusAction} errorId="cancel-error" className="pt-4">
                 <input type="hidden" name="id" value={visit.id} />

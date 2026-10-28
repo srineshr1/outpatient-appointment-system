@@ -3,6 +3,7 @@ import type { AppointmentRecord } from "@/lib/clinic-types";
 import { formatPhone, formatWhen } from "@/lib/format";
 import { updateVisit } from "@/server/booking-actions";
 import { buttonClass } from "@/components/ui/button-styles";
+import { PendingButton } from "@/components/ui/PendingButton";
 
 type Mode = "patient" | "clinic";
 
@@ -116,32 +117,32 @@ export function VisitList({
                     </p>
                     {visit.note ? <p className="mt-3 text-callout whitespace-pre-line text-ink-2">{visit.note}</p> : null}
                     {visit.status === "booked" ? (
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <div className="group mt-4 flex flex-wrap gap-2">
                         {mode === "clinic" ? (
                           <form action={updateVisit}>
                             <input type="hidden" name="id" value={visit.id} />
                             <input type="hidden" name="status" value="completed" />
                             <input type="hidden" name="return" value={returnTo} />
-                            <button
-                              type="submit"
-                              className={buttonClass("secondary")}
+                            <PendingButton
+                              pendingLabel="Marking complete…"
+                              className={buttonClass("secondary", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
                               aria-label={`Mark complete, ${visit.patientName}, ${formatWhen(visit, today)}`}
                             >
                               Mark complete
-                            </button>
+                            </PendingButton>
                           </form>
                         ) : null}
                         <form action={updateVisit}>
                           <input type="hidden" name="id" value={visit.id} />
                           <input type="hidden" name="status" value="cancelled" />
                           <input type="hidden" name="return" value={returnTo} />
-                          <button
-                            type="submit"
-                            className={buttonClass("plain")}
+                          <PendingButton
+                            pendingLabel="Cancelling…"
+                            className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
                             aria-label={`Cancel ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
                           >
                             Cancel visit
-                          </button>
+                          </PendingButton>
                         </form>
                       </div>
                     ) : null}

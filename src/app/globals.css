@@ -256,6 +256,16 @@
   }
 }
 
+/* The slim bar that shows while a link or search is loading. It creeps toward the end and waits there. */
+@keyframes nav-progress {
+  from {
+    width: 8%;
+  }
+  to {
+    width: 88%;
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

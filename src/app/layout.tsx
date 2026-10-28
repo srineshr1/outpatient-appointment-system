@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Google_Sans, Inter } from "next/font/google";
 import { connection } from "next/server";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { NavProgress } from "@/components/shell/NavProgress";
 import { Providers } from "@/components/providers/Providers";
 import { SiteFooter } from "@/components/shell/SiteFooter";
 import { SiteChrome } from "@/components/shell/SiteChrome";
+import { HeaderSkeleton } from "@/components/loading/HeaderSkeleton";
 import { SiteHeader } from "@/components/shell/SiteHeader";
 import { now } from "@/lib/clock";
 import { practice } from "@/lib/data";
@@ -47,7 +49,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Availability depends on the current time, so render per request.
   await connection();
   const initialNow = now().getTime();
-  const user = await getCurrentUser();
 
   return (
     <html lang="en-GB" className={`${inter.variable} ${googleSans.variable}`}>
@@ -58,9 +59,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         >
           Skip to main content
         </a>
+        <NavProgress />
         <Providers initialNow={initialNow}>
           <SiteChrome>
-            <SiteHeader user={user} />
+            {/* The header needs the signed-in person. The page below doesn't wait for it to start showing. */}
+            <Suspense fallback={<HeaderSkeleton />}>
+              <HeaderWithUser />
+            </Suspense>
           </SiteChrome>
           <main id="main" tabIndex={-1} className="flex-1 outline-none">
             {children}
@@ -72,4 +77,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </body>
     </html>
   );
+}
+
+async function HeaderWithUser() {
+  return <SiteHeader user={await getCurrentUser()} />;
 }

@@ -1,6 +1,7 @@
 import { actorOf, recordEvent, visitSummary } from "./audit";
 import { settleCancelledVisit } from "./billing";
 import type { AppointmentRecord, AppointmentStatus, PublicUser } from "./clinic-types";
+import { forgetBlockedSlots } from "./blocked-slots";
 import { getStore } from "./store";
 
 export type VisitChange = "ok" | "missing" | "forbidden" | "closed";
@@ -39,6 +40,7 @@ export async function changeAppointmentStatus(
   if (status === "cancelled" && !(owns || doctor || desk)) return "forbidden";
 
   await store.updateStatus(id, status);
+  forgetBlockedSlots();
   const who = actorOf(actor);
   await recordEvent({
     actor: who,
