@@ -105,7 +105,7 @@ export function DoctorProfileForm({ initial, welcome }: { initial: DoctorFormVal
       {text("qualification", "Qualifications", { placeholder: "MBBS, MD" })}
       {text("years", "Years of experience", { inputMode: "numeric", placeholder: "8" })}
       {text("room", "Room or clinic", { placeholder: "Room 6" })}
-      {text("fee", "Consultation fee (£)", { optional: true, inputMode: "decimal", hint: "A flat fee for every visit with you. Leave blank to use the practice’s fees." })}
+      {text("fee", "Consultation fee (₹)", { optional: true, inputMode: "decimal", hint: "A flat fee for every visit with you. Enter 0 if you see patients free of charge. Leave blank to use the practice’s fees." })}
       {text("languages", "Languages", { optional: true, placeholder: "English, Hindi", hint: "Separate with commas." })}
       <Field id="bio" label="Short bio" hint="A sentence or two for patients choosing a doctor." error={e.bio} className="md:col-span-2">
         {({ id, describedBy, invalid }) => (

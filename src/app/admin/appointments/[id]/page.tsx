@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isClosedStatus } from "@/lib/clinic-types";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm, SubmitButton } from "@/components/admin/ActionForm";
@@ -63,8 +64,8 @@ export default async function VisitPage({
   const { today } = snapshot;
   const minutes = reasons.find((reason) => reason.id === visit.reasonId)?.minutes ?? 10;
   const refundable = charge ? [...refundableByMethod(charge.entries)] : [];
-  const canPay = Boolean(charge) && visit.status !== "cancelled" && !charge?.waiver && money.duePence > 0;
-  const canWaive = Boolean(charge) && visit.status !== "cancelled" && !charge?.waiver && money.netPence <= 0 && (charge?.amountPence ?? 0) > 0;
+  const canPay = Boolean(charge) && !isClosedStatus(visit.status) && !charge?.waiver && money.duePence > 0;
+  const canWaive = Boolean(charge) && !isClosedStatus(visit.status) && !charge?.waiver && money.netPence <= 0 && (charge?.amountPence ?? 0) > 0;
   const events = snapshot.events.filter((event) => event.subjectType === "appointment" && event.subjectId === visit.id);
   const bookedEvent = events.find((event) => event.action === "appointment.booked");
 
@@ -198,7 +199,7 @@ export default async function VisitPage({
                 <p className="text-sm text-ink-2">
                   No fee is recorded. This visit was booked before fees started, so nothing is owed unless you add one.
                 </p>
-                {visit.status !== "cancelled" ? (
+                {!isClosedStatus(visit.status) ? (
                   <ActionForm action={addFeeAction}>
                     <input type="hidden" name="appointmentId" value={visit.id} />
                     <input type="hidden" name="return" value={path} />
@@ -274,7 +275,7 @@ export default async function VisitPage({
                     ))}
                   </div>
                 </fieldset>
-                <AdminField id="pay-amount" label="Amount (£)" className="mt-3">
+                <AdminField id="pay-amount" label="Amount (₹)" className="mt-3">
                   <input
                     id="pay-amount"
                     name="amount"
@@ -309,7 +310,7 @@ export default async function VisitPage({
                     ))}
                   </select>
                 </AdminField>
-                <AdminField id="refund-amount" label="Amount (£)" className="mt-3">
+                <AdminField id="refund-amount" label="Amount (₹)" className="mt-3">
                   <input
                     id="refund-amount"
                     name="amount"
@@ -358,7 +359,7 @@ export default async function VisitPage({
             </Panel>
           ) : null}
 
-          {charge?.waiver && visit.status !== "cancelled" ? (
+          {charge?.waiver && !isClosedStatus(visit.status) ? (
             <Panel id="restore" title="Fee waived" description={`By ${charge.waiver.byName}: ${charge.waiver.reason}`}>
               <ActionForm action={restoreFeeAction}>
                 <input type="hidden" name="appointmentId" value={visit.id} />

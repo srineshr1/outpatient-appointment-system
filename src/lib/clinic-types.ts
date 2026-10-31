@@ -6,7 +6,18 @@ export function isRole(value: unknown): value is Role {
   return typeof value === "string" && (ROLES as readonly string[]).includes(value);
 }
 
-export type AppointmentStatus = "booked" | "completed" | "cancelled";
+/**
+ * "pending_payment": a place held while the patient pays online. It counts towards capacity like a
+ * booking. "expired": the hold ran out unpaid. Neither one is an appointment the patient has yet.
+ */
+export type AppointmentStatus = "booked" | "completed" | "cancelled" | "pending_payment" | "expired";
+
+/** A visit that is over without being attended: cancelled, or a payment hold that ran out. */
+export function isClosedStatus(status: AppointmentStatus): boolean {
+  return status === "cancelled" || status === "expired";
+}
+
+export const APPOINTMENT_STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired"];
 
 export interface PublicUser {
   id: string;
@@ -285,6 +296,11 @@ export interface ClinicStore {
   /** True when a visit already uses this booking reference. */
   referenceInUse(reference: string): Promise<boolean>;
   updateStatus(id: string, status: AppointmentStatus): Promise<void>;
+  /**
+   * Change a visit's status only if it is still `from`. "stale" when it has moved on; "taken" when
+   * going back to a held status (booked, completed, pending_payment) finds the place held by someone else.
+   */
+  transitionStatus(id: string, from: AppointmentStatus, to: AppointmentStatus): Promise<"ok" | "stale" | "taken">;
   putLoginCode(record: LoginCodeRecord): Promise<void>;
   getLoginCode(email: string): Promise<LoginCodeRecord | null>;
   deleteLoginCode(email: string): Promise<void>;

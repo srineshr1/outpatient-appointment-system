@@ -228,9 +228,21 @@ export function allDoctors(): Doctor[] {
   return (staffDoctors.length ? [...doctors, ...staffDoctors] : doctors).map(withSessionDays);
 }
 
+/**
+ * Consultation fees stored in the database (clinic_doctor_fees), in minor units. They are the source of
+ * truth and win over the profile's own fee. A stored 0 means the doctor sees patients free of charge.
+ */
+let feeOverlay: Record<string, number> = {};
+
+export function setDoctorFees(fees: Record<string, number>): void {
+  feeOverlay = fees;
+}
+
 function withSessionDays(doctor: Doctor): Doctor {
   const days = daysFromSessions(sessionsOf(doctor.id));
-  return days && days !== doctor.days ? { ...doctor, days } : doctor;
+  const fee = feeOverlay[doctor.id];
+  const next = days && days !== doctor.days ? { ...doctor, days } : doctor;
+  return fee !== undefined && fee !== next.feePence ? { ...next, feePence: fee } : next;
 }
 
 /** A doctor patients can book. */

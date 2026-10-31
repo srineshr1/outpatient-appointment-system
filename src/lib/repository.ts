@@ -22,6 +22,7 @@ import {
 } from "./data";
 import { loadDoctors } from "./doctors";
 import { totals } from "./payments";
+import { releaseExpiredHolds } from "./payments/holds";
 import { slotStatus } from "./schedule";
 import { applyHeld, freeToken, heldId } from "./sessions";
 import { getStore } from "./store";
@@ -98,8 +99,13 @@ export interface ConfirmInput {
   patientChi?: string;
   note?: string;
   patientUserId?: string | null;
-  /** Pay the fee now with the demo card. Otherwise it's paid at the desk. */
+  /** Hold the place and pay the fee online. Otherwise it's paid at the desk. */
   payNow?: boolean;
+  /**
+   * Hold the place while the patient pays online: the visit is saved as "pending_payment" and counts toward
+   * capacity until it is paid or the hold runs out. No charge is opened; the payment service owns the money.
+   */
+  payOnline?: boolean;
 }
 
 /** "HSP-482913": six random digits, checked against the book so no two visits share one. */
@@ -133,6 +139,8 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
   const store = await getStore();
   const reference$ = uniqueReference(store);
   reference$.catch(() => undefined); // surfaced below, only if the booking gets that far
+  // A payment hold that ran out still sits in the booked list until released, so release it first.
+  await releaseExpiredHolds();
   const [doctors, blocked] = await Promise.all([loadDoctors(), store.listBlockedSlotIds()]);
   const found = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === input.slot.id);
   if (!found || !isListed(found.doctorId)) throw new SlotUnavailableError(input.slot.id, "missing");
@@ -175,7 +183,7 @@ function buildVisit(input: ConfirmInput, current: Slot, reference: string, token
     patientMobile: input.patientMobile ?? "",
     patientChi: (input.patientChi ?? "").replace(/\s/g, ""),
     note: input.note?.trim() ?? "",
-    status: "booked",
+    status: input.payOnline ? "pending_payment" : "booked",
     patientUserId: input.patientUserId ?? null,
     createdAt: new Date().toISOString(),
     sessionId: current.sessionId ?? null,
@@ -186,6 +194,8 @@ function buildVisit(input: ConfirmInput, current: Slot, reference: string, token
 }
 
 async function finishBooking(visit: AppointmentRecord, input: ConfirmInput, reference: string): Promise<ConfirmResult> {
+  // Held for online payment: the payment service records the money once it arrives.
+  if (input.payOnline) return { reference, visit, payment: null };
 
   // The visit is booked either way. A fee that fails to save shows as "No fee recorded" to staff.
   const charge = await openCharge(visit, Boolean(input.payNow)).catch((error: unknown) => {

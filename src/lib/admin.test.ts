@@ -34,26 +34,26 @@ async function book(doctorId: string, payNow: boolean, index = 0) {
 }
 
 describe("payments on a visit", () => {
-  it("charges the fee at booking, and paying now records a demo card payment", async () => {
+  it("charges the fee at booking, and paying now records a online payment", async () => {
     const paid = await book("adeyemi", true);
-    expect(paid.payment).toEqual({ amountPence: 4000, paid: true });
+    expect(paid.payment).toEqual({ amountPence: 40000, paid: true });
     const desk = await book("adeyemi", false, 1);
-    expect(desk.payment).toEqual({ amountPence: 4000, paid: false });
+    expect(desk.payment).toEqual({ amountPence: 40000, paid: false });
 
     const store = await getStore();
     const charge = await store.getCharge(paid.visit.id);
     expect(charge?.entries).toHaveLength(1);
-    expect(charge?.entries[0]).toMatchObject({ kind: "payment", method: "online_card", amountPence: 4000, byName: "Online" });
+    expect(charge?.entries[0]).toMatchObject({ kind: "payment", method: "online_card", amountPence: 40000, byName: "Online" });
     expect(summarise(await store.getCharge(desk.visit.id), "booked").state).toBe("unpaid");
   });
 
-  it("gives a demo card payment back when the visit is cancelled, and logs both", async () => {
+  it("gives a online payment back when the visit is cancelled, and logs both", async () => {
     const booked = await book("reid", true);
     const patient = await account("user-patient-demo");
     expect(await changeAppointmentStatus(patient, booked.visit.id, "cancelled")).toBe("ok");
     const store = await getStore();
     const money = summarise(await store.getCharge(booked.visit.id), "cancelled");
-    expect(money).toMatchObject({ state: "refunded", refundDuePence: 0, refundedPence: 4000 });
+    expect(money).toMatchObject({ state: "refunded", refundDuePence: 0, refundedPence: 40000 });
     const actions = (await store.listEvents(50)).filter((event) => event.subjectId === booked.visit.id).map((event) => event.action);
     expect(actions).toEqual(expect.arrayContaining(["appointment.cancelled", "payment.refunded"]));
   });
@@ -61,21 +61,21 @@ describe("payments on a visit", () => {
   it("takes desk payments in parts, refuses overpaying, and leaves desk money to refund by hand", async () => {
     const booked = await book("cho", false);
     const desk = actorOf(await account("user-desk"));
-    await expect(recordPayment(desk, booked.visit.id, "cash", 5000)).rejects.toBeInstanceOf(BillingError);
-    await expect(recordPayment(desk, booked.visit.id, "online_card", 1000)).rejects.toThrow(/card or cash/);
-    await recordPayment(desk, booked.visit.id, "cash", 1500);
-    const after = await recordPayment(desk, booked.visit.id, "desk_card", 2500);
+    await expect(recordPayment(desk, booked.visit.id, "cash", 50000)).rejects.toBeInstanceOf(BillingError);
+    await expect(recordPayment(desk, booked.visit.id, "online_card", 10000)).rejects.toThrow(/card or cash/);
+    await recordPayment(desk, booked.visit.id, "cash", 15000);
+    const after = await recordPayment(desk, booked.visit.id, "desk_card", 25000);
     expect(summarise(after, "booked")).toMatchObject({ state: "paid", duePence: 0 });
-    await expect(recordPayment(desk, booked.visit.id, "cash", 100)).rejects.toThrow(/Nothing is owed/);
+    await expect(recordPayment(desk, booked.visit.id, "cash", 1000)).rejects.toThrow(/Nothing is owed/);
 
     // Cancelled after paying at the desk: shown as a refund due until someone gives it back.
     expect(await changeAppointmentStatus(await account("user-desk"), booked.visit.id, "cancelled", "Patient called")).toBe("ok");
     const store = await getStore();
-    expect(summarise(await store.getCharge(booked.visit.id), "cancelled")).toMatchObject({ state: "refund_due", refundDuePence: 4000 });
-    await expect(refundPayment(desk, booked.visit.id, "cash", 2000, "Cancelled")).rejects.toThrow(/At most £15.00/);
-    await expect(refundPayment(desk, booked.visit.id, "cash", 1500, "  ")).rejects.toThrow(/reason/);
-    await refundPayment(desk, booked.visit.id, "cash", 1500, "Cancelled by phone");
-    const settled = await refundPayment(desk, booked.visit.id, "desk_card", 2500, "Cancelled by phone");
+    expect(summarise(await store.getCharge(booked.visit.id), "cancelled")).toMatchObject({ state: "refund_due", refundDuePence: 40000 });
+    await expect(refundPayment(desk, booked.visit.id, "cash", 20000, "Cancelled")).rejects.toThrow(/At most ₹150.00/);
+    await expect(refundPayment(desk, booked.visit.id, "cash", 15000, "  ")).rejects.toThrow(/reason/);
+    await refundPayment(desk, booked.visit.id, "cash", 15000, "Cancelled by phone");
+    const settled = await refundPayment(desk, booked.visit.id, "desk_card", 25000, "Cancelled by phone");
     expect(summarise(settled, "cancelled")).toMatchObject({ state: "refunded", refundDuePence: 0, netPence: 0 });
   });
 
@@ -85,7 +85,7 @@ describe("payments on a visit", () => {
     await expect(waiveFee(admin, booked.visit.id, "")).rejects.toThrow(/reason/);
     const waived = await waiveFee(admin, booked.visit.id, "Practice error");
     expect(summarise(waived, "booked").state).toBe("waived");
-    await expect(recordPayment(admin, booked.visit.id, "cash", 4000)).rejects.toThrow(/waived/);
+    await expect(recordPayment(admin, booked.visit.id, "cash", 40000)).rejects.toThrow(/waived/);
     const restored = await restoreFee(admin, booked.visit.id);
     expect(summarise(restored, "booked").state).toBe("unpaid");
 
@@ -118,8 +118,8 @@ describe("payments on a visit", () => {
     expect(await store.createAppointment(old)).toBe("ok");
     const admin = actorOf(await account("user-admin"));
     const added = await addMissingFee(admin, old.id);
-    expect(added).toMatchObject({ amountPence: 5500, entries: [] });
-    expect(summarise(added, "booked")).toMatchObject({ state: "unpaid", duePence: 5500 });
+    expect(added).toMatchObject({ amountPence: 50000, entries: [] });
+    expect(summarise(added, "booked")).toMatchObject({ state: "unpaid", duePence: 50000 });
     await expect(addMissingFee(admin, old.id)).rejects.toThrow(/already has a fee/);
     expect((await store.listEvents(5)).some((event) => event.action === "fee.added" && event.subjectId === old.id)).toBe(true);
   });

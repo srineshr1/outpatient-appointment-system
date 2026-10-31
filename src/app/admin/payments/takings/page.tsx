@@ -188,7 +188,7 @@ export default async function TakingsPage({ searchParams }: { searchParams: Prom
       </section>
 
       <section aria-labelledby="by-staff" className="mt-8 grid gap-3">
-        <SectionHeading id="by-staff" title="By member of staff" description="Who took each payment or gave each refund. Online covers the patient’s demo card." />
+        <SectionHeading id="by-staff" title="By member of staff" description="Who took each payment or gave each refund. Online covers payments made through the payment provider." />
         {report.byStaff.length === 0 ? (
           <p className="text-sm text-muted">Nothing taken on this day.</p>
         ) : (

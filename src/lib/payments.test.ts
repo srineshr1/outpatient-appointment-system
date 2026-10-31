@@ -74,8 +74,8 @@ describe("summarise", () => {
   });
 
   it("describes the payment in a few words for patients and the clinic book", () => {
-    expect(paymentLine(summarise(charge(4000), "booked"))).toBe("£40.00 to pay at the desk");
-    expect(paymentLine(summarise(charge(4000, [entry("payment", "online_card", 4000)]), "booked"))).toBe("Paid £40.00");
+    expect(paymentLine(summarise(charge(4000), "booked"))).toBe("₹40.00 to pay at the desk");
+    expect(paymentLine(summarise(charge(4000, [entry("payment", "online_card", 4000)]), "booked"))).toBe("Paid ₹40.00");
     expect(paymentLine(summarise(null, "booked"))).toBeNull();
   });
 });
@@ -125,9 +125,9 @@ describe("CSV", () => {
 });
 
 describe("money", () => {
-  it("formats and parses pounds", () => {
-    expect(formatMoney(4000)).toBe("£40.00");
-    expect(formatMoney(-250)).toBe("−£2.50");
+  it("formats and parses rupees", () => {
+    expect(formatMoney(4000)).toBe("₹40.00");
+    expect(formatMoney(-250)).toBe("−₹2.50");
     expect(parsePounds("40")).toBe(4000);
     expect(parsePounds("£40.5")).toBe(4050);
     expect(parsePounds("1,040.00")).toBe(104000);

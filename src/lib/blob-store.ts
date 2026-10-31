@@ -377,6 +377,12 @@ export class BlobClinicStore implements ClinicStore {
     if (status === "cancelled") await remove(slotPath(result.value.slotId));
   }
 
+  /** Online payments need the Supabase store; this keeps the interface whole for the legacy blob store. */
+  async transitionStatus(id: string, from: AppointmentStatus, to: AppointmentStatus): Promise<"ok" | "stale" | "taken"> {
+    const result = await updateTagged<AppointmentRecord>(appointmentPath(id), (existing) => (existing.status === from ? { ...existing, status: to } : null));
+    return result?.changed ? "ok" : "stale";
+  }
+
   async putLoginCode(record: LoginCodeRecord): Promise<void> {
     await writeOver(loginCodePath(record.email), record);
   }

@@ -155,7 +155,7 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
             {booking.payment && booking.payment.amountPence > 0 ? (
               <Item term="Payment">
                 {booking.payment.paid
-                  ? `${formatMoney(booking.payment.amountPence)} paid with the demo card. No money was taken.`
+                  ? `${formatMoney(booking.payment.amountPence)} paid online.`
                   : `${formatMoney(booking.payment.amountPence)} to pay at the desk, by card or cash.`}
               </Item>
             ) : null}

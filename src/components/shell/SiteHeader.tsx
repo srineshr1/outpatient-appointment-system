@@ -62,6 +62,7 @@ function accountLinks(user: LinkUser): NavLink[] {
   if (user.role === "patient") {
     return [
       { href: "/appointments", label: "Your appointments" },
+      { href: "/payments", label: "Payments and refunds" },
       { href: "/profile", label: "Your profile" },
     ];
   }

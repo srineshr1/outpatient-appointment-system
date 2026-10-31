@@ -1,6 +1,7 @@
 import type { ConsultSession, ProfileRecord, UserAccount } from "./clinic-types";
-import { allDoctors, setConsultSessions, setStaffDoctors, staffDoctorProfile, type Doctor } from "./data";
+import { allDoctors, setConsultSessions, setDoctorFees, setStaffDoctors, staffDoctorProfile, type Doctor } from "./data";
 import { isDoctorProfileComplete, readDoctorProfile } from "./profiles";
+import { getOps } from "./ops";
 import { getStore } from "./store";
 
 /** Re-read the accounts at most this often per server instance. */
@@ -43,6 +44,13 @@ async function refresh(): Promise<void> {
       store.listConsultSessions(),
     ]);
     const { listed, unlisted } = splitDoctors(users, profiles, sessions);
+    // Fees live in their own table. If it cannot be read, keep the last known fees rather than guess.
+    try {
+      const fees = await (await getOps()).listDoctorFees();
+      setDoctorFees(Object.fromEntries(fees.map((fee) => [fee.doctorId, fee.feeMinor])));
+    } catch (error) {
+      console.error(`[doctors] Could not load fees: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
     setConsultSessions(sessions);
     setStaffDoctors(listed, unlisted);
     loadedAt = Date.now();

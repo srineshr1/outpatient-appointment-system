@@ -89,7 +89,7 @@ export function summarise(charge: ChargeRecord | null | undefined, status: Appoi
   return { ...base, state: "part_paid", duePence: charge.amountPence - netPence };
 }
 
-/** A few words for the patient's list and the clinic book: "Paid £40.00", "£40.00 to pay at the desk". */
+/** A few words for the patient's list and the clinic book: "Paid ₹400.00", "₹400.00 to pay at the desk". */
 export function paymentLine(money: ChargeSummary): string | null {
   const pounds = (pence: number) => formatMoney(pence);
   switch (money.state) {

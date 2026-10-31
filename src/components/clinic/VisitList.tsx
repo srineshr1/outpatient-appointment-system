@@ -20,6 +20,8 @@ function doctorName(id: string): string {
 function statusLabel(status: AppointmentRecord["status"]): string {
   if (status === "completed") return "Completed";
   if (status === "cancelled") return "Cancelled";
+  if (status === "pending_payment") return "Awaiting payment";
+  if (status === "expired") return "Hold expired";
   return "Booked";
 }
 
@@ -44,14 +46,16 @@ export function groupVisits(visits: readonly AppointmentRecord[], today: string)
   const upcoming: AppointmentRecord[] = [];
   const earlier: AppointmentRecord[] = [];
   const cancelled: AppointmentRecord[] = [];
+  const awaiting: AppointmentRecord[] = [];
   const ordered = [...visits].sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)));
   for (const visit of ordered) {
-    if (visit.status === "cancelled") cancelled.push(visit);
+    if (visit.status === "pending_payment") awaiting.push(visit);
+    else if (visit.status === "cancelled" || visit.status === "expired") cancelled.push(visit);
     else if (visit.date === today) todayVisits.push(visit);
     else if (visit.date > today) upcoming.push(visit);
     else earlier.push(visit);
   }
-  return { todayVisits, upcoming, earlier, cancelled };
+  return { awaiting, todayVisits, upcoming, earlier, cancelled };
 }
 
 export function VisitList({
@@ -66,17 +70,18 @@ export function VisitList({
   today: string;
   mode: Mode;
   returnTo: string;
-  /** A short payment line per visit id, such as "Paid £40.00". */
+  /** A short payment line per visit id, such as "Paid ₹400.00". */
   payments?: Readonly<Record<string, string>>;
   /** Moves made to each visit, oldest first, keyed by visit id. */
   moves?: Readonly<Record<string, RescheduleRecord[]>>;
 }) {
   const groups = groupVisits(visits, today);
   const sections = [
+    ["Awaiting payment", groups.awaiting],
     ["Today", groups.todayVisits],
     ["Upcoming", groups.upcoming],
     ["Earlier", groups.earlier],
-    ["Cancelled", groups.cancelled],
+    ["Cancelled or expired", groups.cancelled],
   ] as const;
   const any = sections.some(([, items]) => items.length > 0);
 
@@ -156,6 +161,27 @@ export function VisitList({
                       </ul>
                     ) : null}
                     {visit.note ? <p className="mt-3 text-callout whitespace-pre-line text-ink-2">{visit.note}</p> : null}
+                    {visit.status === "pending_payment" ? (
+                      <div className="group mt-4 flex flex-wrap gap-2">
+                        {mode === "patient" ? (
+                          <Link href={`/pay/${visit.id}`} className={buttonClass("primary", "md")}>
+                            Pay now
+                          </Link>
+                        ) : null}
+                        <form action={updateVisit}>
+                          <input type="hidden" name="id" value={visit.id} />
+                          <input type="hidden" name="status" value="cancelled" />
+                          <input type="hidden" name="return" value={returnTo} />
+                          <PendingButton
+                            pendingLabel="Releasing…"
+                            className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
+                            aria-label={`Give up the held place, ${formatWhen(visit, today)}`}
+                          >
+                            Give up this place
+                          </PendingButton>
+                        </form>
+                      </div>
+                    ) : null}
                     {visit.status === "booked" ? (
                       <div className="group mt-4 flex flex-wrap gap-2">
                         {mode === "clinic" ? (

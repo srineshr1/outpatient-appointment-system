@@ -35,7 +35,16 @@ export interface BookingAccount {
   email: string;
 }
 
-export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: BookingAccount }) {
+export function DetailsView({
+  doctors,
+  account,
+  onlinePayments = false,
+}: {
+  doctors: Doctor[];
+  account: BookingAccount;
+  /** True when the payment provider is set up. Otherwise the fee is paid at the desk. */
+  onlinePayments?: boolean;
+}) {
   const router = useRouter();
   const { state, dispatch, ready } = useBooking();
   const { window } = useClock();
@@ -43,8 +52,8 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
   const [attempted, setAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  /** Demo payments: pay now with a pretend card, or at the desk on the day. */
-  const [payNow, setPayNow] = useState(true);
+  /** Pay online now (the visit is held until it is paid), or at the desk on the day. */
+  const [payOnline, setPayOnline] = useState(true);
   const leaving = useRef(false);
   const prefilled = useRef(false);
 
@@ -122,7 +131,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
         patientMobile: form.mobile,
         patientChi: form.chi,
         note: form.note,
-        payNow,
+        payOnline: onlinePayments && fee > 0 && payOnline,
       });
       if (!result.ok) {
         if (result.reason === "signed-out") {
@@ -131,7 +140,7 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
           router.push(`/sign-in?next=${encodeURIComponent("/book/details")}`);
           return;
         }
-        if (result.reason === "invalid" || result.reason === "staff") {
+        if (result.reason === "invalid" || result.reason === "staff" || result.reason === "payments-off") {
           setSubmitting(false);
           setFailure(result.message);
           return;
@@ -140,6 +149,13 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
         const what = result.reason === "past" ? "has closed for online booking" : "was just booked by someone else";
         dispatch({ type: "slotLost", slot: heldSlot, message: `${formatWhen(heldSlot, window.today)} ${what}.` });
         router.push(backHref);
+        return;
+      }
+      if (result.pendingPayment) {
+        // The place is held for a few minutes while the patient pays.
+        leaving.current = true;
+        dispatch({ type: "startOver" });
+        router.push(`/pay/${result.pendingPayment.visitId}?start=1`);
         return;
       }
       leaving.current = true;
@@ -398,38 +414,44 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
             </Field>
           </Card>
 
-          <Card className="p-5 md:p-6">
-            <fieldset>
-              <legend className="text-title3 font-semibold text-ink">Payment</legend>
-              <p className="mt-1 text-callout text-ink-2">
-                {reason ? `${reason.label}: ${formatMoney(fee)}.` : "The fee depends on what the visit is for."} This is a
-                demonstration practice, so no card is charged and no money moves.
-              </p>
-              <div className="mt-4 grid gap-2">
-                {[
-                  { now: true, label: "Pay now with a demo card", hint: "Marked as paid straight away." },
-                  { now: false, label: "Pay at the desk", hint: "By card or cash when you arrive." },
-                ].map((option) => (
-                  <label
-                    key={option.label}
-                    className="flex min-h-13 cursor-pointer items-center gap-3 rounded-field px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-fill has-checked:bg-accent-soft has-checked:shadow-[inset_0_0_0_2px_var(--color-accent)]"
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      checked={payNow === option.now}
-                      onChange={() => setPayNow(option.now)}
-                      className="size-5 shrink-0 accent-accent"
-                    />
-                    <span>
-                      <span className="block text-body text-ink">{option.label}</span>
-                      <span className="block text-callout text-ink-2">{option.hint}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          </Card>
+          {fee > 0 ? (
+            <Card className="p-5 md:p-6">
+              <fieldset>
+                <legend className="text-title3 font-semibold text-ink">Payment</legend>
+                <p className="mt-1 text-callout text-ink-2">
+                  {reason ? `${reason.label}: ${formatMoney(fee)}.` : "The fee depends on what the visit is for."}{" "}
+                  {onlinePayments
+                    ? "Pay online to confirm your place straight away, or pay at the desk when you arrive."
+                    : "Online payment isn’t switched on yet, so you’ll pay at the desk when you arrive."}
+                </p>
+                <div className="mt-4 grid gap-2">
+                  {[
+                    ...(onlinePayments
+                      ? [{ online: true, label: "Pay online", hint: "UPI, card or netbanking. Your place is held for a few minutes while you pay." }]
+                      : []),
+                    { online: false, label: "Pay at the desk", hint: "By card or cash when you arrive." },
+                  ].map((option) => (
+                    <label
+                      key={option.label}
+                      className="flex min-h-13 cursor-pointer items-center gap-3 rounded-field px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-fill has-checked:bg-accent-soft has-checked:shadow-[inset_0_0_0_2px_var(--color-accent)]"
+                    >
+                      <input
+                        type="radio"
+                        name="payment"
+                        checked={(onlinePayments && payOnline) === option.online}
+                        onChange={() => setPayOnline(option.online)}
+                        className="size-5 shrink-0 accent-accent"
+                      />
+                      <span>
+                        <span className="block text-body text-ink">{option.label}</span>
+                        <span className="block text-callout text-ink-2">{option.hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </Card>
+          ) : null}
 
           <Card className="p-5 md:p-6">
             <Switch
@@ -470,10 +492,12 @@ export function DetailsView({ doctors, account }: { doctors: Doctor[]; account: 
             <p className="flex items-center gap-2 text-callout text-muted">
               <Lock size={18} />
               {reason
-                ? payNow
-                  ? `${formatMoney(fee)} by demo card. No card is charged.`
-                  : `${formatMoney(fee)} to pay at the desk.`
-                : "Demo payments. No card is ever charged."}
+                ? fee <= 0
+                  ? "No fee for this visit."
+                  : onlinePayments && payOnline
+                    ? `${formatMoney(fee)}, paid online on the next step.`
+                    : `${formatMoney(fee)} to pay at the desk.`
+                : "Pick what the visit is for to see the fee."}
             </p>
             <Button
               type="submit"

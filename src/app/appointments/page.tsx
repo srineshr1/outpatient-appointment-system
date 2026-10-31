@@ -46,6 +46,11 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
         <Link href="/book" className="text-accent hover:underline underline-offset-4">
           Book a time
         </Link>
+        {" "}
+        ·{" "}
+        <Link href="/payments" className="text-accent hover:underline underline-offset-4">
+          Payments and refunds
+        </Link>
         {user.role !== "patient" ? (
           <>
             {" "}

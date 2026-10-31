@@ -47,6 +47,8 @@ const STATUS: Record<AppointmentStatus, { label: string; tone: Tone }> = {
   booked: { label: "Booked", tone: "info" },
   completed: { label: "Completed", tone: "success" },
   cancelled: { label: "Cancelled", tone: "neutral" },
+  pending_payment: { label: "Awaiting payment", tone: "warn" },
+  expired: { label: "Hold expired", tone: "neutral" },
 };
 
 export function StatusBadge({ status }: { status: AppointmentStatus }) {

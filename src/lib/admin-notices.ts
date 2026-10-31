@@ -11,7 +11,7 @@ export const NOTICES: Readonly<Record<string, string>> = {
   "session-ended": "Session ended.",
   "code-cleared": "Code cleared. They can ask for a new one straight away.",
   completed: "Visit marked complete.",
-  cancelled: "Visit cancelled. The time is free again, and any demo card payment went back automatically.",
+  cancelled: "Visit cancelled. The time is free again, and any online payment is being refunded under the refund policy.",
   "cancelled-refund-due": "Visit cancelled. Money taken at the desk still has to go back: record the refund under Payment.",
   "payment-recorded": "Payment recorded.",
   refunded: "Refund recorded.",

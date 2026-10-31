@@ -3,7 +3,7 @@ import { EMPTY_FORM, type PatientForm } from "./validate";
 
 export interface BookingPayment {
   amountPence: number;
-  /** True when paid with the demo card at booking; otherwise it's paid at the desk. */
+  /** True when paid online at booking; otherwise it's paid at the desk. */
   paid: boolean;
 }
 

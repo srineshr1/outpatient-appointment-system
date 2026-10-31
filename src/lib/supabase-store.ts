@@ -6,6 +6,7 @@ import {
   type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
+  APPOINTMENT_STATUSES,
   type AuditEvent,
   type ChargeRecord,
   type ClinicStore,
@@ -184,7 +185,7 @@ function fail(error: DbError | null): void {
 const UNIQUE_VIOLATION = "23505";
 
 function isStatus(value: string): value is AppointmentStatus {
-  return value === "booked" || value === "completed" || value === "cancelled";
+  return (APPOINTMENT_STATUSES as readonly string[]).includes(value);
 }
 
 function toUser(row: UserRow): StoredUser {
@@ -567,7 +568,7 @@ export class SupabaseClinicStore implements ClinicStore {
       this.db
         .from("clinic_appointments")
         .select("slot_id")
-        .in("status", ["booked", "completed"])
+        .in("status", ["booked", "completed", "pending_payment"])
         .order("slot_id")
         .range(from, to),
     );
@@ -627,6 +628,13 @@ export class SupabaseClinicStore implements ClinicStore {
   async updateStatus(id: string, status: AppointmentStatus): Promise<void> {
     const { error } = await this.db.from("clinic_appointments").update({ status }).eq("id", id);
     fail(error);
+  }
+
+  async transitionStatus(id: string, from: AppointmentStatus, to: AppointmentStatus): Promise<"ok" | "stale" | "taken"> {
+    const { data, error } = await this.db.from("clinic_appointments").update({ status: to }).eq("id", id).eq("status", from).select("id");
+    if (error?.code === UNIQUE_VIOLATION) return "taken";
+    fail(error);
+    return (data?.length ?? 0) > 0 ? "ok" : "stale";
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isClosedStatus } from "@/lib/clinic-types";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminTitle } from "@/components/admin/AdminTitle";
 import { TABS } from "@/components/admin/nav";
@@ -17,7 +18,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
   const counts = navCounts(snapshot);
   const tabs = (TABS.payments ?? []).map((tab) => (tab.href === "/admin/payments/invoices" ? { ...tab, count: counts.payments } : tab));
   const booked = (reasonId: string) =>
-    snapshot.visits.filter((row) => row.visit.reasonId === reasonId && row.visit.status !== "cancelled" && row.charge).length;
+    snapshot.visits.filter((row) => row.visit.reasonId === reasonId && !isClosedStatus(row.visit.status) && row.charge).length;
 
   return (
     <AdminShell
@@ -59,15 +60,15 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
             </table>
           </TableWrap>
           <p className="mt-3 text-[13px] text-muted">
-            Fees live in <code className="font-mono">src/lib/fees.ts</code>. Changing one there affects new bookings only.
+            These are the practice’s fees for each reason. A doctor can set their own flat fee on their profile, and that fee is what is charged. Changes affect new bookings only.
           </p>
         </div>
 
         <Panel id="how" title="How payments work here">
           <ul className="grid list-disc gap-2 pl-5 text-sm text-ink-2">
-            <li>When patients book, they choose to pay now with a demo card or pay at the desk.</li>
+            <li>When patients book, they choose to pay now online or pay at the desk. Online places are held for a few minutes while they pay.</li>
             <li>The desk records card or cash payments on the visit’s page, in full or in part.</li>
-            <li>Cancelling a visit gives a demo card payment back straight away. Money taken at the desk shows as “Refund due” until someone records the refund.</li>
+            <li>Cancelling a visit starts a refund of an online payment under the refund policy; it shows as completed once the provider confirms. Money taken at the desk shows as “Refund due” until someone records the refund.</li>
             <li>A fee can be waived with a reason, and every change is written to the activity log.</li>
           </ul>
         </Panel>
