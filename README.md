@@ -1,0 +1,100 @@
+# Westbrook Medical Practice — GP booking
+
+Online appointment booking for a demonstration GP practice: create an account, choose a doctor, pick a time, and see the visit on that doctor’s clinic book.
+
+Built with Next.js 16 (App Router), TypeScript, Tailwind CSS v4 and Motion. Accounts, sessions and visits are stored in SQLite (`data/clinic.sqlite`). Set `BLOB_READ_WRITE_TOKEN` to store them in a private Vercel Blob store instead, Set `DATA_STORE=supabase` (with `NEXT_PUBLIC_SUPABASE_URL` and a server-only `SUPABASE_SERVICE_ROLE_KEY`) to store them in Supabase Postgres instead; apply `supabase/migrations/20261028_clinic_store.sql` first. The tables have row level security on and no public policies, so only the server can read them.
+
+## Getting started
+
+```bash
+npm install
+npm run dev          # http://localhost:3000
+```
+
+| Script | What it does |
+| --- | --- |
+| `npm run build` / `npm start` | Production build and server |
+| `npm run lint` | oxlint + TypeScript type-check |
+| `npm test` | Unit and component tests (Vitest, jsdom) |
+| `npm run test:e2e` | Playwright on mobile (390px) and desktop (1280px), with axe WCAG 2.2 AA checks. First run: `npx playwright install chromium` |
+
+## How it fits together
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Landing page: hero, how it works, doctor profiles with search and specialty filter |
+| `/doctors/[id]?week=YYYY-MM-DD` | Week view; the week is clamped to the bookable window |
+| `/book/details` | Patient form. Needs a patient sign-in (the held time survives it); redirects to `/` if no time is held |
+| `/book/confirmed` | Reference, summary and `.ics` download |
+| `/sign-in` | Email + 4-digit code, or Google. New patients give their name once. “Sign in as a doctor” (`?as=staff`) is for staff. `/register` redirects here |
+| `/book` | Signed-in patient’s home: choose a doctor |
+| `/appointments` | The signed-in patient’s visits. Cancel a booked visit here |
+| `/dashboard` | Doctor clinic book, or every doctor for reception. Mark complete or cancel |
+
+- `src/lib/clock.ts` — all dates and times are Europe/London wall-clock, independent of server or browser time zone (tests run in Asia/Kolkata to prove it).
+- `src/lib/data.ts` — doctors, reasons, and a deterministic slot generator over a rolling four-week window.
+- `src/lib/repository.ts` — the data-access seam. Every caller treats it as async; replace the function bodies with calls to the practice system to go live. `confirmBooking` re-checks availability and throws `SlotUnavailableError` if the time has gone.
+- `src/components/providers/BookingProvider.tsx` — cross-route booking state. The held time and booking reference persist in `sessionStorage`; **patient details are kept in memory only** and are never written to storage.
+
+## Sample accounts
+
+Sign in with any of these emails. Without a mail key, the code is shown on the sign-in page and printed in the `npm run dev` terminal.
+
+| Email | What you can do |
+| --- | --- |
+| `ann.lee@halden.example` | Book as a patient and see your visits |
+| `helen.cho@halden.example` (and the other doctors) | Open that doctor’s clinic book |
+| `desk@halden.example` | Reception view of every doctor |
+
+Any other email creates a new patient account on first sign-in.
+
+### Making a user a doctor without the admin console
+
+Supabase only handles sign-in. The clinic role lives in the app’s store (Vercel Blob in production), so changing a role in Supabase does nothing. To promote an existing account, or create the clinic profile for an email:
+
+```bash
+vercel env pull .env.production.local --environment=production
+npm run make-doctor -- you@example.com cho "Dr Your Name"
+```
+
+`doctorId` must be one of `adeyemi`, `reid`, `cho`, `rahman`, `macleod`. The script updates both the email and id records; refresh the app afterwards. For local SQLite, update `users.role` and `users.doctor_id` directly.
+
+## Sign-in setup
+
+| Variable | Purpose |
+| --- | --- |
+| `AUTH_SECRET` | Long random string. Keys the stored code hashes. **Set it in production.** |
+| `RESEND_API_KEY`, `MAIL_FROM` | Send codes by email through [Resend](https://resend.com). `MAIL_FROM` must be on a verified domain, e.g. `Westbrook <signin@yourdomain>` |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay API keys (`rzp_test_…` for test mode). Without them online payment is hidden and bookings are paid at the desk. The provider sits behind `src/lib/payments/provider.ts`, so Stripe can be added beside `razorpay.ts` |
+| `RAZORPAY_WEBHOOK_SECRET` | Secret set on the Razorpay webhook (`/api/webhooks/razorpay`). Events: `payment.captured`, `payment.authorized`, `payment.failed`, `order.paid`, `refund.created`, `refund.processed`, `refund.failed`. Without it webhooks answer 503 |
+| `CRON_SECRET` | Optional. Bearer secret for `/api/cron` (expires holds, retries refunds, sends reminders). The pg_cron job in `supabase/migrations/20261031_2_cron.sql` uses the one stored in `clinic_settings`, so this only adds a second accepted value |
+| `REMINDER_OFFSETS_MINUTES` | Optional, e.g. `1440,120` (the default). The `reminder_offsets_minutes` row in `clinic_settings` wins. Hold length is `hold_minutes` in `clinic_settings` (default 15) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable “Sign in with Google”. Register the redirect URI `<site>/auth/google/callback` in Google Cloud (OAuth client, type Web) |
+| `SHOW_LOGIN_CODES=1` | Show codes on screen in a production build with no mail key. For demos and e2e only |
+
+### Email codes through Supabase (the hosted app)
+
+When `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set, Supabase Auth sends the code (Supabase codes are 6 digits, so the sign-in page shows 6 boxes for them) and the Resend settings above are not used. Configure it in the Supabase dashboard, not in code:
+
+- **Authentication → Emails → SMTP settings**: turn on custom SMTP (for example Resend's SMTP, with a sender on a domain you have verified). Supabase's built-in mailer only allows a couple of emails an hour and refuses addresses outside your team, so real patients won't get codes without it.
+- **Authentication → Rate limits**: raise "emails sent per hour" once custom SMTP is on.
+- **Authentication → Emails → Templates → Magic link and Confirm signup**: include `{{ .Token }}` so the email shows the code the sign-in page asks for.
+- **Authentication → URL configuration**: set the Site URL to the public origin and add `<site>/auth/confirm` to the redirect URLs.
+
+Supabase refuses reserved test domains such as `example.com` (`email_address_invalid`), so test with an inbox you can open. The sign-in page now says which problem it hit, and the server log records the Supabase error code (never the address).
+
+The admin console has no open or demo mode: it always needs a signed-in admin. An old `OPEN_ADMIN` environment variable is ignored and can be deleted.
+
+Codes are 4 digits, valid for 10 minutes, five tries, and one new code a minute. Only an HMAC of each code is stored. Google sign-in uses PKCE and a one-time state cookie, and accepts only Google-verified emails. In production with no mail key and no `SHOW_LOGIN_CODES`, sign-in by email fails rather than silently dropping codes.
+
+This is a demonstration practice. Don’t enter a real CHI number or medical details you want kept private.
+
+## Production notes
+
+- A booking is saved on the server. The same slot cannot be held twice. Cancelling frees it. The doctor’s clinic book and the patient’s appointment list read that record.
+- Sessions are httpOnly cookies, valid for 14 days. Patients have no password. The sample accounts keep a scrypt hash for the one-tap staff action.
+- The pages render per request (they depend on the current time and the book), so deploy as a Node server (`next build && next start`) or any host that supports Next.js server rendering. Static export is not supported. On Vercel, use `DATA_STORE=supabase` (or `BLOB_READ_WRITE_TOKEN` from a private Blob store) so visits survive across serverless instances.
+- Set `NEXT_PUBLIC_SITE_URL` to the public origin for correct Open Graph URLs.
+- Security headers: a nonce-based CSP is set in `src/proxy.ts`; HSTS, nosniff, frame and permissions policies in `next.config.ts`. Serve over HTTPS.
+- Fonts are self-hosted at build time via `next/font` (Inter); no font requests reach third parties.
+- `app/error.tsx` has a hook for an error reporter. Do not send patient data to it.

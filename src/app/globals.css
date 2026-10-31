@@ -1,0 +1,365 @@
+@import "tailwindcss";
+
+/* Pinned bars only stay pinned when there's room for the page under them: a phone held
+   sideways or a zoomed-in window gets ordinary scrolling (WCAG technique C34). */
+@custom-variant tall (@media (min-height: 32rem));
+
+/*
+ * Design tokens.
+ * Contrast (WCAG 2.2): ink/ink-2/muted text are ≥4.5:1 on canvas and surface;
+ * control borders are ≥3:1 on surface; accent is ≥4.5:1 with white text.
+ */
+@theme {
+  --color-canvas: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-fill: #ececf0;
+  --color-fill-strong: #e3e3e8;
+  --color-ink: #1d1d1f;
+  --color-ink-2: #424245;
+  --color-muted: #6e6e73;
+  --color-hairline: #d2d2d7;
+  --color-control: #86868b;
+  --color-accent: #0066cc;
+  --color-accent-hover: #0058b0;
+  --color-accent-press: #004c99;
+  --color-accent-soft: #e8f1fb;
+  --color-accent-soft-hover: #d9e8f8;
+  --color-success: #1a7f37;
+  --color-success-soft: #e7f5ec;
+  --color-warn: #8f5300;
+  --color-danger: #c1272d;
+  --color-danger-soft: #fdeded;
+
+  /* Inter first: on Linux and Windows, BlinkMacSystemFont maps to the OS font, so the
+     self-hosted face never loaded and every page fell back to a plain system sans. */
+  --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-statement: var(--font-google-sans), "Google Sans", var(--font-inter), system-ui, sans-serif;
+
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.38;
+  --text-caption--letter-spacing: -0.003em;
+
+  --text-callout: 0.9375rem;
+  --text-callout--line-height: 1.43;
+  --text-callout--letter-spacing: -0.012em;
+
+  --text-body: 1.0625rem;
+  --text-body--line-height: 1.47;
+  --text-body--letter-spacing: -0.022em;
+
+  --text-title3: 1.3125rem;
+  --text-title3--line-height: 1.24;
+  --text-title3--letter-spacing: -0.019em;
+
+  --text-title2: 1.75rem;
+  --text-title2--line-height: 1.14;
+  --text-title2--letter-spacing: -0.021em;
+
+  --text-title1: 2.5rem;
+  --text-title1--line-height: 1.1;
+  --text-title1--letter-spacing: -0.026em;
+
+  --text-hero: 3.5rem;
+  --text-hero--line-height: 1.07;
+  --text-hero--letter-spacing: -0.028em;
+
+  --radius-field: 0.75rem;
+  --radius-card: 1.125rem;
+  --radius-sheet: 1.5rem;
+
+  --shadow-card: 0 1px 1px rgb(0 0 0 / 0.02), 0 2px 8px rgb(0 0 0 / 0.04);
+  --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.04), 0 12px 32px rgb(0 0 0 / 0.08);
+  --shadow-float: 0 -1px 0 rgb(0 0 0 / 0.04), 0 -8px 32px rgb(0 0 0 / 0.08);
+
+  --container-page: 68rem;
+  --container-prose: 40rem;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --default-transition-duration: 180ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  :root {
+    /* Height of the sticky site header. Pinned bars sit directly under it. */
+    --header-h: 3.5rem;
+  }
+
+  @media (width >= 48rem) {
+    :root {
+      --header-h: 4rem;
+    }
+  }
+
+  html {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Anything in the page that is focused or linked to stops clear of the sticky header
+     (WCAG 2.4.11, technique C43). A margin on the content rather than scroll-padding on html:
+     with padding, the header's own links counted as hidden behind the header, so tabbing into
+     it from far down the page scrolled all the way back to the top. */
+  main,
+  main :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
+    scroll-margin-top: calc(var(--header-h) + 1rem);
+  }
+
+  /* A pinned bar's own controls are always on screen while it's pinned. Without this, focusing
+     one would "reveal" it by scrolling the page until the bar came unstuck. */
+  @media (min-height: 32rem) {
+    [data-pinned-bar] :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
+      scroll-margin-top: 0;
+    }
+  }
+
+  body {
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    letter-spacing: var(--text-body--letter-spacing);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Links inside running text need more than colour to stand out (WCAG 1.4.1). */
+  :where(p, dd, li) a {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  }
+
+  :where(p, dd, li) a:hover {
+    text-decoration-color: currentColor;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft-hover);
+  }
+
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  [tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+
+  button,
+  [role="button"],
+  label {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled),
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  ::placeholder {
+    color: var(--color-muted);
+    opacity: 1;
+  }
+
+  input[type="date"] {
+    color-scheme: light;
+  }
+
+  input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A row you swipe sideways: still scrollable, without a scrollbar. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Content that scrolls under a pinned bar: anything focused stops below the header and the bar,
+   not under them. The bar publishes its height as --pin-h (0 when it isn't pinned). */
+@utility pin-clear {
+  & :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
+    scroll-margin-top: calc(var(--header-h) + var(--pin-h, 0px) + 1rem);
+  }
+}
+
+@utility field {
+  display: block;
+  width: 100%;
+  min-height: 3rem;
+  border-radius: var(--radius-field);
+  border: 1px solid var(--color-control);
+  background: var(--color-surface);
+  padding: 0.6875rem 1rem;
+  font-size: var(--text-body);
+  line-height: 1.5rem;
+  color: var(--color-ink);
+  transition:
+    border-color 160ms var(--ease-out-quint),
+    box-shadow 160ms var(--ease-out-quint);
+
+  &:hover {
+    border-color: var(--color-ink-2);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  }
+
+  &[aria-invalid="true"] {
+    border-color: var(--color-danger);
+  }
+
+  &[aria-invalid="true"]:focus-visible {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 18%, transparent);
+  }
+}
+
+/* The slim bar that shows while a link or search is loading. It creeps toward the end and waits there. */
+@keyframes nav-progress {
+  from {
+    width: 8%;
+  }
+  to {
+    width: 88%;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Sign-in: big, friendly controls ---------- */
+
+@utility auth-field {
+  display: block;
+  width: 100%;
+  min-height: 3.5rem;
+  border-radius: 1rem;
+  border: 2px solid var(--color-control);
+  background: var(--color-surface);
+  padding: 0.75rem 1rem;
+  font-size: var(--text-body);
+  line-height: 1.5rem;
+  color: var(--color-ink);
+  transition:
+    border-color 160ms var(--ease-out-quint),
+    box-shadow 160ms var(--ease-out-quint),
+    background-color 160ms var(--ease-out-quint);
+
+  &:hover {
+    border-color: var(--color-ink-2);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+
+  &[aria-invalid="true"] {
+    border-color: var(--color-danger);
+    background: var(--color-danger-soft);
+  }
+}
+
+/* A button that sits on a darker "ledge" and presses into it. */
+@utility btn-chunky {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 1rem;
+  padding: 0 1.5rem;
+  font-size: var(--text-body);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  user-select: none;
+  transition:
+    transform 90ms var(--ease-out-quint),
+    box-shadow 90ms var(--ease-out-quint),
+    background-color 160ms var(--ease-out-quint);
+
+  &:active:not(:disabled) {
+    transform: translateY(4px);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@utility btn-chunky-primary {
+  background: var(--color-accent);
+  color: #ffffff;
+  box-shadow: 0 4px 0 var(--color-accent-press);
+
+  &:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+  }
+
+  &:active:not(:disabled) {
+    box-shadow: 0 0 0 var(--color-accent-press);
+  }
+}
+
+@utility btn-chunky-secondary {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  border: 2px solid var(--color-hairline);
+  box-shadow: 0 4px 0 var(--color-hairline);
+
+  &:hover:not(:disabled) {
+    background: var(--color-fill);
+  }
+
+  &:active:not(:disabled) {
+    box-shadow: 0 0 0 var(--color-hairline);
+  }
+}
