@@ -105,13 +105,13 @@ export interface DoctorProfileForm {
 
 export type FormErrors<K extends string> = Partial<Record<K, string>>;
 
-/** Pounds and pence as typed ("45" or "45.50") to pence. Null for blank, undefined for invalid. */
+/** Pounds and pence as typed ("45" or "45.50") to pence. Null for blank, undefined for invalid, 0 for free. */
 export function parseFee(input: string): number | null | undefined {
-  const raw = input.trim().replace(/^£/, "");
+  const raw = input.trim().replace(/^[£₹]/, "");
   if (!raw) return null;
   if (!/^\d{1,4}(\.\d{1,2})?$/.test(raw)) return undefined;
   const pence = Math.round(Number(raw) * 100);
-  return pence > 0 ? pence : null;
+  return pence;
 }
 
 export function checkDoctorProfile(

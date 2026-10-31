@@ -87,7 +87,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
 
       {refundsDue.length > 0 ? (
         <div className="mt-6">
-          <Panel id="refunds-due" title="Refunds to give back" description="Cancelled visits paid at the desk. Demo card payments go back on their own.">
+          <Panel id="refunds-due" title="Refunds to give back" description="Cancelled visits paid at the desk. Online payments are refunded through the payment provider.">
             <ul className="grid gap-2">
               {refundsDue.slice(0, 6).map((row) => (
                 <li key={row.visit.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#f3c4c6] px-3 py-2 text-sm">

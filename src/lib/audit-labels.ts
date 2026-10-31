@@ -24,6 +24,12 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   "consult.removed": "Session removed",
   "payment.received": "Payment received",
   "payment.refunded": "Refund given",
+  "payment.captured": "Online payment received",
+  "payment.failed": "Online payment failed",
+  "payment.hold_expired": "Held place released",
+  "refund.initiated": "Refund started",
+  "refund.completed": "Refund completed",
+  "refund.failed": "Refund failed",
   "fee.waived": "Fee waived",
   "fee.restored": "Fee waiver removed",
   "fee.added": "Fee added to an older visit",
@@ -44,7 +50,7 @@ export interface ActionGroup {
 export const ACTION_GROUPS: readonly ActionGroup[] = [
   { id: "signin", label: "Sign-in and sessions", prefixes: ["signin.", "signout", "session.", "sessions."] },
   { id: "appointment", label: "Visits", prefixes: ["appointment."] },
-  { id: "payment", label: "Payments", prefixes: ["payment.", "fee."] },
+  { id: "payment", label: "Payments", prefixes: ["payment.", "fee.", "refund."] },
   { id: "account", label: "Accounts and roles", prefixes: ["account.", "staff.", "role.", "admin."] },
   { id: "report", label: "Reports", prefixes: ["report."] },
 ];

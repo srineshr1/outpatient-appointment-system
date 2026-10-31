@@ -1,3 +1,4 @@
+import { releaseExpiredHolds } from "./payments/holds";
 import { getStore } from "./store";
 
 /** The booked-slot list is a store listing. Browsing re-reads it at most this often per instance. */
@@ -14,6 +15,8 @@ export async function blockedSlotIds(): Promise<string[]> {
   if (loaded && Date.now() - loaded.at < FRESH_MS) return loaded.ids;
   pending ??= (async () => {
     try {
+      // A payment hold that ran out still occupies its place until released, so release it first.
+      await releaseExpiredHolds();
       const ids = await (await getStore()).listBlockedSlotIds();
       loaded = { at: Date.now(), ids };
       return ids;

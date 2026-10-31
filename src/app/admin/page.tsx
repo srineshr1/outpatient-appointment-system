@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isClosedStatus } from "@/lib/clinic-types";
 import Link from "next/link";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminTitle } from "@/components/admin/AdminTitle";
@@ -31,7 +32,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
   const time = londonWallClock(now()).time;
 
   const todayRows = visits.filter((row) => row.visit.date === today);
-  const live = todayRows.filter((row) => row.visit.status !== "cancelled");
+  const live = todayRows.filter((row) => !isClosedStatus(row.visit.status));
   const completed = live.filter((row) => row.visit.status === "completed").length;
   const toCome = live.filter((row) => row.visit.status === "booked" && row.visit.time >= time).length;
   const takings = dailyTakings(today, snapshot.charges, visits.map((row) => row.visit));
@@ -43,7 +44,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
   const cancelledRecently = events.filter((event) => event.action === "appointment.cancelled" && londonDay(event.at) >= weekAgo).length;
 
   const refundsDue = visits.filter((row) => row.money.refundDuePence > 0);
-  const pastUnpaid = visits.filter((row) => row.visit.status !== "cancelled" && row.visit.date < today && row.money.duePence > 0);
+  const pastUnpaid = visits.filter((row) => !isClosedStatus(row.visit.status) && row.visit.date < today && row.money.duePence > 0);
   const stale = visits.filter((row) => row.visit.status === "booked" && row.visit.date < today);
   const noFee = visits.filter((row) => row.money.state === "none" && row.visit.status === "booked" && row.visit.date >= today);
   const attempts = failedSignIns(events).filter((item) => item.locked || item.failures >= 3);

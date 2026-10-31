@@ -2,6 +2,8 @@ import { actorOf, recordEvent, visitSummary } from "./audit";
 import { settleCancelledVisit } from "./billing";
 import type { AppointmentRecord, AppointmentStatus, PublicUser, RescheduleRecord } from "./clinic-types";
 import { forgetBlockedSlots } from "./blocked-slots";
+import { cancelReminders, dispatchSoon, queueNotice } from "./notifications/service";
+import { refundForCancellation, type CancellationRefund } from "./payments/service";
 import { getStore } from "./store";
 
 export type VisitChange = "ok" | "missing" | "forbidden" | "closed";
@@ -35,7 +37,9 @@ export async function changeAppointmentStatus(
   const store = await getStore();
   const visit = await store.getAppointment(id);
   if (!visit) return "missing";
-  if (visit.status !== "booked") return "closed";
+  // A held place that is waiting for payment can be given up; nothing else is open except a booked visit.
+  if (visit.status !== "booked" && visit.status !== "pending_payment") return "closed";
+  if (visit.status === "pending_payment" && status === "completed") return "closed";
 
   const owns = actor.id === visit.patientUserId;
   const doctor = actor.role === "doctor" && actor.doctorId === visit.doctorId;
@@ -43,7 +47,8 @@ export async function changeAppointmentStatus(
   if (status === "completed" && !(doctor || desk)) return "forbidden";
   if (status === "cancelled" && !(owns || doctor || desk)) return "forbidden";
 
-  await store.updateStatus(id, status);
+  // Move from the status we read, so two people cancelling at once (or a payment landing) change it once.
+  if ((await store.transitionStatus(id, visit.status, status)) !== "ok") return "closed";
   forgetBlockedSlots();
   const who = actorOf(actor);
   await recordEvent({
@@ -54,10 +59,31 @@ export async function changeAppointmentStatus(
     summary: visitSummary(visit),
     reason: reason.trim().slice(0, 200),
   });
-  if (status === "cancelled") {
-    await settleCancelledVisit(visit, who).catch((error: unknown) => {
-      console.error(`[billing] Could not refund ${visit.reference}: ${error instanceof Error ? error.message : "unknown error"}`);
+  // Reminders only make sense for a visit that is still going to happen.
+  await cancelReminders(visit.id);
+  if (status === "cancelled" && visit.status === "booked") {
+    const cancelledBy = owns && !doctor && !desk ? "patient" : "clinic";
+    // Paid through the payment system: the refund policy decides. Otherwise the older desk and demo flow applies.
+    const real: CancellationRefund | null | "error" = await refundForCancellation(visit, cancelledBy, who.name).catch((error: unknown) => {
+      console.error(`[payments] Could not refund ${visit.reference}: ${error instanceof Error ? error.message : "unknown error"}`);
+      return "error" as const;
     });
+    if (real === null) {
+      await settleCancelledVisit(visit, who).catch((error: unknown) => {
+        console.error(`[billing] Could not refund ${visit.reference}: ${error instanceof Error ? error.message : "unknown error"}`);
+      });
+    }
+    const refund = real && real !== "error" ? real : null;
+    const refunding = refund?.refund && refund.refund.status !== "failed" ? refund.refund.amountMinor : refund ? 0 : undefined;
+    await queueNotice("appointment_cancelled", visit, {
+      dedupe: `appointment_cancelled:${visit.id}`,
+      extra: {
+        cancelledBy,
+        ...(refunding !== undefined ? { refundMinor: refunding, refundPercent: refund?.decision.percent, detail: refund?.decision.explanation } : {}),
+        ...(real === "error" ? { detail: "Any refund due is being looked at by the practice and you will hear from us." } : {}),
+      },
+    });
+    await dispatchSoon();
   }
   return "ok";
 }

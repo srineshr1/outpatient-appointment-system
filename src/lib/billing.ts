@@ -3,13 +3,17 @@
  * demo card (nothing is charged), or pay at the desk, where staff record card or cash.
  * Cancelling refunds a demo card payment automatically; desk payments are refunded by staff.
  * Every change checks the latest record inside the store's update, so two desks can't both
- * take the last £40 owed.
+ * take the last ₹400 owed.
  */
 import { recordEvent, visitSummary, type Actor } from "./audit";
+import { isClosedStatus } from "./clinic-types";
 import type { AppointmentRecord, ChargeRecord, PaymentEntry, PaymentMethod } from "./clinic-types";
 import { now } from "./clock";
 import { findDoctor } from "./data";
-import { feeFor, formatMoney } from "./fees";
+import { formatMoney } from "./fees";
+import { getOps } from "./ops";
+import { onlinePaymentLines } from "./payments/summary";
+import { resolveFee } from "./payments/fees";
 import { METHOD_LABELS, paymentLine, refundableByMethod, summarise, totals } from "./payments";
 import { getStore } from "./store";
 
@@ -46,7 +50,7 @@ function newEntry(
 }
 
 function checkAmount(amountPence: number): void {
-  if (!Number.isInteger(amountPence) || amountPence <= 0) throw new BillingError("Enter an amount more than £0.00.");
+  if (!Number.isInteger(amountPence) || amountPence <= 0) throw new BillingError("Enter an amount more than ₹0.00.");
 }
 
 function checkReason(reason: string): string {
@@ -58,7 +62,7 @@ function checkReason(reason: string): string {
 
 /** The fee is fixed when the visit is booked. Paying now records a demo card payment at once. */
 export async function openCharge(visit: AppointmentRecord, payNow: boolean): Promise<ChargeRecord | null> {
-  const amountPence = feeFor(visit.reasonId, findDoctor(visit.doctorId)?.feePence);
+  const amountPence = await resolveFee(visit.doctorId, visit.reasonId);
   const charge: ChargeRecord = {
     appointmentId: visit.id,
     reference: visit.reference,
@@ -70,6 +74,32 @@ export async function openCharge(visit: AppointmentRecord, payNow: boolean): Pro
   };
   const store = await getStore();
   return (await store.createCharge(charge)) === "ok" ? charge : store.getCharge(visit.id);
+}
+
+/**
+ * Mirror a real online payment into the visit's ledger so desks, invoices and the "paid" badges all
+ * agree with the payment system. Safe to call twice: the entry id comes from the payment id.
+ */
+export async function recordOnlinePayment(visit: AppointmentRecord, paymentId: string, amountMinor: number, note: string): Promise<void> {
+  const entry: PaymentEntry = { ...newEntry("payment", "online_card", amountMinor, { id: null, name: ONLINE_NAME }, note), id: `pay-${paymentId}` };
+  const store = await getStore();
+  const created = await store.createCharge({
+    appointmentId: visit.id,
+    reference: visit.reference,
+    reasonId: visit.reasonId,
+    amountPence: amountMinor,
+    createdAt: now().toISOString(),
+    entries: [entry],
+    waiver: null,
+  });
+  if (created === "ok") return;
+  await store.updateCharge(visit.id, (charge) => (charge.entries.some((existing) => existing.id === entry.id) ? null : { ...charge, entries: [...charge.entries, entry] }));
+}
+
+/** Mirror a refund the provider has confirmed. Idempotent on the refund id. */
+export async function recordOnlineRefund(visit: AppointmentRecord, refundId: string, amountMinor: number, note: string): Promise<void> {
+  const entry: PaymentEntry = { ...newEntry("refund", "online_card", amountMinor, { id: null, name: ONLINE_NAME }, note), id: `ref-${refundId}` };
+  await (await getStore()).updateCharge(visit.id, (charge) => (charge.entries.some((existing) => existing.id === entry.id) ? null : { ...charge, entries: [...charge.entries, entry] }));
 }
 
 async function visitFor(appointmentId: string): Promise<AppointmentRecord> {
@@ -87,7 +117,7 @@ async function change(appointmentId: string, edit: (charge: ChargeRecord) => Cha
 /** For a visit booked before fees started: charge it the current fee for its reason, unpaid. */
 export async function addMissingFee(actor: Actor, appointmentId: string): Promise<ChargeRecord> {
   const visit = await visitFor(appointmentId);
-  if (visit.status === "cancelled") throw new BillingError("This visit was cancelled, so there’s nothing to charge.");
+  if (isClosedStatus(visit.status)) throw new BillingError("This visit was cancelled, so there’s nothing to charge.");
   const store = await getStore();
   if (await store.getCharge(visit.id)) throw new BillingError("This visit already has a fee.");
   const charge = await openCharge(visit, false);
@@ -112,7 +142,7 @@ export async function recordPayment(
   if (method === "online_card") throw new BillingError("Online payments come from the patient. Choose card or cash.");
   checkAmount(amountPence);
   const visit = await visitFor(appointmentId);
-  if (visit.status === "cancelled") throw new BillingError("This visit was cancelled, so nothing is owed.");
+  if (isClosedStatus(visit.status)) throw new BillingError("This visit was cancelled, so nothing is owed.");
   const updated = await change(appointmentId, (charge) => {
     if (charge.waiver) throw new BillingError("The fee was waived. Remove the waiver before taking a payment.");
     const { duePence } = summarise(charge, visit.status);
@@ -141,6 +171,9 @@ export async function refundPayment(
   checkAmount(amountPence);
   const why = checkReason(reason);
   const visit = await visitFor(appointmentId);
+  if (method === "online_card" && (await getOps().then((ops) => ops.getPaymentByAppointment(appointmentId)))?.status === "captured") {
+    throw new BillingError("This was paid online. Its refund goes back through the payment system: see the refund status on the visit.");
+  }
   const updated = await change(appointmentId, (charge) => {
     const refundable = refundableByMethod(charge.entries).get(method) ?? 0;
     if (refundable <= 0) throw new BillingError(`Nothing was paid by ${METHOD_LABELS[method].toLowerCase()} to give back.`);
@@ -163,7 +196,7 @@ export async function refundPayment(
 export async function waiveFee(actor: Actor, appointmentId: string, reason: string): Promise<ChargeRecord> {
   const why = checkReason(reason);
   const visit = await visitFor(appointmentId);
-  if (visit.status === "cancelled") throw new BillingError("This visit was cancelled, so nothing is owed.");
+  if (isClosedStatus(visit.status)) throw new BillingError("This visit was cancelled, so nothing is owed.");
   const updated = await change(appointmentId, (charge) => {
     if (charge.waiver) throw new BillingError("The fee is already waived.");
     if (totals(charge.entries).netPence > 0) throw new BillingError("Money has been paid. Refund it instead of waiving the fee.");
@@ -208,7 +241,8 @@ export async function paymentLabels(
     const line = paymentLine(summarise(charges.get(visit.id), visit.status));
     if (line) labels[visit.id] = line;
   }
-  return labels;
+  // Visits paid through the payment system say so, with the refund's real status.
+  return { ...labels, ...(await onlinePaymentLines(visits)) };
 }
 
 /**

@@ -4,6 +4,7 @@ import { DetailsView } from "@/components/details/DetailsView";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { buttonClass } from "@/components/ui/button-styles";
 import { Notice } from "@/components/ui/Card";
+import { onlinePaymentsAvailable } from "@/lib/payments/index";
 import { getDoctors } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
 import { SignOutButton } from "@/components/auth/SignOutButton";
@@ -36,6 +37,10 @@ export default async function DetailsPage() {
   }
 
   return (
-    <DetailsView doctors={doctors} account={{ name: user.name, dob: user.dob, mobile: user.mobile, email: user.email }} />
+    <DetailsView
+      doctors={doctors}
+      account={{ name: user.name, dob: user.dob, mobile: user.mobile, email: user.email }}
+      onlinePayments={onlinePaymentsAvailable()}
+    />
   );
 }

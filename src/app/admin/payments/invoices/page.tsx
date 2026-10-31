@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isClosedStatus } from "@/lib/clinic-types";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminTitle } from "@/components/admin/AdminTitle";
 import { FilterBar } from "@/components/admin/FilterBar";
@@ -51,7 +52,7 @@ export default async function VisitFeesPage({ searchParams }: { searchParams: Pr
   const filters = readVisitFilters(query, "all");
   const rows = [...filterVisits(snapshot.visits, filters, today)].reverse();
 
-  const charged = snapshot.visits.filter((row) => row.charge && row.visit.status !== "cancelled" && !row.charge.waiver);
+  const charged = snapshot.visits.filter((row) => row.charge && !isClosedStatus(row.visit.status) && !row.charge.waiver);
   const billed = charged.reduce((sum, row) => sum + (row.charge?.amountPence ?? 0), 0);
   const collected = snapshot.visits.reduce((sum, row) => sum + row.money.netPence, 0);
   const owed = snapshot.visits.reduce((sum, row) => sum + row.money.duePence, 0);

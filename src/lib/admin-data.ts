@@ -4,6 +4,7 @@
  */
 import { actionLabel, inGroup } from "./audit-labels";
 import { phoneSearchText } from "./phone";
+import { isClosedStatus } from "./clinic-types";
 import type {
   AppointmentRecord,
   AppointmentStatus,
@@ -119,7 +120,7 @@ export interface VisitFilters {
   to: string;
 }
 
-const STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled"];
+const STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired"];
 const MONEY: readonly (PaymentState | "owed")[] = [
   "owed",
   "unpaid",
@@ -215,7 +216,7 @@ export function weekLoad(rows: readonly VisitRow[], today: string): { weekStart:
   const window = bookWindow(now());
   const weekStart = mondayOf(today) < window.firstWeek ? window.firstWeek : mondayOf(today);
   const weekEnd = addDays(weekStart, 6);
-  const inWeek = rows.filter((row) => row.visit.status !== "cancelled" && row.visit.date >= weekStart && row.visit.date <= weekEnd);
+  const inWeek = rows.filter((row) => !isClosedStatus(row.visit.status) && row.visit.date >= weekStart && row.visit.date <= weekEnd);
   const slots = applyHeld(
     generateSlots(window).filter((slot) => slot.date >= weekStart && slot.date <= weekEnd && !slot.teaching),
     inWeek.map((row) => row.visit.slotId),
@@ -305,7 +306,7 @@ export interface NavCounts {
 
 export function navCounts(snapshot: AdminSnapshot): NavCounts {
   return {
-    appointments: snapshot.visits.filter((row) => row.visit.date === snapshot.today && row.visit.status !== "cancelled").length,
+    appointments: snapshot.visits.filter((row) => row.visit.date === snapshot.today && !isClosedStatus(row.visit.status)).length,
     payments: snapshot.visits.filter((row) => row.money.duePence > 0 || row.money.refundDuePence > 0).length,
     people: snapshot.users.length,
     security: failedSignIns(snapshot.events).length,

@@ -8,6 +8,7 @@ import {
   type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
+  APPOINTMENT_STATUSES,
   type AuditEvent,
   type ChargeRecord,
   type ClinicStore,
@@ -164,7 +165,7 @@ interface EventRow {
 }
 
 function isStatus(value: string): value is AppointmentStatus {
-  return value === "booked" || value === "completed" || value === "cancelled";
+  return (APPOINTMENT_STATUSES as readonly string[]).includes(value);
 }
 
 function toUser(row: UserRow): StoredUser {
@@ -403,8 +404,9 @@ export class SqliteClinicStore implements ClinicStore {
         signup_token_hash TEXT
       );
 
-      CREATE UNIQUE INDEX IF NOT EXISTS appointments_one_held_slot
-        ON appointments(slot_id) WHERE status IN ('booked', 'completed');
+      DROP INDEX IF EXISTS appointments_one_held_slot;
+      CREATE UNIQUE INDEX IF NOT EXISTS appointments_one_held_slot_v2
+        ON appointments(slot_id) WHERE status IN ('booked', 'completed', 'pending_payment');
 
       CREATE TABLE IF NOT EXISTS charges (
         appointment_id TEXT PRIMARY KEY,
@@ -633,7 +635,7 @@ export class SqliteClinicStore implements ClinicStore {
 
   async listBlockedSlotIds(): Promise<string[]> {
     const rows = this.db
-      .prepare("SELECT slot_id FROM appointments WHERE status IN ('booked', 'completed')")
+      .prepare("SELECT slot_id FROM appointments WHERE status IN ('booked', 'completed', 'pending_payment')")
       .all() as unknown as { slot_id: string }[];
     return rows.map((row) => row.slot_id);
   }
@@ -642,7 +644,7 @@ export class SqliteClinicStore implements ClinicStore {
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const held = this.db
-        .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed')")
+        .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed', 'pending_payment')")
         .get(appointment.slotId) as { held: number } | undefined;
       if (held) {
         this.db.exec("ROLLBACK");
@@ -703,6 +705,16 @@ export class SqliteClinicStore implements ClinicStore {
 
   async updateStatus(id: string, status: AppointmentStatus): Promise<void> {
     this.db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, id);
+  }
+
+  async transitionStatus(id: string, from: AppointmentStatus, to: AppointmentStatus): Promise<"ok" | "stale" | "taken"> {
+    try {
+      const result = this.db.prepare("UPDATE appointments SET status = ? WHERE id = ? AND status = ?").run(to, id, from);
+      return Number(result.changes) > 0 ? "ok" : "stale";
+    } catch (error) {
+      if (error instanceof Error && /UNIQUE constraint/i.test(error.message)) return "taken";
+      throw error;
+    }
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {
@@ -981,7 +993,7 @@ export class SqliteClinicStore implements ClinicStore {
         return "stale";
       }
       const held = this.db
-        .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed')")
+        .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed', 'pending_payment')")
         .get(to.slotId);
       if (held) {
         this.db.exec("ROLLBACK");

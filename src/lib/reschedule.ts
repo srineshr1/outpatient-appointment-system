@@ -11,6 +11,8 @@ import { now } from "./clock";
 import { findDoctor, practice } from "./data";
 import { formatShortDate } from "./format";
 import { sendNotice } from "./mailer";
+import { rescheduleReminders } from "./notifications/service";
+import { releaseExpiredHolds } from "./payments/holds";
 import { rescheduleEmail } from "./reschedule-email";
 import { getSlot, getSlots } from "./repository";
 import { slotStart, slotStatus } from "./schedule";
@@ -98,6 +100,7 @@ export async function rescheduleVisit(
   const status = slotStatus(target, [], now());
   if (status !== "open") return { ok: false, reason: status === "past" ? "past" : status === "teaching" ? "teaching" : "taken" };
 
+  await releaseExpiredHolds();
   let held = await store.listBlockedSlotIds();
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const token = target.mode === "wave" ? freeToken(target.id, target.capacity ?? 1, held) : null;
@@ -144,6 +147,8 @@ export async function rescheduleVisit(
         summary: `${visitSummary(moved)} · was ${placementLabel({ date: visit.date, time: visit.time, token: history.fromToken })}`,
         reason: history.reason,
       });
+      // The old reminders were for the old time: drop them and plan new ones from the new start.
+      await rescheduleReminders(moved);
       return { ok: true, visit: moved, history };
     }
     // "taken": someone holds that place. A wave may have another free token; a stream slot has none.

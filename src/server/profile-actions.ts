@@ -6,6 +6,7 @@ import { recordEvent, actorOf } from "@/lib/audit";
 import type { ConsultSession, PublicUser } from "@/lib/clinic-types";
 import { now, todayIso } from "@/lib/clock";
 import { loadDoctors } from "@/lib/doctors";
+import { getOps } from "@/lib/ops";
 import type { FormState } from "@/lib/form-state";
 import {
   checkDoctorProfile,
@@ -109,6 +110,8 @@ export async function saveDoctorProfile(_previous: FormState, formData: FormData
   const store = await getStore();
   await store.updateUser(user.id, { name, doctorRoom: checked.value.room, doctorInterest: checked.value.specialty });
   await store.putProfile(doctorProfileRecord(user.id, checked.value, now().toISOString()));
+  // The fee that patients are charged lives in its own table, so a stored 0 can mean "free". Left blank, it stays as it was.
+  if (checked.value.feePence !== null) await (await getOps()).setDoctorFee(user.id, checked.value.feePence);
   await loadDoctors(true);
   await recordEvent({
     actor: actorOf(user),
