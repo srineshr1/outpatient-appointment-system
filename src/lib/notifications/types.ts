@@ -8,7 +8,15 @@ export type NotificationKind =
   | "refund_initiated"
   | "refund_completed"
   | "refund_failed"
-  | "reminder";
+  | "reminder"
+  | "appointment_rescheduled"
+  | "doctor_booking"
+  | "doctor_cancelled"
+  | "doctor_rescheduled"
+  | "doctor_daily_summary";
+
+/** The notices that go to a doctor rather than a patient. */
+export const DOCTOR_KINDS: readonly NotificationKind[] = ["doctor_booking", "doctor_cancelled", "doctor_rescheduled", "doctor_daily_summary"];
 
 export type ChannelName = "email" | "sms" | "whatsapp";
 
@@ -36,6 +44,19 @@ export interface NoticeData {
   path?: string;
   /** Payment id, for receipt links. */
   paymentId?: string;
+  /** Why the visit is booked, e.g. "A follow-up". */
+  reasonLabel?: string;
+  /** The patient's mobile number, for the doctor's notices. */
+  patientMobile?: string;
+  /** Who cancelled or moved the visit, by name. */
+  actorName?: string;
+  /** The time the visit had before it moved. */
+  previousWhen?: string;
+  /** The reason given for a move or cancellation. */
+  reason?: string;
+  /** Daily summary: the calendar date ("Mon 2 Nov") and the day's visits. */
+  dateLabel?: string;
+  items?: Array<{ time: string; patientName: string; reasonLabel: string; reference: string; token?: number | null }>;
 }
 
 export interface RenderedMessage {

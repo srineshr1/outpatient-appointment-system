@@ -2,7 +2,7 @@ import { actorOf, recordEvent, visitSummary } from "./audit";
 import { settleCancelledVisit } from "./billing";
 import type { AppointmentRecord, AppointmentStatus, PublicUser, RescheduleRecord } from "./clinic-types";
 import { forgetBlockedSlots } from "./blocked-slots";
-import { cancelReminders, dispatchSoon, queueNotice } from "./notifications/service";
+import { cancelReminders, dispatchSoon, notifyDoctorCancelled, queueNotice } from "./notifications/service";
 import { refundForCancellation, type CancellationRefund } from "./payments/service";
 import { getStore } from "./store";
 
@@ -79,10 +79,13 @@ export async function changeAppointmentStatus(
       dedupe: `appointment_cancelled:${visit.id}`,
       extra: {
         cancelledBy,
+        ...(doctor ? { actorName: actor.name } : {}),
         ...(refunding !== undefined ? { refundMinor: refunding, refundPercent: refund?.decision.percent, detail: refund?.decision.explanation } : {}),
         ...(real === "error" ? { detail: "Any refund due is being looked at by the practice and you will hear from us." } : {}),
       },
     });
+    // The doctor hears about every cancellation of a confirmed visit except their own.
+    await notifyDoctorCancelled(visit, actor, cancelledBy, reason.trim().slice(0, 200));
     await dispatchSoon();
   }
   return "ok";

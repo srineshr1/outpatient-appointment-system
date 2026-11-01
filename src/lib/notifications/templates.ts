@@ -122,7 +122,10 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         ...base,
         subject: `Appointment ${data.reference} cancelled`,
         heading: "Appointment cancelled",
-        intro: data.cancelledBy === "clinic" ? "your appointment has been cancelled by the practice." : "your appointment has been cancelled.",
+        intro:
+          data.cancelledBy === "clinic"
+            ? `your appointment has been cancelled by ${data.actorName ?? "the practice"}.`
+            : "your appointment has been cancelled.",
         rows,
         footnote:
           data.refundMinor && data.refundMinor > 0
@@ -159,6 +162,84 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         rows: [...visitRows, ["Refund", `${money(data.refundMinor)} (failed)`], ...(data.detail ? [["What happened", data.detail] as [string, string]] : [])],
         footnote: `If you do not hear from us soon, call the desk on ${practice.phoneDisplay}.`,
       });
+    case "appointment_rescheduled":
+      return layout({
+        ...base,
+        subject: `Appointment ${data.reference} moved to ${data.when}`,
+        heading: "Appointment moved",
+        intro: `${data.actorName ?? "The practice"} moved your appointment with ${data.doctorName}. The reference stays the same.`,
+        rows: [
+          ["Reference", data.reference],
+          ["Doctor", data.doctorName],
+          ["Was", data.previousWhen ?? ""],
+          ["Now", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ...(data.reason ? [["Reason", data.reason] as [string, string]] : []),
+        ],
+        footnote: "If the new time does not suit you, you can move it again or cancel it from your appointments.",
+        cta: { label: "Manage appointment", url: link("/appointments") },
+      });
+    case "doctor_booking":
+      return layout({
+        ...base,
+        subject: `New appointment ${data.reference}: ${data.patientName}, ${data.when}`,
+        heading: "New appointment booked",
+        intro: `${data.patientName} has booked a visit with you.`,
+        rows: [
+          ["Reference", data.reference],
+          ["Patient", data.patientName],
+          ["When", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ...(data.reasonLabel ? [["Visit", data.reasonLabel] as [string, string]] : []),
+          ...(data.patientMobile ? [["Mobile", data.patientMobile] as [string, string]] : []),
+        ],
+        footnote: "You can turn these emails off under Notifications on your clinic book.",
+        cta: { label: "Open clinic book", url: link("/dashboard") },
+      });
+    case "doctor_cancelled":
+      return layout({
+        ...base,
+        subject: `Appointment ${data.reference} cancelled: ${data.patientName}, ${data.when}`,
+        heading: "Appointment cancelled",
+        intro: `${data.actorName ?? (data.cancelledBy === "patient" ? data.patientName : "The practice")} cancelled a visit on your book. The time is free again.`,
+        rows: [
+          ["Reference", data.reference],
+          ["Patient", data.patientName],
+          ["Was", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ...(data.reasonLabel ? [["Visit", data.reasonLabel] as [string, string]] : []),
+        ],
+        footnote: "You can turn these emails off under Notifications on your clinic book.",
+        cta: { label: "Open clinic book", url: link("/dashboard") },
+      });
+    case "doctor_rescheduled":
+      return layout({
+        ...base,
+        subject: `Appointment ${data.reference} moved: ${data.patientName}, now ${data.when}`,
+        heading: "Appointment moved",
+        intro: `${data.actorName ?? "Someone"} moved a visit on your book.`,
+        rows: [
+          ["Reference", data.reference],
+          ["Patient", data.patientName],
+          ["Was", data.previousWhen ?? ""],
+          ["Now", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ...(data.reason ? [["Reason", data.reason] as [string, string]] : []),
+        ],
+        footnote: "You can turn these emails off under Notifications on your clinic book.",
+        cta: { label: "Open clinic book", url: link("/dashboard") },
+      });
+    case "doctor_daily_summary": {
+      const items = data.items ?? [];
+      return layout({
+        ...base,
+        subject: `Your schedule for ${data.dateLabel ?? "today"}: ${items.length} appointment${items.length === 1 ? "" : "s"}`,
+        heading: `Today: ${items.length} appointment${items.length === 1 ? "" : "s"}`,
+        intro: `here is your schedule for ${data.dateLabel ?? "today"}.`,
+        rows: items.map((item): [string, string] => [
+          item.time,
+          `${item.patientName}${item.reasonLabel ? ` · ${item.reasonLabel}` : ""}${item.token ? ` (token ${item.token})` : ""} · ${item.reference}`,
+        ]),
+        footnote: "Times are practice time. You can turn this email off under Notifications on your clinic book.",
+        cta: { label: "Open clinic book", url: link("/dashboard") },
+      });
+    }
     case "reminder":
       return layout({
         ...base,

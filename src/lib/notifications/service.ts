@@ -5,14 +5,16 @@
  */
 import { after } from "next/server";
 import type { AppointmentRecord } from "../clinic-types";
-import { now } from "../clock";
-import { findDoctor } from "../data";
+import { londonWallClock, now } from "../clock";
+import { findDoctor, reasons } from "../data";
 import { formatShortDate } from "../format";
+import { salutation } from "../names";
 import { getOps } from "../ops";
 import type { NotificationRecord, OpsStore } from "../ops/types";
 import { slotStart } from "../schedule";
 import { getStore } from "../store";
 import { channelFor } from "./channels";
+import { getDoctorPrefs, prefForKind } from "./doctor-prefs";
 import { reminderSchedule, resolveOffsets } from "./reminders";
 import { renderNotice } from "./templates";
 import type { ChannelName, NoticeData, NotificationKind } from "./types";
@@ -52,7 +54,7 @@ async function contactFor(visit: AppointmentRecord): Promise<Contact | null> {
   if (!visit.patientUserId) return null;
   const user = await (await getStore()).getUserById(visit.patientUserId);
   if (!user) return null;
-  return { firstName: user.name.split(" ")[0] || user.name, email: user.email };
+  return { firstName: salutation(user.name), email: user.email };
 }
 
 export interface NoticeOptions {
@@ -88,6 +90,136 @@ export async function queueNotice(kind: NotificationKind, visit: AppointmentReco
     console.error(`[notice] Could not queue ${kind} for ${visit.reference}: ${error instanceof Error ? error.message : "unknown error"}`);
     return false;
   }
+}
+
+// --- Doctors ---------------------------------------------------------------------------------
+
+export interface DoctorContact {
+  userId: string;
+  name: string;
+  email: string;
+}
+
+/** The accounts that run a doctor's book: normally one, and none are mailed once disabled. */
+export async function doctorContacts(doctorId: string): Promise<DoctorContact[]> {
+  const users = await (await getStore()).listUsers();
+  return users
+    .filter((user) => user.role === "doctor" && !user.disabledAt && user.doctorId === doctorId)
+    .map((user) => ({ userId: user.id, name: user.name, email: user.email }));
+}
+
+export const reasonLabel = (reasonId: string): string => reasons.find((reason) => reason.id === reasonId)?.label ?? "";
+
+export interface DoctorNoticeOptions {
+  /** Unique per message and doctor account: the doctor's user id is added. */
+  dedupe: string;
+  /** The person who made the change. A doctor is not emailed about their own action. */
+  actorUserId?: string | null;
+  extra?: Partial<NoticeData>;
+}
+
+/**
+ * Queue an email to the visit's doctor (email only), unless they switched that kind off or made the
+ * change themselves. Returns how many were queued. Never throws.
+ */
+export async function queueDoctorNotice(kind: NotificationKind, visit: AppointmentRecord, options: DoctorNoticeOptions): Promise<number> {
+  try {
+    const ops = await getOps();
+    let queued = 0;
+    for (const doctor of await doctorContacts(visit.doctorId)) {
+      if (options.actorUserId && options.actorUserId === doctor.userId) continue;
+      const pref = prefForKind(kind);
+      if (pref && !(await getDoctorPrefs(doctor.userId))[pref]) continue;
+      const data = noticeData(visit, salutation(doctor.name), {
+        reasonLabel: reasonLabel(visit.reasonId),
+        patientMobile: visit.patientMobile || undefined,
+        ...options.extra,
+      });
+      const result = await ops.enqueueNotification({
+        dedupeKey: `${options.dedupe}:${doctor.userId}:email`,
+        kind,
+        channel: "email",
+        recipient: doctor.email,
+        appointmentId: visit.id,
+        payload: data as unknown as Record<string, unknown>,
+        scheduledFor: now().toISOString(),
+      });
+      if (result === "queued") queued += 1;
+    }
+    return queued;
+  } catch (error) {
+    console.error(`[notice] Could not queue ${kind} for the doctor of ${visit.reference}: ${error instanceof Error ? error.message : "unknown error"}`);
+    return 0;
+  }
+}
+
+/** A patient cancelled, or someone cancelled for them: tell the doctor and say who did it. */
+export async function notifyDoctorCancelled(visit: AppointmentRecord, actor: { id: string; name: string }, cancelledBy: "patient" | "clinic", reason = ""): Promise<void> {
+  await queueDoctorNotice("doctor_cancelled", visit, {
+    dedupe: `doctor_cancelled:${visit.id}`,
+    actorUserId: actor.id,
+    extra: { cancelledBy, actorName: cancelledBy === "patient" ? visit.patientName : actor.name, ...(reason ? { reason } : {}) },
+  });
+}
+
+const IST = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Calcutta", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** The hour (India time) the daily schedule goes out, from the settings table. 7 unless changed. */
+export const SUMMARY_HOUR_SETTING = "doctor_summary_hour_ist";
+const SUMMARY_LATEST_HOUR = 18;
+
+/**
+ * Queue each doctor's schedule for today, once per doctor per day. It runs on every cron tick, and
+ * does nothing before the summary hour (7:00 India time by default), after the working day, or for a
+ * doctor with no visits today or who switched the email off. The dedupe key makes the repeat ticks free.
+ */
+export async function queueDailySummaries(instant: Date = now()): Promise<number> {
+  const ops = await getOps();
+  const configured = await ops.getSetting(SUMMARY_HOUR_SETTING);
+  const hour = typeof configured === "number" && Number.isInteger(configured) && configured >= 0 && configured < 24 ? configured : 7;
+  const parts = Object.fromEntries(IST.formatToParts(instant).map((part) => [part.type, part.value]));
+  const istHour = Number(parts.hour);
+  if (istHour < hour || istHour >= Math.max(SUMMARY_LATEST_HOUR, hour + 1)) return 0;
+
+  const date = londonWallClock(instant).date;
+  const store = await getStore();
+  const visits = (await store.listAppointments()).filter((visit) => visit.date === date && visit.status === "booked");
+  const byDoctor = new Map<string, AppointmentRecord[]>();
+  for (const visit of visits) byDoctor.set(visit.doctorId, [...(byDoctor.get(visit.doctorId) ?? []), visit]);
+
+  let queued = 0;
+  for (const [doctorId, list] of byDoctor) {
+    const sorted = [...list].sort((a, b) => a.time.localeCompare(b.time) || (a.token ?? 0) - (b.token ?? 0));
+    const items = sorted.map((visit) => ({
+      time: visit.time,
+      patientName: visit.patientName,
+      reasonLabel: reasonLabel(visit.reasonId),
+      reference: visit.reference,
+      token: visit.token ?? null,
+    }));
+    for (const doctor of await doctorContacts(doctorId)) {
+      if (!(await getDoctorPrefs(doctor.userId)).dailySummary) continue;
+      const result = await ops.enqueueNotification({
+        dedupeKey: `doctor_daily:${doctor.userId}:${date}:email`,
+        kind: "doctor_daily_summary",
+        channel: "email",
+        recipient: doctor.email,
+        appointmentId: null,
+        payload: {
+          firstName: salutation(doctor.name),
+          patientName: "",
+          reference: "",
+          doctorName: findDoctor(doctorId)?.name ?? doctor.name,
+          when: "",
+          dateLabel: formatShortDate(date),
+          items,
+        } satisfies NoticeData as unknown as Record<string, unknown>,
+        scheduledFor: instant.toISOString(),
+      });
+      if (result === "queued") queued += 1;
+    }
+  }
+  return queued;
 }
 
 /**
@@ -202,6 +334,8 @@ export async function rescheduleReminders(visit: AppointmentRecord): Promise<num
 /** What happens once a visit is confirmed (booked online and paid, or booked for payment at the desk). */
 export async function onBookingConfirmed(visit: AppointmentRecord, extra: Partial<NoticeData> = {}): Promise<void> {
   await queueNotice("booking_confirmed", visit, { dedupe: `booking_confirmed:${visit.id}`, extra });
+  // The doctor hears once the visit is confirmed: a held place waiting for payment sends nothing.
+  await queueDoctorNotice("doctor_booking", visit, { dedupe: `doctor_booking:${visit.id}` });
   await scheduleReminders(visit);
 }
 

@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { now } from "./clock";
 import { getOps } from "./ops";
-import { dispatchDue } from "./notifications/service";
+import { loadDoctors } from "./doctors";
+import { dispatchDue, queueDailySummaries } from "./notifications/service";
 import { releaseExpiredHolds } from "./payments/holds";
 import { retryRefunds } from "./payments/service";
 import { forgetBlockedSlots } from "./blocked-slots";
@@ -35,17 +36,19 @@ export interface CronSummary {
   at: string;
   holdsReleased: number;
   refundsRetried: number;
+  summariesQueued: number;
   notifications: { sent: number; skipped: number; failed: number; cancelled: number };
   errors: string[];
 }
 
-/** One scheduler tick: release expired holds, retry stuck refunds, send what is due (reminders included). */
+/** One scheduler tick: release expired holds, retry stuck refunds, queue the doctors' daily schedules, send what is due (reminders included). */
 export async function runCron(): Promise<CronSummary> {
   const errors: string[] = [];
   const summary: CronSummary = {
     at: now().toISOString(),
     holdsReleased: 0,
     refundsRetried: 0,
+    summariesQueued: 0,
     notifications: { sent: 0, skipped: 0, failed: 0, cancelled: 0 },
     errors,
   };
@@ -62,6 +65,10 @@ export async function runCron(): Promise<CronSummary> {
   });
   await step("refunds", async () => {
     summary.refundsRetried = await retryRefunds();
+  });
+  await step("summaries", async () => {
+    await loadDoctors();
+    summary.summariesQueued = await queueDailySummaries();
   });
   await step("notifications", async () => {
     // A few rounds so a backlog clears, but never an unbounded run inside one request.

@@ -62,6 +62,14 @@ export default async function DashboardPage({
         </time>
         .
       </p>
+      {user.role === "doctor" ? (
+        <p className="mt-3 text-callout">
+          <Link href="/dashboard/notifications" className="text-accent hover:underline underline-offset-4">
+            Email notifications
+          </Link>{" "}
+          choose which emails you get about bookings, changes and your daily schedule.
+        </p>
+      ) : null}
       {user.role === "admin" ? (
         <p className="mt-3 text-callout">
           <Link href="/admin" className="text-accent hover:underline underline-offset-4">
