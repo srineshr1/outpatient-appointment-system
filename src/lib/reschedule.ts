@@ -8,12 +8,9 @@ import { actorOf, recordEvent, visitSummary } from "./audit";
 import { forgetBlockedSlots } from "./blocked-slots";
 import type { AppointmentRecord, Placement, PublicUser, RescheduleRecord } from "./clinic-types";
 import { now } from "./clock";
-import { findDoctor, practice } from "./data";
 import { formatShortDate } from "./format";
-import { sendNotice } from "./mailer";
-import { rescheduleReminders } from "./notifications/service";
+import { dispatchSoon, queueDoctorNotice, queueNotice, rescheduleReminders } from "./notifications/service";
 import { releaseExpiredHolds } from "./payments/holds";
-import { rescheduleEmail } from "./reschedule-email";
 import { getSlot, getSlots } from "./repository";
 import { slotStart, slotStatus } from "./schedule";
 import { baseSlotId, freeToken, heldId, tokenOfHeld } from "./sessions";
@@ -159,44 +156,23 @@ export async function rescheduleVisit(
 }
 
 /**
- * Tell the other side that a visit moved: the patient when the doctor or desk moved it, the doctor
- * when the patient did. Addresses that can't receive mail (sample accounts, throwaway domains) are
- * skipped. Never throws.
+ * Tell the other side that a visit moved, through the notification outbox (so it is deduped per
+ * move and sent by the cron if the first try fails): the patient when a doctor or the desk moved
+ * it, the doctor when anyone but that doctor did. Nobody is emailed about their own action.
+ * Never throws.
  */
 export async function notifyRescheduled(actor: PublicUser, visit: AppointmentRecord, history: RescheduleRecord): Promise<void> {
   try {
-    const store = await getStore();
-    const recipients = new Map<string, string>();
-    const users = await store.listUsers();
-    if (actor.role !== "patient" && visit.patientUserId) {
-      const patient = users.find((user) => user.id === visit.patientUserId);
-      if (patient) recipients.set(patient.email, patient.name);
+    const extra = {
+      previousWhen: placementLabel({ date: history.fromDate, time: history.fromTime }),
+      actorName: actor.name,
+      ...(history.reason ? { reason: history.reason } : {}),
+    };
+    if (actor.role !== "patient" && visit.patientUserId && visit.patientUserId !== actor.id) {
+      await queueNotice("appointment_rescheduled", visit, { dedupe: `appointment_rescheduled:${history.id}`, extra });
     }
-    if (actor.role !== "doctor") {
-      for (const user of users) {
-        if (user.role === "doctor" && !user.disabledAt && user.doctorId === visit.doctorId) recipients.set(user.email, user.name);
-      }
-    }
-    recipients.delete(actor.email);
-    const doctor = findDoctor(visit.doctorId)?.name ?? "the doctor";
-    for (const [email, name] of recipients) {
-      await sendNotice(
-        email,
-        rescheduleEmail({
-          recipientName: name.split(" ")[0] || name,
-          byName: actor.name,
-          reference: visit.reference,
-          patientName: visit.patientName,
-          doctorName: doctor,
-          from: placementLabel({ date: history.fromDate, time: history.fromTime }),
-          to: placementLabel({ date: history.toDate, time: history.toTime }),
-          token: history.toToken ? `token ${history.toToken}` : undefined,
-          reason: history.reason || undefined,
-          practiceName: practice.name,
-          address: practice.address,
-        }),
-      );
-    }
+    await queueDoctorNotice("doctor_rescheduled", visit, { dedupe: `doctor_rescheduled:${history.id}`, actorUserId: actor.id, extra });
+    await dispatchSoon();
   } catch (error) {
     console.error(`[notice] Could not notify about ${visit.reference}: ${error instanceof Error ? error.message : "unknown error"}`);
   }
