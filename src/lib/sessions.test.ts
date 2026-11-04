@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ConsultSession } from "./clinic-types";
 import {
+  describeSession,
   applyHeld,
   baseSlotId,
   checkSession,
@@ -137,7 +138,7 @@ describe("checkSession", () => {
     expect(checkSession({ ...input, weekdays: [] }, []).ok).toBe(false);
     expect(checkSession({ ...input, mode: "wave", waveMinutes: 60, waveCapacity: 0 }, []).ok).toBe(false);
     expect(checkSession({ ...input, mode: "wave", waveMinutes: 60, waveCapacity: 99 }, []).ok).toBe(false);
-    expect(checkSession({ ...input, mode: "wave", waveMinutes: 20, waveCapacity: 4 }, []).ok).toBe(false);
+    expect(checkSession({ ...input, mode: "wave", waveMinutes: 25, waveCapacity: 4 }, []).ok).toBe(false);
     expect(checkSession({ ...input, mode: "other" }, []).ok).toBe(false);
   });
 
@@ -148,5 +149,68 @@ describe("checkSession", () => {
     expect(fine.ok).toBe(true);
     const otherDay = checkSession({ ...input, startTime: "11:00", endTime: "13:00" }, [session({ weekdays: [2], startTime: "10:00", endTime: "12:00" })]);
     expect(otherDay.ok).toBe(true);
+  });
+});
+
+describe("recurring date ranges and one-off sessions (IST dates)", () => {
+  const wave = {
+    id: "s1",
+    doctorId: "d1",
+    label: "Wave",
+    weekdays: [1, 2, 4],
+    startTime: "10:00",
+    endTime: "11:00",
+    room: "Room 1",
+    mode: "wave" as const,
+    slotMinutes: null,
+    waveMinutes: 30,
+    waveCapacity: 3,
+    archivedAt: null,
+    createdAt: "x",
+    updatedAt: "x",
+  };
+
+  it("cuts a wave session into sub-slots that each take the capacity", () => {
+    const slots = slotsForSession(wave, "d1", "2026-11-09", "2026-11-09");
+    expect(slots.map((slot) => `${slot.time}-${slot.endTime}:${slot.capacity}`)).toEqual(["10:00-10:30:3", "10:30-11:00:3"]);
+    const filled = applyHeld(slots, [`${slots[0]!.id}#1`, `${slots[0]!.id}#2`]);
+    expect(placesLabel(filled[0]!)).toBe("1 of 3 places left");
+    expect(applyHeld(slots, [1, 2, 3].map((t) => `${slots[0]!.id}#${t}`))[0]!.taken).toBe(true);
+  });
+
+  it("only makes slots on chosen weekdays inside the date range", () => {
+    const ranged = { ...wave, startDate: "2026-11-10", endDate: "2026-11-19" };
+    const dates = [...new Set(slotsForSession(ranged, "d1", "2026-11-02", "2026-11-30").map((slot) => slot.date))];
+    expect(dates).toEqual(["2026-11-10", "2026-11-12", "2026-11-16", "2026-11-17", "2026-11-19"]);
+  });
+
+  it("makes slots for a one-off session on its date only, whatever the weekdays", () => {
+    const once = { ...wave, mode: "stream" as const, slotMinutes: 30, waveMinutes: null, waveCapacity: null, weekdays: [], onDate: "2026-11-07", startTime: "12:00", endTime: "15:00" };
+    const slots = slotsForSession(once, "d1", "2026-11-02", "2026-11-14");
+    expect(new Set(slots.map((slot) => slot.date))).toEqual(new Set(["2026-11-07"]));
+    expect(slots).toHaveLength(6);
+    expect(describeSession(once)).toContain("Sat 7 Nov 2026 only");
+  });
+
+  const input = { label: "", room: "Room 1", mode: "wave", waveMinutes: 30, waveCapacity: 3, startTime: "12:00", endTime: "15:00", weekdays: [] as number[] };
+
+  it("checks a one-off date: Mon–Sat, not in the past, and stores no weekdays", () => {
+    expect(checkSession({ ...input, kind: "once", onDate: "2026-11-08" }, [], "2026-11-04")).toMatchObject({ ok: false });
+    expect(checkSession({ ...input, kind: "once", onDate: "2026-11-03" }, [], "2026-11-04")).toMatchObject({ ok: false });
+    const ok = checkSession({ ...input, kind: "once", onDate: "2026-11-07", weekdays: [1] }, [], "2026-11-04");
+    expect(ok).toMatchObject({ ok: true, value: { onDate: "2026-11-07", weekdays: [], startDate: null } });
+  });
+
+  it("checks a recurring range", () => {
+    expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-20", endDate: "2026-11-10" }, [], "2026-11-04")).toMatchObject({ ok: false });
+    expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10", endDate: "2026-11-15" }, [], "2026-11-04")).toMatchObject({ ok: false });
+    expect(checkSession({ ...input, weekdays: [1, 2, 4], startDate: "2026-11-10", endDate: "2026-12-31" }, [], "2026-11-04")).toMatchObject({ ok: true });
+  });
+
+  it("only reports overlaps when the sessions can share a date", () => {
+    const saturday = { ...wave, weekdays: [6], startTime: "12:00", endTime: "15:00" };
+    expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [saturday], "2026-11-04")).toMatchObject({ ok: false });
+    expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [{ ...saturday, endDate: "2026-11-01" }], "2026-11-04")).toMatchObject({ ok: true });
+    expect(checkSession({ ...input, weekdays: [6], startDate: "2026-12-01" }, [{ ...saturday, endDate: "2026-11-30" }], "2026-11-04")).toMatchObject({ ok: true });
   });
 });

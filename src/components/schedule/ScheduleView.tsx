@@ -14,6 +14,7 @@ import { Notice } from "@/components/ui/Card";
 import { addDays, dayOfMonth, mondayOf } from "@/lib/clock";
 import type { ConsultSession } from "@/lib/clinic-types";
 import { practice, type Doctor, type Slot } from "@/lib/data";
+import { weekdayIndex } from "@/lib/clock";
 import { describeSession, placesLabel, slotTimeLabel } from "@/lib/sessions";
 import {
   formatShortDate,
@@ -83,7 +84,9 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
     dispatch({ type: "hold", slot });
   }
 
-  const withSaturday = sessions.some((session) => session.weekdays.includes(6));
+  const current = sessions.filter((session) => (session.onDate ?? session.endDate ?? "9999-12-31") >= window.today);
+  const withSaturday =
+    sessions.some((session) => session.weekdays.includes(6)) || slots.some((slot) => weekdayIndex(slot.date) === 6);
   const days = weekDays(week, withSaturday);
   const lastDay = days[days.length - 1]!;
   const weekSlots = slots.filter((slot) => slot.date >= week && slot.date <= lastDay);
@@ -145,7 +148,7 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
             Consulting sessions
           </h2>
           <ul className="mt-3 grid gap-2 md:grid-cols-2">
-            {sessions.map((session) => (
+            {current.map((session) => (
               <li key={session.id} className="rounded-card bg-surface p-4 shadow-card">
                 <p className="flex flex-wrap items-center gap-2 text-body font-semibold text-ink">
                   {session.label}

@@ -168,6 +168,11 @@ export interface ConsultSession {
   waveMinutes: number | null;
   /** Wave: patients per wave. */
   waveCapacity: number | null;
+  /** Recurring only: first and last date (YYYY-MM-DD, IST) the weekly pattern runs. Null = open-ended. */
+  startDate?: string | null;
+  endDate?: string | null;
+  /** One-off session: the single date it runs. When set, `weekdays` is ignored (stored empty). */
+  onDate?: string | null;
   /** Set when the doctor removes the session. Kept so earlier visits still make sense. */
   archivedAt: string | null;
   createdAt: string;

@@ -99,6 +99,9 @@ interface ConsultSessionRow {
   slot_minutes: number | null;
   wave_minutes: number | null;
   wave_capacity: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  on_date?: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -258,6 +261,9 @@ function toConsultSession(row: ConsultSessionRow): ConsultSession {
     slotMinutes: row.slot_minutes,
     waveMinutes: row.wave_minutes,
     waveCapacity: row.wave_capacity,
+    startDate: row.start_date ?? null,
+    endDate: row.end_date ?? null,
+    onDate: row.on_date ?? null,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -277,6 +283,9 @@ function sessionPayload(session: ConsultSession): Row {
     slot_minutes: session.slotMinutes,
     wave_minutes: session.waveMinutes,
     wave_capacity: session.waveCapacity,
+    start_date: session.startDate ?? null,
+    end_date: session.endDate ?? null,
+    on_date: session.onDate ?? null,
     archived_at: session.archivedAt,
     created_at: session.createdAt,
     updated_at: session.updatedAt,
