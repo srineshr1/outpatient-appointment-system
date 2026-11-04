@@ -25,7 +25,7 @@ export function AdminTitle({
       <div className="min-w-0">
         <PageHeading className="text-2xl font-semibold tracking-tight text-ink">{title}</PageHeading>
         <p className="mt-1 text-sm text-muted">
-          {practice.name} · {longDate(today)} · times in UK time
+          {practice.name} · {longDate(today)} · times in IST
         </p>
         {description ? <p className="mt-2 max-w-2xl text-sm text-ink-2">{description}</p> : null}
       </div>

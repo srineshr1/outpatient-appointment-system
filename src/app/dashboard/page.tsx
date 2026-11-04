@@ -1,3 +1,4 @@
+import { PRACTICE_TZ } from "@/lib/clock";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -56,7 +57,7 @@ export default async function DashboardPage({
         Signed in as {user.name}
         {doctor ? `, ${doctor.room}` : ""}. Visits patients book show up here. This session runs until{" "}
         <time dateTime={user.expiresAt} className="tabular">
-          {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }).format(
+          {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: PRACTICE_TZ }).format(
             new Date(user.expiresAt),
           )}
         </time>

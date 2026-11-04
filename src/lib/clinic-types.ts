@@ -157,7 +157,7 @@ export interface ConsultSession {
   label: string;
   /** 1 = Monday … 5 = Friday. */
   weekdays: number[];
-  /** HH:MM, London time. */
+  /** HH:MM, IST. */
   startTime: string;
   endTime: string;
   room: string;

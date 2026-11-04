@@ -221,7 +221,7 @@ export default async function TakingsPage({ searchParams }: { searchParams: Prom
         </Panel>
         <Panel id="about" title="About these figures">
           <ul className="grid list-disc gap-1.5 pl-5 text-sm text-ink-2">
-            <li>Days run midnight to midnight, UK time.</li>
+            <li>Days run midnight to midnight, IST.</li>
             <li>A refund counts on the day it’s given, even for a payment taken earlier.</li>
             <li>Online card payments are a demo. Nothing is charged and nothing settles to a bank.</li>
           </ul>

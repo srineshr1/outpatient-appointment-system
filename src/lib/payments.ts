@@ -4,7 +4,7 @@
  */
 import type { AppointmentRecord, AppointmentStatus, ChargeRecord, PaymentEntry, PaymentMethod } from "./clinic-types";
 import { PAYMENT_METHODS } from "./clinic-types";
-import { londonWallClock } from "./clock";
+import { practiceWallClock } from "./clock";
 import { findDoctor } from "./data";
 import { formatMoney } from "./fees";
 
@@ -138,9 +138,9 @@ export function ledger(charges: readonly ChargeRecord[], visitsById: ReadonlyMap
   return rows.sort((a, b) => (a.entry.at === b.entry.at ? b.entry.id.localeCompare(a.entry.id) : b.entry.at.localeCompare(a.entry.at)));
 }
 
-/** The London calendar day an instant falls on. */
+/** The clinic (IST) calendar day an instant falls on. */
 export function londonDay(iso: string): string {
-  return londonWallClock(new Date(iso)).date;
+  return practiceWallClock(new Date(iso)).date;
 }
 
 export interface TakingsLine {

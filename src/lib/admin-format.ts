@@ -1,4 +1,4 @@
-import { addDays, londonWallClock, now, todayIso, yearOf } from "./clock";
+import { addDays, practiceWallClock, now, todayIso, yearOf } from "./clock";
 import { formatShortDate } from "./format";
 
 /** "Today", "Yesterday", "Tomorrow", "Thu 29 Oct", or "Thu 29 Oct 2025" in another year. */
@@ -10,12 +10,12 @@ export function dayLabel(isoDate: string, today: string = todayIso(now())): stri
   return yearOf(isoDate) === yearOf(today) ? short : `${short} ${yearOf(isoDate)}`;
 }
 
-/** An instant in London time: "Today, 17:40" or "Thu 29 Oct, 09:12". "—" when unknown. */
+/** An instant in IST: "Today, 17:40" or "Thu 29 Oct, 09:12". "—" when unknown. */
 export function instantLabel(iso: string | null | undefined, today: string = todayIso(now())): string {
   if (!iso) return "—";
   const instant = new Date(iso);
   if (Number.isNaN(instant.getTime())) return "—";
-  const wall = londonWallClock(instant);
+  const wall = practiceWallClock(instant);
   return `${dayLabel(wall.date, today)}, ${wall.time}`;
 }
 

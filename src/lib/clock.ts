@@ -1,12 +1,12 @@
 /**
- * Time for the practice. Everything the patient sees is Edinburgh wall-clock time
- * (Europe/London), regardless of the device or server time zone.
+ * Time for the practice. Everything the patient sees is clinic wall-clock time
+ * (Asia/Kolkata, IST), regardless of the device or server time zone.
  *
  * Calendar dates are plain ISO strings ("2026-10-26") and are manipulated with UTC
  * arithmetic so the host time zone can never shift them.
  */
 
-export const PRACTICE_TZ = "Europe/London";
+export const PRACTICE_TZ = "Asia/Kolkata";
 
 let override: number | null = null;
 
@@ -42,8 +42,8 @@ interface WallClock {
   second: number;
 }
 
-/** The London wall-clock reading for an instant. */
-export function londonWallClock(instant: Date): WallClock {
+/** The clinic (IST) wall-clock reading for an instant. */
+export function practiceWallClock(instant: Date): WallClock {
   const parts: Record<string, string> = {};
   for (const part of partsFormatter.formatToParts(instant)) parts[part.type] = part.value;
   const year = Number(parts.year);
@@ -64,27 +64,27 @@ export function londonWallClock(instant: Date): WallClock {
   };
 }
 
-/** Offset of London from UTC, in minutes, at a given instant (0 in GMT, 60 in BST). */
-function londonOffsetMinutes(instant: Date): number {
-  const wall = londonWallClock(instant);
+/** Offset of the clinic time zone from UTC, in minutes, at a given instant (330 for IST). */
+function practiceOffsetMinutes(instant: Date): number {
+  const wall = practiceWallClock(instant);
   const asUtc = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
   return Math.round((asUtc - Math.floor(instant.getTime() / 1000) * 1000) / 60000);
 }
 
-/** Convert a London wall-clock date and "HH:MM" time to the UTC instant it names. */
-export function londonToInstant(isoDate: string, time: string): Date {
+/** Convert a clinic wall-clock date and "HH:MM" time to the UTC instant it names. */
+export function practiceToInstant(isoDate: string, time: string): Date {
   const [year, month, day] = isoDate.split("-").map(Number) as [number, number, number];
   const [hour, minute] = time.split(":").map(Number) as [number, number];
   const naive = Date.UTC(year, month - 1, day, hour, minute);
   // Two passes settle the offset either side of a clock change.
-  let guess = naive - londonOffsetMinutes(new Date(naive)) * 60000;
-  guess = naive - londonOffsetMinutes(new Date(guess)) * 60000;
+  let guess = naive - practiceOffsetMinutes(new Date(naive)) * 60000;
+  guess = naive - practiceOffsetMinutes(new Date(guess)) * 60000;
   return new Date(guess);
 }
 
-/** Today's date in London. */
+/** Today's date at the clinic (IST). */
 export function todayIso(instant: Date = now()): string {
-  return londonWallClock(instant).date;
+  return practiceWallClock(instant).date;
 }
 
 /* ---------- Calendar arithmetic on ISO date strings ---------- */
