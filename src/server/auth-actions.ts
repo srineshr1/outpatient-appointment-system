@@ -7,6 +7,7 @@ import { authenticate, createDoctorSelfSignup, createPatient, findUserByEmail, n
 import { destinationFor } from "@/lib/auth-routing";
 import { clearFailures, consumeResetToken, isEmail, issueResetToken, lockedFor, recordFailure } from "@/lib/login-codes";
 import { isDeliverableEmail, sendPasswordReset } from "@/lib/mailer";
+import { normalisePhone, PHONE_INVALID_MESSAGE } from "@/lib/phone";
 import { hashPassword, normaliseEmail, passwordError } from "@/lib/passwords";
 import { destroySession, getCurrentUser, safeNext, SESSION_COOKIE, startSession } from "@/lib/session";
 import { blockedSignIn, DISABLED_MESSAGE, passwordChanged, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
@@ -76,7 +77,11 @@ export async function signUpWithPassword(input: {
   confirm: string;
   role: "patient" | "doctor";
   next: string;
+  /** Optional mobile for text updates; checked like the booking form. */
+  mobile?: string;
 }): Promise<AuthResult> {
+  const mobileInput = String(input.mobile ?? "").trim();
+  const mobile = mobileInput ? normalisePhone(mobileInput) : "";
   const email = normaliseEmail(String(input.email ?? ""));
   const name = String(input.name ?? "");
   const password = String(input.password ?? "");
@@ -86,13 +91,15 @@ export async function signUpWithPassword(input: {
     const problem =
       nameError(name) ??
       (!isEmail(email) ? "Enter a valid email address, like name@example.com." : undefined) ??
-      passwordError(password, String(input.confirm ?? ""));
+      passwordError(password, String(input.confirm ?? "")) ??
+      (mobile === null ? PHONE_INVALID_MESSAGE : undefined);
     if (problem) return { ok: false, error: problem };
     if (await findUserByEmail(email)) {
       return { ok: false, error: "There’s already an account for that email. Sign in, or use “Forgot password” to set a new one." };
     }
     const hash = hashPassword(password);
-    const user = role === "doctor" ? await createDoctorSelfSignup(email, name, hash) : await createPatient(email, name, hash);
+    let user = role === "doctor" ? await createDoctorSelfSignup(email, name, hash) : await createPatient(email, name, hash);
+    if (mobile) user = (await (await getStore()).updateUser(user.id, { mobile })) ?? user;
     await startSession(user.id, user);
     await patientSignedUp(user, "Password");
     await signedIn(user, "Password");

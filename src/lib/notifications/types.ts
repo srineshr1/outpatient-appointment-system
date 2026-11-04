@@ -63,6 +63,8 @@ export interface RenderedMessage {
   subject: string;
   text: string;
   html: string;
+  /** Plain short text for SMS channels. */
+  sms?: string;
 }
 
 export type SendResult = "sent" | "skipped" | "failed";
