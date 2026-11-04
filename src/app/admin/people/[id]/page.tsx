@@ -31,7 +31,7 @@ import { noticeText } from "@/lib/admin-notices";
 import { requireAdminPage } from "@/lib/admin-page";
 import { ROLE_LABELS } from "@/lib/audit-labels";
 import { ROLES } from "@/lib/clinic-types";
-import { doctors } from "@/lib/data";
+import { practiceDoctors } from "@/lib/data";
 import { ageLabel, formatPhone } from "@/lib/format";
 import { changeRoleAction, revokeSessionAction, revokeSessionsAction, setDisabledAction } from "@/server/admin-actions";
 
@@ -211,7 +211,7 @@ export default async function PersonPage({
                   >
                     <option value={OWN_BOOK}>Their own book (listed for patients to book)</option>
                     <optgroup label="Share another doctor’s book (not listed for patients)">
-                      {doctors.map((doctor) => (
+                      {practiceDoctors().map((doctor) => (
                         <option key={doctor.id} value={doctor.id}>
                           {`Share ${doctor.name}’s book${openers.has(doctor.id) ? ` (also ${openers.get(doctor.id)!.join(", ")})` : ""}`}
                         </option>

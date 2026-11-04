@@ -51,20 +51,23 @@ async function signInAsSamplePatient(page: Page) {
   await signInWithEmail(page, "ann.lee@halden.example");
 }
 
+const DEMO_PASSWORD = "Halden-demo-2026";
+const NEW_PASSWORD = "e2e-password-2026";
+
+/** Sample accounts sign in with the demo password; any other email signs up as a patient. */
 async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
-  await page.locator("#email").fill(email);
-  await page.getByRole("button", { name: "Continue with email" }).click();
-  const demo = page.getByText(/Demo code/);
-  await expect(demo).toBeVisible();
-  const code = ((await demo.textContent()) ?? "").match(/\d{4}/)?.[0] ?? "";
-  await page.getByLabel("Digit 1 of 4").fill(code);
-  // New patients are asked their name once.
-  const welcome = page.getByRole("heading", { name: "One last thing" });
   const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
-  await Promise.race([welcome.waitFor(), left]);
-  if (await welcome.isVisible()) {
-    await page.getByLabel("Full name").fill(name);
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  if (email.endsWith("@halden.example")) {
+    await page.locator("#email").fill(email);
+    await page.locator("#password").fill(DEMO_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Create an account" }).click();
+    await page.locator("#name").fill(name);
+    await page.locator("#email").fill(email);
+    await page.locator("#password").fill(NEW_PASSWORD);
+    await page.locator("#confirm").fill(NEW_PASSWORD);
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
   }
   await left;
 }
@@ -148,22 +151,18 @@ test("guards: booking needs sign-in, and a booking in progress", async ({ page }
   await expect(page).toHaveURL(/\/book$/);
 });
 
-test("sign-in: email, then a code; wrong codes are explained", async ({ page }) => {
+test("sign-in: email and password; a wrong password gets one generic message", async ({ page }) => {
   await page.goto("/sign-in");
   await expect(page.getByRole("heading", { level: 1, name: "Welcome to Westbrook" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign in with Google" })).toBeVisible();
   await expectAccessible(page);
 
-  await page.getByLabel("Email", { exact: true }).fill("ann.lee@halden.example");
-  await page.getByRole("button", { name: "Continue with email" }).click();
-  await expect(page.getByLabel("Digit 1 of 4")).toBeFocused();
-  await expect(page.getByRole("textbox", { name: /Digit \d of 4/ })).toHaveCount(4);
-  await expect(page.getByRole("link", { name: "Sign in with Google" })).toHaveCount(0);
-  await expectAccessible(page);
-  const code = ((await page.getByText(/Demo code/).textContent()) ?? "").match(/\d{4}/)![0];
-  await page.getByLabel("Digit 1 of 4").fill(code === "0000" ? "1111" : "0000");
-  await expect(page.getByRole("alert").filter({ hasText: "isn’t right" })).toBeVisible();
-  await page.getByLabel("Digit 1 of 4").fill(code);
+  await page.locator("#email").fill("ann.lee@halden.example");
+  await page.locator("#password").fill("not-the-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "don’t match" })).toBeVisible();
+  await page.locator("#password").fill(DEMO_PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/book$/);
 });
 

@@ -20,8 +20,8 @@ import type { Slot } from "./data";
 export const STREAM_SLOT_MINUTES = [10, 15, 20, 30] as const;
 export const WAVE_MINUTES = [30, 45, 60, 90] as const;
 export const MAX_WAVE_CAPACITY = 20;
-export const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
-export const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+export const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+export const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -174,7 +174,7 @@ export function freeToken(waveId: string, capacity: number, heldIds: readonly st
 
 /** "Mon–Fri", "Tue, Thu" or "Mon–Wed, Fri". */
 export function weekdaysLabel(weekdays: readonly number[], long = false): string {
-  const days = [...new Set(weekdays)].filter((day) => day >= 1 && day <= 5).sort((a, b) => a - b);
+  const days = [...new Set(weekdays)].filter((day) => day >= 1 && day <= 6).sort((a, b) => a - b);
   if (days.length === 0) return "No days";
   const names = long ? WEEKDAY_NAMES : WEEKDAY_SHORT;
   const runs: number[][] = [];
@@ -245,7 +245,7 @@ export function sessionsOverlap(
  * one being edited): two sessions on the same day may not overlap, which also keeps every slot id unique.
  */
 export function checkSession(input: SessionInput, others: readonly ConsultSession[]): SessionCheck {
-  const weekdays = [...new Set(input.weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 5).sort((a, b) => a - b);
+  const weekdays = [...new Set(input.weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 6).sort((a, b) => a - b);
   if (weekdays.length === 0) return { ok: false, message: "Choose at least one weekday." };
   if (!isTime(input.startTime) || !isTime(input.endTime)) return { ok: false, message: "Enter the start and end time as HH:MM." };
   if (toMinutes(input.startTime) >= toMinutes(input.endTime)) return { ok: false, message: "The session must end after it starts." };

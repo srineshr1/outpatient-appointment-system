@@ -17,11 +17,8 @@ async function expectAccessible(page: Page) {
 async function signInAsAnn(page: Page) {
   await page.goto("/sign-in?next=%2Fbook");
   await page.locator("#email").fill("ann.lee@halden.example");
-  await page.getByRole("button", { name: "Continue with email" }).click();
-  const demo = page.getByText(/Demo code/);
-  await expect(demo).toBeVisible();
-  const code = ((await demo.textContent()) ?? "").match(/\d{4}/)?.[0] ?? "";
-  await page.getByLabel("Digit 1 of 4").fill(code);
+  await page.locator("#password").fill("Halden-demo-2026");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/book$/);
 }
 

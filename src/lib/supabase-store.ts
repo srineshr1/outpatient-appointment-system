@@ -481,6 +481,7 @@ export class SupabaseClinicStore implements ClinicStore {
       doctorInterest: "doctor_interest",
       mobile: "mobile",
       dob: "dob",
+      passwordHash: "password_hash",
     };
     if (patch.role !== undefined && !isRole(patch.role)) throw new Error("Unknown role.");
     const changes: Row = {};
@@ -706,7 +707,25 @@ export class SupabaseClinicStore implements ClinicStore {
     const rows = await this.readAll<ChargeRow>((from, to) =>
       this.db.from("clinic_charges").select("*, clinic_payment_entries(*)").order("appointment_id").range(from, to),
     );
-    return rows.map(toCharge);
+    const live = await this.liveAppointmentIds();
+    return rows.map(toCharge).filter((charge) => live.has(charge.appointmentId));
+  }
+
+  /** Appointment ids that still exist; append-only rows for deleted test visits are hidden. */
+  private async liveAppointmentIds(): Promise<Set<string>> {
+    const rows = await this.readAll<{ id: string }>((from, to) =>
+      this.db.from("clinic_appointments").select("id").order("id").range(from, to),
+    );
+    return new Set(rows.map((row) => row.id));
+  }
+
+  /** Ids of removed test accounts and visits, kept in clinic_settings so their audit rows stay hidden. */
+  private async retiredIds(): Promise<Set<string>> {
+    const { data, error } = await this.db.from("clinic_settings").select("value").eq("key", "retired_ids").maybeSingle();
+    fail(error);
+    const value = (data as { value?: unknown } | null)?.value;
+    const list = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+    return new Set(Array.isArray(list) ? list.map(String) : []);
   }
 
   async updateCharge(
@@ -762,7 +781,11 @@ export class SupabaseClinicStore implements ClinicStore {
           .range(from, to),
       Math.max(1, Math.floor(limit)),
     );
-    return rows.map(toEvent);
+    const retired = await this.retiredIds();
+    if (retired.size === 0) return rows.map(toEvent);
+    return rows
+      .filter((row) => !retired.has(String(row.actor_id ?? "")) && !retired.has(String(row.subject_id ?? "")))
+      .map(toEvent);
   }
 
   async getProfile(userId: string): Promise<ProfileRecord | null> {
@@ -867,6 +890,7 @@ export class SupabaseClinicStore implements ClinicStore {
       if (filter.patientUserId !== undefined) query = query.eq("patient_user_id", filter.patientUserId);
       return query.order("at").order("id").range(from, to);
     });
-    return rows.map(toReschedule);
+    const live = await this.liveAppointmentIds();
+    return rows.map(toReschedule).filter((row) => live.has(row.appointmentId));
   }
 }

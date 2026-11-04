@@ -41,8 +41,9 @@ export function slotsOn(slots: readonly Slot[], doctorId: string, date: string):
   return slots.filter((slot) => slot.doctorId === doctorId && slot.date === date).sort(byStart);
 }
 
-export function weekDays(weekStart: string): string[] {
-  return [0, 1, 2, 3, 4].map((offset) => addDays(weekStart, offset));
+/** Monday to Friday, plus Saturday when the doctor has a Saturday session. */
+export function weekDays(weekStart: string, withSaturday = false): string[] {
+  return (withSaturday ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4]).map((offset) => addDays(weekStart, offset));
 }
 
 /** Coerce any requested week into a Monday inside the bookable window. */

@@ -578,6 +578,7 @@ export class SqliteClinicStore implements ClinicStore {
       doctorInterest: "doctor_interest",
       mobile: "mobile",
       dob: "dob",
+      passwordHash: "password_hash",
     };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((key) => patch[key] !== undefined);
     if (patch.role !== undefined && !isRole(patch.role)) throw new Error("Unknown role.");

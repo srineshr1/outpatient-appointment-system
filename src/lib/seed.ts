@@ -1,5 +1,5 @@
 import type { ClinicStore, UserAccount } from "./clinic-types";
-import { doctors as practiceDoctors } from "./data";
+import { demoDataEnabled, practiceDoctors } from "./data";
 import { DEMO_PASSWORD, demoAccounts } from "./demo-accounts";
 import { hashPassword, normaliseEmail } from "./passwords";
 import { giveStarterSchedule } from "./doctor-setup";
@@ -12,8 +12,9 @@ export async function seedDemoUsers(store: ClinicStore): Promise<void> {
   // cold start makes one round trip to the store rather than one per account.
   const users = await store.listUsers();
   const byEmail = new Map(users.map((user) => [user.email, user]));
+  // A live practice gets no sample accounts: only its admins (and its own doctors' schedules).
   await Promise.all(
-    demoAccounts.map(async (account) => {
+    (demoDataEnabled() ? demoAccounts : []).map(async (account) => {
       const existing = byEmail.get(account.email);
       if (existing) {
         await moveToOwnBook(store, account, existing);
@@ -22,8 +23,8 @@ export async function seedDemoUsers(store: ClinicStore): Promise<void> {
       await store.createUser({
         id: account.id,
         email: account.email,
-        // The sample admin signs in by email code only: no shared demo password for the console.
-        passwordHash: account.role === "admin" ? "" : hashPassword(DEMO_PASSWORD),
+        // On a live store the sample admin gets no shared password; it is set separately.
+        passwordHash: account.role === "admin" && process.env.DATA_STORE === "supabase" ? "" : hashPassword(DEMO_PASSWORD),
         name: account.name,
         role: account.role,
         doctorId: account.doctorId,
@@ -53,7 +54,7 @@ export async function seedSchedules(store: ClinicStore, users: readonly UserAcco
   const now = new Date().toISOString();
   const work: Promise<unknown>[] = [];
   // Only the sessions of a practice doctor with no rows at all: a doctor who removed one never gets it back.
-  for (const session of demoSessions(practiceDoctors, now)) {
+  for (const session of demoSessions(practiceDoctors(), now)) {
     if (!hasSessions.has(session.doctorId) && !sessionIds.has(session.id)) work.push(store.createConsultSessionIfAbsent(session));
   }
   for (const user of users) {

@@ -71,7 +71,10 @@ export type UserPatch = Partial<
   Pick<
     UserAccount,
     "name" | "role" | "doctorId" | "disabledAt" | "sessionsRevokedAt" | "doctorRoom" | "doctorInterest" | "mobile" | "dob"
-  >
+  > & {
+    /** A new scrypt hash (see passwords.ts). Never a plain password. */
+    passwordHash: string;
+  }
 >;
 
 /** A practice sign-in session. The cookie token itself is never stored, only its hash. */

@@ -46,8 +46,8 @@ export function formatShortDate(iso: string): string {
 }
 
 /** "26–30 October 2026" or "30 November – 4 December 2026" */
-export function formatWeekRange(weekStart: string): string {
-  const end = addDays(weekStart, 4);
+export function formatWeekRange(weekStart: string, days = 5): string {
+  const end = addDays(weekStart, days - 1);
   const sameMonth = monthIndex(weekStart) === monthIndex(end);
   const sameYear = yearOf(weekStart) === yearOf(end);
   if (sameMonth && sameYear) return `${dayOfMonth(weekStart)}–${dayOfMonth(end)} ${monthLong(end)} ${yearOf(end)}`;

@@ -1,17 +1,23 @@
 /**
- * Email sign-in codes. CODE_LENGTH digits, valid for ten minutes, five tries, one new code a minute.
- * Only an HMAC of the code is stored, keyed by the email, so a leaked row can't be replayed elsewhere.
+ * Password sign-in limits and password-reset links.
+ *
+ * Both are kept in the store's short-lived sign-in records (clinic_login_codes), keyed by a prefix
+ * and the email, so every backend (Supabase, Blob, SQLite) supports them without a new table:
+ *   - `lock:<email>` counts wrong passwords. After MAX_ATTEMPTS wrong tries within LOCK_WINDOW_MS
+ *     the account is locked for LOCK_MS. A right password clears it.
+ *   - `reset:<email>` holds the SHA-256 of a one-time reset token, valid for RESET_TTL_MS. At most
+ *     one link a minute is sent. Using the link deletes it.
+ * Nothing secret is stored: only hashes and counters.
  */
-import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
-import type { LoginCodeRecord } from "./clinic-types";
+import { timingSafeEqual } from "node:crypto";
 import { hashToken, newToken, normaliseEmail } from "./passwords";
 import { getStore } from "./store";
 
-export { CODE_LENGTH } from "./sign-in-config";
-import { CODE_LENGTH } from "./sign-in-config";
-export const CODE_TTL_MS = 10 * 60 * 1000;
-export const RESEND_AFTER_MS = 60 * 1000;
 export const MAX_ATTEMPTS = 5;
+export const LOCK_WINDOW_MS = 15 * 60 * 1000;
+export const LOCK_MS = 15 * 60 * 1000;
+export const RESET_TTL_MS = 30 * 60 * 1000;
+export const RESEND_AFTER_MS = 60 * 1000;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -20,12 +26,14 @@ export function isEmail(value: string): boolean {
   return email.length <= 200 && EMAIL_PATTERN.test(email);
 }
 
-function secret(): string {
-  return process.env.AUTH_SECRET ?? "halden-dev-only-secret";
-}
+export const lockKey = (email: string) => `lock:${normaliseEmail(email)}`;
+export const resetKey = (email: string) => `reset:${normaliseEmail(email)}`;
 
-function hashCode(email: string, code: string): string {
-  return createHmac("sha256", secret()).update(`${email}:${code}`).digest("base64url");
+/** What a stored sign-in record is for, and the email it belongs to. */
+export function recordKind(key: string): { kind: "lock" | "reset" | "other"; email: string } {
+  if (key.startsWith("lock:")) return { kind: "lock", email: key.slice(5) };
+  if (key.startsWith("reset:")) return { kind: "reset", email: key.slice(6) };
+  return { kind: "other", email: key };
 }
 
 function sameHash(a: string, b: string): boolean {
@@ -34,105 +42,68 @@ function sameHash(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-export type IssueResult = { ok: true; code: string } | { ok: false; reason: "throttled"; retryInMs: number };
+/** Milliseconds until this email may try a password again, or 0 when it is not locked. */
+export async function lockedFor(rawEmail: string, at = new Date()): Promise<number> {
+  const record = await (await getStore()).getLoginCode(lockKey(rawEmail));
+  if (!record || record.attempts < MAX_ATTEMPTS) return 0;
+  return Math.max(0, new Date(record.expiresAt).getTime() - at.getTime());
+}
 
-/**
- * Make a new code for `email`, replacing any earlier one.
- *
- * `deliver` sends the code (by email). It runs while the code is being stored rather than after,
- * so the person waits for the slower of the two, not both. If it fails the stored code is removed
- * again, so the one-a-minute limit doesn't lock them out of asking for another, and the error is
- * passed on to the caller.
- */
-export async function issueCode(
-  rawEmail: string,
-  at = new Date(),
-  throttle = true,
-  deliver?: (code: string) => Promise<void>,
-): Promise<IssueResult> {
-  const email = normaliseEmail(rawEmail);
+/** Count a wrong password. Returns true when this try locked the account. */
+export async function recordFailure(rawEmail: string, at = new Date()): Promise<boolean> {
   const store = await getStore();
-  const existing = await store.getLoginCode(email);
-  if (existing && throttle) {
-    const since = at.getTime() - new Date(existing.sentAt).getTime();
-    if (since < RESEND_AFTER_MS) return { ok: false, reason: "throttled", retryInMs: RESEND_AFTER_MS - since };
-  }
-  const code = String(randomInt(0, 10 ** CODE_LENGTH)).padStart(CODE_LENGTH, "0");
-  const record: LoginCodeRecord = {
-    email,
-    codeHash: hashCode(email, code),
-    expiresAt: new Date(at.getTime() + CODE_TTL_MS).toISOString(),
+  const key = lockKey(rawEmail);
+  const existing = await store.getLoginCode(key);
+  const fresh = !existing || new Date(existing.expiresAt).getTime() <= at.getTime();
+  const attempts = fresh ? 1 : existing.attempts + 1;
+  const locks = attempts >= MAX_ATTEMPTS;
+  await store.putLoginCode({
+    email: key,
+    codeHash: "",
+    sentAt: fresh ? at.toISOString() : existing.sentAt,
+    expiresAt: new Date(at.getTime() + (locks ? LOCK_MS : LOCK_WINDOW_MS)).toISOString(),
+    attempts,
+    signupTokenHash: null,
+  });
+  return locks && (fresh || existing.attempts < MAX_ATTEMPTS);
+}
+
+export async function clearFailures(rawEmail: string): Promise<void> {
+  await (await getStore()).deleteLoginCode(lockKey(rawEmail));
+}
+
+export type ResetIssue = { ok: true; token: string } | { ok: false; reason: "throttled" };
+
+/** A new one-time reset token for `email`, replacing any earlier one. One a minute. */
+export async function issueResetToken(rawEmail: string, at = new Date()): Promise<ResetIssue> {
+  const store = await getStore();
+  const key = resetKey(rawEmail);
+  const existing = await store.getLoginCode(key);
+  if (existing && at.getTime() - new Date(existing.sentAt).getTime() < RESEND_AFTER_MS) return { ok: false, reason: "throttled" };
+  const token = newToken();
+  await store.putLoginCode({
+    email: key,
+    codeHash: hashToken(token),
     sentAt: at.toISOString(),
+    expiresAt: new Date(at.getTime() + RESET_TTL_MS).toISOString(),
     attempts: 0,
     signupTokenHash: null,
-  };
-  if (!deliver) {
-    await store.putLoginCode(record);
-    return { ok: true, code };
-  }
-  const [stored, delivered] = await Promise.allSettled([store.putLoginCode(record), deliver(code)]);
-  if (stored.status === "rejected") throw stored.reason;
-  if (delivered.status === "rejected") {
-    await store.deleteLoginCode(email).catch(() => undefined);
-    throw delivered.reason;
-  }
-  return { ok: true, code };
-}
-
-export type CheckResult =
-  | { ok: true }
-  | { ok: false; reason: "wrong"; attemptsLeft: number }
-  | { ok: false; reason: "expired" | "locked" | "missing" };
-
-/** Check a code. A right code is used up; a wrong one costs an attempt. */
-export async function checkCode(rawEmail: string, rawCode: string, at = new Date()): Promise<CheckResult> {
-  const email = normaliseEmail(rawEmail);
-  const code = rawCode.replace(/\D/g, "");
-  const store = await getStore();
-  const record = await store.getLoginCode(email);
-  if (!record || record.signupTokenHash) return { ok: false, reason: "missing" };
-  if (new Date(record.expiresAt).getTime() <= at.getTime()) {
-    await store.deleteLoginCode(email);
-    return { ok: false, reason: "expired" };
-  }
-  if (record.attempts >= MAX_ATTEMPTS) return { ok: false, reason: "locked" };
-
-  if (code.length === CODE_LENGTH && sameHash(record.codeHash, hashCode(email, code))) {
-    await store.deleteLoginCode(email);
-    return { ok: true };
-  }
-  const attempts = record.attempts + 1;
-  await store.putLoginCode({ ...record, attempts });
-  if (attempts >= MAX_ATTEMPTS) return { ok: false, reason: "locked" };
-  return { ok: false, reason: "wrong", attemptsLeft: MAX_ATTEMPTS - attempts };
-}
-
-/**
- * After a right code for an email with no account yet: a one-time token that lets the
- * person finish sign-up by giving their name, without entering the code again.
- */
-export async function issueSignupToken(rawEmail: string, at = new Date()): Promise<string> {
-  const email = normaliseEmail(rawEmail);
-  const token = newToken();
-  const store = await getStore();
-  await store.putLoginCode({
-    email,
-    codeHash: "",
-    expiresAt: new Date(at.getTime() + CODE_TTL_MS).toISOString(),
-    sentAt: new Date(0).toISOString(),
-    attempts: 0,
-    signupTokenHash: hashToken(token),
   });
-  return token;
+  return { ok: true, token };
 }
 
-export async function consumeSignupToken(rawEmail: string, token: string, at = new Date()): Promise<boolean> {
-  const email = normaliseEmail(rawEmail);
-  const store = await getStore();
-  const record = await store.getLoginCode(email);
-  if (!record?.signupTokenHash || !token) return false;
+/** True when the token is the live one for this email (without using it up). */
+export async function resetTokenValid(rawEmail: string, token: string, at = new Date()): Promise<boolean> {
+  if (!token) return false;
+  const record = await (await getStore()).getLoginCode(resetKey(rawEmail));
+  if (!record?.codeHash) return false;
   if (new Date(record.expiresAt).getTime() <= at.getTime()) return false;
-  if (!sameHash(record.signupTokenHash, hashToken(token))) return false;
-  await store.deleteLoginCode(email);
+  return sameHash(record.codeHash, hashToken(token));
+}
+
+/** Use up a reset token. True when it was valid. */
+export async function consumeResetToken(rawEmail: string, token: string, at = new Date()): Promise<boolean> {
+  if (!(await resetTokenValid(rawEmail, token, at))) return false;
+  await (await getStore()).deleteLoginCode(resetKey(rawEmail));
   return true;
 }

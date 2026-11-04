@@ -83,10 +83,12 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
     dispatch({ type: "hold", slot });
   }
 
-  const days = weekDays(week);
-  const weekSlots = slots.filter((slot) => slot.date >= week && slot.date <= addDays(week, 4));
+  const withSaturday = sessions.some((session) => session.weekdays.includes(6));
+  const days = weekDays(week, withSaturday);
+  const lastDay = days[days.length - 1]!;
+  const weekSlots = slots.filter((slot) => slot.date >= week && slot.date <= lastDay);
   const openThisWeek = openSlots(weekSlots, [], now);
-  const upcoming = openSlots(slots, [], now).find((slot) => slot.date > addDays(week, 4)) ?? null;
+  const upcoming = openSlots(slots, [], now).find((slot) => slot.date > lastDay) ?? null;
 
   return (
     <div className="mx-auto max-w-page px-5 pt-6 pb-16 md:px-8 md:pt-10">
@@ -171,7 +173,7 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
               Choose a time
             </h2>
             <p className="tabular mt-1 text-callout text-muted" aria-live="polite">
-              {formatWeekRange(week)} · {pluralise(openThisWeek.length, "time")} available
+              {formatWeekRange(week, days.length)} · {pluralise(openThisWeek.length, "time")} available
             </p>
           </div>
           <div className="flex gap-2">
@@ -225,7 +227,7 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
               <LayoutGroup id="slots">
                 <fieldset>
                   <legend className="sr-only">
-                    Times with {doctor.name}, {formatWeekRange(week)}
+                    Times with {doctor.name}, {formatWeekRange(week, days.length)}
                   </legend>
                   <div className="grid gap-3">
                     {days.map((iso) => (

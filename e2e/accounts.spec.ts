@@ -1,23 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
+const DEMO_PASSWORD = "Halden-demo-2026";
+const NEW_PASSWORD = "e2e-password-2026";
+
+/** Sample accounts sign in with the demo password; any other email signs up as a patient. */
 async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
-  await page.locator("#email").fill(email);
-  await page.getByRole("button", { name: "Continue with email" }).click();
-  const demo = page.getByText(/Demo code/);
-  await expect(demo).toBeVisible();
-  const code = ((await demo.textContent()) ?? "").match(/\d{4}/)?.[0] ?? "";
-  await page.getByLabel("Digit 1 of 4").fill(code);
-  // New patients are asked their name once.
-  const welcome = page.getByRole("heading", { name: "One last thing" });
   const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
-  await Promise.race([welcome.waitFor(), left]);
-  if (await welcome.isVisible()) {
-    await page.getByLabel("Full name").fill(name);
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  if (email.endsWith("@halden.example")) {
+    await page.locator("#email").fill(email);
+    await page.locator("#password").fill(DEMO_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Create an account" }).click();
+    await page.locator("#name").fill(name);
+    await page.locator("#email").fill(email);
+    await page.locator("#password").fill(NEW_PASSWORD);
+    await page.locator("#confirm").fill(NEW_PASSWORD);
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
   }
   await left;
 }
-
 
 /** Sign-out lives in the account menu on desktop and in Menu on phones. */
 async function signOut(page: Page) {

@@ -236,7 +236,7 @@ export async function revokeOneSession(admin: SessionUser, sessionId: string): P
 export async function clearLoginCode(admin: SessionUser, rawEmail: string): Promise<void> {
   const email = normaliseEmail(rawEmail);
   const store = await getStore();
-  if (!(await store.getLoginCode(email))) throw new AdminError("There’s no pending code for that email.");
+  if (!(await store.getLoginCode(email))) throw new AdminError("There’s no lock or reset link to clear for that email.");
   await store.deleteLoginCode(email);
   await recordEvent({ actor: actorOf(admin), action: "signin.code_cleared", subjectType: "email", subjectId: email, summary: email });
 }

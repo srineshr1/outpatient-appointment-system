@@ -7,7 +7,7 @@ import { TABS } from "@/components/admin/nav";
 import { AdminField, Panel, inputClass } from "@/components/admin/ui";
 import { loadSnapshot, navCounts, type SearchParams } from "@/lib/admin-data";
 import { requireAdminPage } from "@/lib/admin-page";
-import { doctors } from "@/lib/data";
+import { practiceDoctors } from "@/lib/data";
 import { createStaffAction } from "@/server/admin-actions";
 
 export const metadata: Metadata = { title: "Add staff member" };
@@ -93,7 +93,7 @@ export default async function NewStaffPage({ searchParams }: { searchParams: Pro
                 <select id="staff-doctor" name="doctorId" aria-describedby="staff-doctor-hint" defaultValue={OWN_BOOK} className={inputClass}>
                   <option value={OWN_BOOK}>Their own book (listed for patients to book)</option>
                   <optgroup label="Share another doctor’s book (not listed for patients)">
-                    {doctors.map((doctor) => (
+                    {practiceDoctors().map((doctor) => (
                       <option key={doctor.id} value={doctor.id}>
                         {`Share ${doctor.name}’s book${openers.has(doctor.id) ? ` (opened by ${openers.get(doctor.id)!.join(", ")})` : ""}`}
                       </option>

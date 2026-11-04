@@ -354,7 +354,7 @@ export function failedSignIns(events: readonly AuditEvent[], hours = 24): { emai
   const byEmail = new Map<string, { email: string; failures: number; locked: boolean; last: string }>();
   for (const event of events) {
     if (new Date(event.at).getTime() < since) continue;
-    if (event.action !== "signin.code_failed" && event.action !== "signin.locked") continue;
+    if (event.action !== "signin.code_failed" && event.action !== "signin.password_failed" && event.action !== "signin.locked") continue;
     const email = event.subjectId ?? "unknown";
     const entry = byEmail.get(email) ?? { email, failures: 0, locked: false, last: event.at };
     entry.failures += 1;

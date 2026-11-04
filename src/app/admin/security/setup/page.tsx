@@ -8,7 +8,7 @@ import { loadSnapshot, navCounts, type SearchParams } from "@/lib/admin-data";
 import { requireAdminPage } from "@/lib/admin-page";
 import { pluralise } from "@/lib/format";
 import { googleConfigured } from "@/lib/google";
-import { devCodesAllowed, ownMailConfigured } from "@/lib/mailer";
+import { ownMailConfigured } from "@/lib/mailer";
 import { adminEmailsFromEnv } from "@/lib/seed";
 import { supabaseConfigured } from "@/lib/supabase";
 
@@ -44,11 +44,11 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       detail: process.env.AUTH_SECRET ? "Stored sign-in codes are keyed with it." : "Codes use a development key. Set this in production.",
     },
     {
-      name: "Email sign-in",
-      setting: resend ? "RESEND_API_KEY, MAIL_FROM" : supabase ? "Supabase" : "SHOW_LOGIN_CODES",
-      state: resend ? "Resend sends codes" : supabase ? "Supabase sends codes" : devCodesAllowed() ? "Codes shown on screen" : "Can’t send codes",
-      tone: supabase || resend ? "success" : devCodesAllowed() ? "warn" : "danger",
-      detail: supabase || resend ? "Codes go to the person’s inbox." : devCodesAllowed() ? "Demo mode: anyone at the screen can see the code." : "Email sign-in fails until mail is set up.",
+      name: "Password reset email",
+      setting: "RESEND_API_KEY, MAIL_FROM",
+      state: resend ? "Resend sends reset links" : "Can’t send reset links",
+      tone: resend ? "success" : "danger",
+      detail: resend ? "People sign in with email and password; a forgotten password is reset by an emailed link." : "Sign-in works, but nobody can reset a forgotten password until mail is set up.",
     },
     {
       name: "Google sign-in",

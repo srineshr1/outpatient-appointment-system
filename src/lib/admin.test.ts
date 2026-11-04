@@ -8,7 +8,7 @@ import { setNow } from "./clock";
 import { destinationFor } from "./auth-routing";
 import { describeDevice } from "./device";
 import { loadDoctors } from "./doctors";
-import { issueCode } from "./login-codes";
+import { lockedFor, recordFailure } from "./login-codes";
 import { summarise } from "./payments";
 import { confirmBooking, getUpcoming } from "./repository";
 import { getStore } from "./store";
@@ -278,12 +278,14 @@ describe("admin rules", () => {
     expect(await store.getSession("hash-desk-1")).toBeNull();
   });
 
-  it("clears a pending sign-in code", async () => {
+  it("clears a sign-in lock", async () => {
     const admin = asSession(await account("user-admin"));
-    await issueCode("locked.out@example.com", new Date("2026-10-26T10:00:00Z"));
-    await clearLoginCode(admin, "Locked.Out@example.com");
-    expect(await (await getStore()).getLoginCode("locked.out@example.com")).toBeNull();
-    await expect(clearLoginCode(admin, "locked.out@example.com")).rejects.toThrow(/no pending code/);
+    for (let i = 0; i < 5; i += 1) await recordFailure("locked.out@example.com");
+    expect(await lockedFor("locked.out@example.com")).toBeGreaterThan(0);
+    await clearLoginCode(admin, "lock:Locked.Out@example.com");
+    expect(await (await getStore()).getLoginCode("lock:locked.out@example.com")).toBeNull();
+    expect(await lockedFor("locked.out@example.com")).toBe(0);
+    await expect(clearLoginCode(admin, "lock:locked.out@example.com")).rejects.toThrow(/nothing|no lock/i);
   });
 });
 

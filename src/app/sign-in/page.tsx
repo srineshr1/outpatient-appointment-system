@@ -12,13 +12,13 @@ export const metadata: Metadata = {
 };
 
 const NOTICES: Record<string, string> = {
-  "google-off": "Google sign-in isn’t set up on this site yet. Use your email instead.",
-  "google-cancelled": "Google sign-in was cancelled. Try again, or use your email.",
-  "google-failed": "We couldn’t sign you in with Google. Try again, or use your email.",
+  "google-off": "Google sign-in isn’t set up on this site yet. Use your email and password instead.",
+  "google-cancelled": "Google sign-in was cancelled. Try again, or use your email and password.",
+  "google-failed": "We couldn’t sign you in with Google. Try again, or use your email and password.",
 };
 
 interface Props {
-  searchParams: Promise<{ next?: string | string[]; as?: string | string[]; error?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[]; as?: string | string[]; error?: string | string[]; mode?: string | string[] }>;
 }
 
 export default async function SignInPage({ searchParams }: Props) {
@@ -40,6 +40,13 @@ export default async function SignInPage({ searchParams }: Props) {
 
   return (
     // A new key per mode resets the form when switching between patient and staff.
-    <SignInPanel key={mode} nextPath={nextPath} mode={mode} doctors={doctors} notice={notice} />
+    <SignInPanel
+      key={mode}
+      nextPath={nextPath}
+      mode={mode}
+      doctors={doctors}
+      notice={notice}
+      initialView={query.mode === "signup" ? "signup" : "signin"}
+    />
   );
 }

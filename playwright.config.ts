@@ -20,7 +20,7 @@ export default defineConfig({
   webServer: {
     // No mail key in tests: the sign-in page shows the code instead of emailing it.
     // Its own database, emptied each run, so tests never fill up (or write to) the dev clinic book.
-    command: `rm -rf .e2e && npm run build && CLINIC_DB=.e2e/clinic.sqlite SHOW_LOGIN_CODES=1 npx next start -p ${PORT}`,
+    command: `rm -rf .e2e && npm run build && CLINIC_DB=.e2e/clinic.sqlite npx next start -p ${PORT}`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,
     timeout: 180_000,

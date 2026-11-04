@@ -182,7 +182,20 @@ export const WEEKS_OPEN = 4;
 let staffDoctors: Doctor[] = [];
 /** Doctor accounts that exist but are not shown to patients yet (profile or sessions unfinished). */
 let unlistedDoctors: Doctor[] = [];
-let consultSessions: ConsultSession[] = demoSessions(doctors);
+/**
+ * The sample practice doctors and accounts are for local development, tests and demo builds. A live
+ * practice on Supabase runs on its own doctors only, unless DEMO_DATA=1 asks for the samples.
+ */
+export function demoDataEnabled(): boolean {
+  return process.env.DATA_STORE !== "supabase" || process.env.DEMO_DATA === "1";
+}
+
+/** The sample practice doctors, or none on a live practice. */
+export function practiceDoctors(): Doctor[] {
+  return demoDataEnabled() ? doctors : [];
+}
+
+let consultSessions: ConsultSession[] = demoSessions(practiceDoctors());
 let sessionsVersion = 0;
 
 export function setStaffDoctors(list: Doctor[], unlisted: Doctor[] = []): void {
@@ -198,7 +211,7 @@ export function setStaffDoctors(list: Doctor[], unlisted: Doctor[] = []): void {
  */
 export function setConsultSessions(list: readonly ConsultSession[]): void {
   const have = new Set(list.map((session) => session.doctorId));
-  const merged = [...list, ...demoSessions(doctors).filter((session) => !have.has(session.doctorId))];
+  const merged = [...list, ...demoSessions(practiceDoctors()).filter((session) => !have.has(session.doctorId))];
   if (JSON.stringify(merged) === JSON.stringify(consultSessions)) return;
   consultSessions = merged;
   sessionsVersion += 1;
@@ -225,7 +238,8 @@ export function daysFromSessions(sessions: readonly ConsultSession[]): string {
 
 /** The practice's doctors, then those who signed up or were added and are ready for patients. */
 export function allDoctors(): Doctor[] {
-  return (staffDoctors.length ? [...doctors, ...staffDoctors] : doctors).map(withSessionDays);
+  const practice = practiceDoctors();
+  return (staffDoctors.length ? [...practice, ...staffDoctors] : practice).map(withSessionDays);
 }
 
 /**
@@ -254,14 +268,14 @@ export function isListed(id: string | null | undefined): boolean {
 export function findDoctor(id: string | null | undefined): Doctor | undefined {
   if (!id) return undefined;
   const found =
-    doctors.find((doctor) => doctor.id === id) ??
+    practiceDoctors().find((doctor) => doctor.id === id) ??
     staffDoctors.find((doctor) => doctor.id === id) ??
     unlistedDoctors.find((doctor) => doctor.id === id);
   return found ? withSessionDays(found) : undefined;
 }
 
 export function isPracticeDoctor(id: string): boolean {
-  return doctors.some((doctor) => doctor.id === id);
+  return practiceDoctors().some((doctor) => doctor.id === id);
 }
 
 const PALETTE = {

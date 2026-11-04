@@ -1,44 +1,65 @@
 import { renderWithProviders } from "@/test/utils";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { doctors } from "@/lib/data";
-import { requestCode, verifyCode } from "@/server/auth-actions";
+import { requestPasswordReset, signInWithPassword, signUpWithPassword } from "@/server/auth-actions";
 import { SignInPanel } from "./SignInPanel";
 
-// The server decides how long the code is: 4 for the app's own codes, 6 when Supabase sent it.
 vi.mock("@/server/auth-actions", () => ({
-  requestCode: vi.fn(),
-  verifyCode: vi.fn(async () => ({ ok: false, error: "That code isn’t right. 4 tries left." })),
-  completeSignup: vi.fn(),
+  signInWithPassword: vi.fn(async () => ({ ok: false, error: "That email and password don’t match." })),
+  signUpWithPassword: vi.fn(async () => ({ ok: false, error: "There’s already an account for that email." })),
+  requestPasswordReset: vi.fn(async () => ({ ok: true, message: "If there’s an account for that email, we’ve sent a link." })),
 }));
 
-async function reachCodeStep(codeLength: number) {
-  vi.mocked(requestCode).mockResolvedValueOnce({ ok: true, email: "sam@example.com", resendInMs: 60_000, codeLength });
-  renderWithProviders(<SignInPanel nextPath="/book" mode="patient" doctors={doctors} />);
-  await userEvent.type(screen.getByLabelText("Email"), "sam@example.com");
-  await userEvent.click(screen.getByRole("button", { name: "Continue with email" }));
-  await screen.findByLabelText(`Digit 1 of ${codeLength}`, {}, { timeout: 3000 });
-  const boxes = screen.getAllByRole("textbox", { name: new RegExp(`Digit \\d of ${codeLength}`) });
-  return { boxes, row: screen.getByRole("group") };
-}
+beforeEach(() => vi.clearAllMocks());
 
-describe("code boxes", () => {
-  it("shows four boxes in one row for the app's own 4-digit code", async () => {
-    const { boxes, row } = await reachCodeStep(4);
-    expect(boxes).toHaveLength(4);
-    expect(row).toHaveClass("flex", "flex-nowrap");
-    expect(row).not.toHaveClass("grid-cols-4");
+describe("password sign-in", () => {
+  it("signs in with email and password and shows the same message for any mismatch", async () => {
+    renderWithProviders(<SignInPanel nextPath="/book" mode="patient" doctors={doctors} />);
+    await userEvent.type(screen.getByLabelText("Email"), "sam@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "wrong-password");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(vi.mocked(signInWithPassword)).toHaveBeenCalledWith({ email: "sam@example.com", password: "wrong-password", next: "/book" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("That email and password don’t match.");
+    // No code boxes any more.
+    expect(screen.queryByLabelText(/Digit 1/)).toBeNull();
   });
 
-  it("shows six boxes in one row when Supabase sent a 6-digit code, and submits all six", async () => {
-    const { boxes, row } = await reachCodeStep(6);
-    expect(boxes).toHaveLength(6);
-    expect(row).toHaveClass("flex", "flex-nowrap");
-    for (const box of boxes) expect(box).toHaveClass("flex-1", "min-w-0");
+  it("signs up with a name, role and a confirmed password of at least 8 characters", async () => {
+    renderWithProviders(<SignInPanel nextPath="/" mode="patient" doctors={doctors} />);
+    await userEvent.click(screen.getByRole("button", { name: "Create an account" }));
 
-    await userEvent.click(boxes[0]!);
-    await userEvent.paste("123456");
-    expect(vi.mocked(verifyCode)).toHaveBeenCalledWith(expect.objectContaining({ code: "123456" }));
+    await userEvent.type(await screen.findByLabelText("Full name", {}, { timeout: 3000 }), "Asha Rao");
+    await userEvent.click(screen.getByLabelText(/A doctor/));
+    await userEvent.type(screen.getByLabelText("Email"), "asha@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "short");
+    await userEvent.type(screen.getByLabelText("Confirm password"), "short");
+    await userEvent.click(screen.getByRole("button", { name: "Create doctor account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("at least 8 characters");
+    expect(vi.mocked(signUpWithPassword)).not.toHaveBeenCalled();
+
+    await userEvent.clear(screen.getByLabelText("Password"));
+    await userEvent.type(screen.getByLabelText("Password"), "long-enough-1");
+    await userEvent.clear(screen.getByLabelText("Confirm password"));
+    await userEvent.type(screen.getByLabelText("Confirm password"), "long-enough-2");
+    await userEvent.click(screen.getByRole("button", { name: "Create doctor account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("don’t match");
+
+    await userEvent.clear(screen.getByLabelText("Confirm password"));
+    await userEvent.type(screen.getByLabelText("Confirm password"), "long-enough-1");
+    await userEvent.click(screen.getByRole("button", { name: "Create doctor account" }));
+    expect(vi.mocked(signUpWithPassword)).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Asha Rao", email: "asha@example.com", password: "long-enough-1", role: "doctor" }),
+    );
+  });
+
+  it("emails a reset link from 'Forgot password'", async () => {
+    renderWithProviders(<SignInPanel nextPath="/" mode="staff" doctors={doctors} />);
+    await userEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
+    await userEvent.type(await screen.findByLabelText("Email", {}, { timeout: 3000 }), "dr@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Email me a reset link" }));
+    expect(vi.mocked(requestPasswordReset)).toHaveBeenCalledWith({ email: "dr@example.com" });
+    expect(await screen.findByText(/we’ve sent a link/)).toBeInTheDocument();
   });
 });

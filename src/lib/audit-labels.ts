@@ -3,6 +3,8 @@
 export const ACTION_LABELS: Readonly<Record<string, string>> = {
   "signin.succeeded": "Signed in",
   "signin.code_failed": "Wrong sign-in code",
+  "signin.password_failed": "Wrong password",
+  "account.password_reset": "Password reset",
   "signin.locked": "Sign-in locked after too many tries",
   "signin.blocked": "Turned-off account tried to sign in",
   "signin.code_cleared": "Pending sign-in code cleared",
@@ -61,7 +63,7 @@ export function inGroup(action: string, groupId: string): boolean {
 }
 
 /** Codes that matter for sign-in security. */
-export const SECURITY_ACTIONS = new Set(["signin.code_failed", "signin.locked", "signin.blocked"]);
+export const SECURITY_ACTIONS = new Set(["signin.code_failed", "signin.password_failed", "signin.locked", "signin.blocked"]);
 
 export const ROLE_LABELS: Readonly<Record<string, string>> = {
   patient: "Patient",

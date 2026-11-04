@@ -11,12 +11,16 @@ function toPublic(user: StoredUser): UserAccount {
   return account;
 }
 
-/** Password check, used only by the one-tap sample staff accounts. */
+/**
+ * Check an email and password. Unknown emails still run a full hash check, so the answer takes
+ * the same time either way and doesn't reveal who has an account. Accounts without a password
+ * (made by Google sign-in or the old email codes) never match: they set one with "Forgot password".
+ */
 export async function authenticate(email: string, password: string): Promise<{ ok: true; user: UserAccount } | { ok: false }> {
   const store = await getStore();
   const user = await store.getUserByEmail(normaliseEmail(email));
   const matches = verifyPassword(password, user?.passwordHash || DUMMY_HASH);
-  if (!user || !matches) return { ok: false };
+  if (!user || !user.passwordHash || !matches) return { ok: false };
   return { ok: true, user: toPublic(user) };
 }
 
@@ -33,16 +37,16 @@ export function nameError(raw: string): string | undefined {
 }
 
 /**
- * Create a patient who signs in by email code or Google. There is no password: the stored
- * hash is empty, which never verifies. Mobile and date of birth are asked for at booking.
+ * Create a patient. `passwordHash` is empty for Google sign-ups: an empty hash never verifies.
+ * Mobile and date of birth are asked for at booking.
  */
-export async function createPatient(rawEmail: string, rawName: string): Promise<UserAccount> {
+export async function createPatient(rawEmail: string, rawName: string, passwordHash = ""): Promise<UserAccount> {
   const email = normaliseEmail(rawEmail);
   const store = await getStore();
   const created = await store.createUser({
     id: crypto.randomUUID(),
     email,
-    passwordHash: "",
+    passwordHash,
     name: rawName.trim().slice(0, 100),
     role: "patient",
     doctorId: null,
@@ -57,16 +61,16 @@ export async function createPatient(rawEmail: string, rawName: string): Promise<
 /**
  * Create a doctor who signed up themselves. They get their own clinic book and an empty profile,
  * and stay out of the patient directory until they have filled the profile in and set up at least
- * one consulting session. No password: they sign in with an emailed code.
+ * one consulting session.
  */
-export async function createDoctorSelfSignup(rawEmail: string, rawName: string): Promise<UserAccount> {
+export async function createDoctorSelfSignup(rawEmail: string, rawName: string, passwordHash = ""): Promise<UserAccount> {
   const email = normaliseEmail(rawEmail);
   const store = await getStore();
   const id = crypto.randomUUID();
   const created = await store.createUser({
     id,
     email,
-    passwordHash: "",
+    passwordHash,
     name: rawName.trim().slice(0, 100),
     role: "doctor",
     doctorId: id,

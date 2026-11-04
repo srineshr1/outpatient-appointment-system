@@ -5,31 +5,23 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { authenticate, createDoctorSelfSignup, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
-import { checkCode, consumeSignupToken, isEmail, issueCode, issueSignupToken, RESEND_AFTER_MS } from "@/lib/login-codes";
-import { ownMailConfigured, sendLoginCode, showsCodeOnScreen } from "@/lib/mailer";
-import { normaliseEmail } from "@/lib/passwords";
-import { CODE_LENGTH, SUPABASE_CODE_LENGTH } from "@/lib/sign-in-config";
-import { SEND_FAILED, sendCodeErrorMessage } from "@/lib/sign-in-errors";
+import { clearFailures, consumeResetToken, isEmail, issueResetToken, lockedFor, recordFailure } from "@/lib/login-codes";
+import { isDeliverableEmail, sendPasswordReset } from "@/lib/mailer";
+import { hashPassword, normaliseEmail, passwordError } from "@/lib/passwords";
 import { destroySession, getCurrentUser, safeNext, SESSION_COOKIE, startSession } from "@/lib/session";
-import { blockedSignIn, DISABLED_MESSAGE, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
+import { blockedSignIn, DISABLED_MESSAGE, passwordChanged, patientSignedUp, signedIn, signedOut, signInFailed } from "@/lib/sign-in-events";
+import { getStore, STORE_UNAVAILABLE_MESSAGE, StoreUnavailableError } from "@/lib/store";
 import { createSupabase, isAuthCookie, supabaseConfigured } from "@/lib/supabase";
-import { isDemoSignInEmail } from "@/lib/demo-accounts";
-import { STORE_UNAVAILABLE_MESSAGE, StoreUnavailableError } from "@/lib/store";
-
-/**
- * Who sends the email code. With RESEND_API_KEY and MAIL_FROM set, the app sends its own codes
- * for every email sign-in. Without them, Supabase's email OTP is used when Supabase is set up,
- * except for the sample accounts on the fake clinic domain, which Supabase refuses: on a demo
- * deployment those use the app's own flow with the code on screen. Google sign-in is separate.
- */
-function sendsThroughSupabase(email: string): boolean {
-  if (!supabaseConfigured() || ownMailConfigured()) return false;
-  return !(isDemoSignInEmail(email) && showsCodeOnScreen(email));
-}
 
 export type SignInMode = "patient" | "staff";
+export type AuthResult = { ok: false; error: string } | { ok: true; message: string };
 
-/** Where links in Supabase emails point. NEXT_PUBLIC_SITE_URL wins; on Vercel, fall back to the production domain. */
+/** One message for a wrong email or a wrong password, so the form never says which accounts exist. */
+const WRONG_CREDENTIALS = "That email and password don’t match. Check them, or reset your password.";
+const LOCKED_MESSAGE = "Too many wrong tries. Wait 15 minutes, or reset your password.";
+const RESET_SENT = "If there’s an account for that email, we’ve sent a link to reset the password. It works for 30 minutes.";
+
+/** Where links in emails point. NEXT_PUBLIC_SITE_URL wins; on Vercel, fall back to the production domain. */
 function siteUrl(): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configured) return configured.replace(/\/+$/, "");
@@ -38,210 +30,127 @@ function siteUrl(): string {
   return "http://localhost:3000";
 }
 
-export type RequestCodeResult =
-  | {
-      ok: true;
-      email: string;
-      /** Milliseconds until another code can be sent. */
-      resendInMs: number;
-      /** Digits in the code that was sent: 4 for the app's own codes, 6 when Supabase sent it. */
-      codeLength: number;
-      /** Development only, when no mail key is set: the code, so local sign-in works offline. */
-      devCode?: string;
-    }
-  | { ok: false; error: string };
-
-export async function requestCode(input: { email: string; mode: SignInMode }): Promise<RequestCodeResult> {
+async function guarded(work: () => Promise<AuthResult>): Promise<AuthResult> {
   try {
-    return await requestCodeInner(input);
+    return await work();
   } catch (error) {
     if (error instanceof StoreUnavailableError) return { ok: false, error: STORE_UNAVAILABLE_MESSAGE };
     throw error;
   }
 }
 
-async function requestCodeInner(input: { email: string; mode: SignInMode }): Promise<RequestCodeResult> {
+/** Email and password. Signs in and redirects, or says what went wrong without naming accounts. */
+export async function signInWithPassword(input: { email: string; password: string; next: string }): Promise<AuthResult> {
   const email = normaliseEmail(String(input.email ?? ""));
-  if (!email) return { ok: false, error: "Enter your email address." };
-  if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
-
-  if (sendsThroughSupabase(email)) {
-    const supabase = await createSupabase();
-    const site = siteUrl();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: `${site}/auth/confirm`,
-      },
-    });
-    if (error) return { ok: false, error: sendCodeErrorMessage(error) };
-    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: SUPABASE_CODE_LENGTH };
-  }
-
-  if (input.mode === "staff") {
-    const user = await findUserByEmail(email);
-    if (!user || user.role === "patient") {
-      return { ok: false, error: "That email isn’t a staff account. Patients sign in on the main sign-in page." };
-    }
-  }
-
-  const onScreen = showsCodeOnScreen(email);
-  if (onScreen) {
-    const issued = await issueCode(email, new Date(), false);
-    if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs, codeLength: CODE_LENGTH };
-    console.info(`[sign-in] On-screen code issued for ${email}`);
-    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH, devCode: issued.code };
-  }
-
-  // The code is stored and emailed together; a send that fails is reported and the stored code is dropped.
-  let sendFailure: unknown;
-  try {
-    const issued = await issueCode(email, new Date(), true, async (code) => {
-      try {
-        await sendLoginCode(email, code);
-      } catch (error) {
-        sendFailure = error;
-        throw error;
-      }
-    });
-    // A code went out moments ago: carry on to the code step rather than sending another.
-    if (!issued.ok) return { ok: true, email, resendInMs: issued.retryInMs, codeLength: CODE_LENGTH };
-    return { ok: true, email, resendInMs: RESEND_AFTER_MS, codeLength: CODE_LENGTH };
-  } catch (error) {
-    if (sendFailure === undefined || error !== sendFailure) throw error;
-    console.error(`[sign-in] Could not send a code: ${error instanceof Error ? error.message : "unknown error"}`);
-    return { ok: false, error: SEND_FAILED };
-  }
-}
-
-export type VerifyCodeResult =
-  | { ok: false; error: string; /** The code can't be retried; ask for a new one. */ spent?: boolean }
-  | { ok: true; needsName: true; signupToken: string };
-
-/** Check the code. Signs in and redirects, or asks a new patient for their name. */
-export async function verifyCode(input: {
-  email: string;
-  code: string;
-  next: string;
-  mode: SignInMode;
-}): Promise<VerifyCodeResult> {
-  try {
-    return await verifyCodeInner(input);
-  } catch (error) {
-    // Redirects are thrown by Next and must pass through untouched.
-    if (error instanceof StoreUnavailableError) return { ok: false, error: STORE_UNAVAILABLE_MESSAGE };
-    throw error;
-  }
-}
-
-async function verifyCodeInner(input: {
-  email: string;
-  code: string;
-  next: string;
-  mode: SignInMode;
-}): Promise<VerifyCodeResult> {
-  const email = normaliseEmail(String(input.email ?? ""));
-  const code = String(input.code ?? "").replace(/\D/g, "");
-  const viaSupabase = sendsThroughSupabase(email);
-  const length = viaSupabase ? SUPABASE_CODE_LENGTH : CODE_LENGTH;
-  if (code.length !== length) return { ok: false, error: `Enter the ${length}-digit code from the email.` };
-
-  if (viaSupabase) {
-    const supabase = await createSupabase();
-    const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
-    if (error || !data.user) {
-      await signInFailed(email, "wrong");
-      return { ok: false, error: "That code isn’t right, or it has expired. Send a new one.", spent: true };
-    }
-    const existing = await findUserByEmail(email);
-    if (await blockedSignIn(existing, "Email code")) {
-      await supabase.auth.signOut();
-      return { ok: false, error: DISABLED_MESSAGE, spent: true };
-    }
-    if (!existing) {
-      if (input.mode === "staff") {
-        await supabase.auth.signOut();
-        return { ok: false, error: "That email isn’t a staff account.", spent: true };
-      }
-      const metaName = typeof data.user.user_metadata?.full_name === "string" ? data.user.user_metadata.full_name : "";
-      if (!metaName) return { ok: true, needsName: true, signupToken: "supabase" };
-      await patientSignedUp(await createPatient(email, metaName), "Email code");
-    }
-    const signedInUser = await findUserByEmail(email);
-    if (signedInUser) await signedIn(signedInUser, "Email code");
-    redirect(destinationFor(signedInUser?.role ?? "patient", safeNext(String(input.next ?? "/"))));
-  }
-
-  const result = await checkCode(email, code);
-  if (!result.ok) {
-    if (result.reason === "wrong") {
-      await signInFailed(email, "wrong", result.attemptsLeft);
-      return {
-        ok: false,
-        error: `That code isn’t right. ${result.attemptsLeft === 1 ? "1 try" : `${result.attemptsLeft} tries`} left.`,
-      };
-    }
-    if (result.reason === "expired") return { ok: false, error: "That code has expired. Send a new one.", spent: true };
-    if (result.reason === "locked") {
+  const password = String(input.password ?? "");
+  const nextPath = safeNext(String(input.next ?? "/"));
+  const result = await guarded(async () => {
+    if (!email || !password) return { ok: false, error: "Enter your email and password." };
+    if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
+    if ((await lockedFor(email)) > 0) {
       await signInFailed(email, "locked");
-      return { ok: false, error: "Too many tries. Send a new code.", spent: true };
+      return { ok: false, error: LOCKED_MESSAGE };
     }
-    return { ok: false, error: "That code has already been used. Send a new one.", spent: true };
-  }
-
-  const user = await findUserByEmail(email);
-  if (!user) {
-    if (input.mode === "staff") return { ok: false, error: "That email isn’t a staff account.", spent: true };
-    return { ok: true, needsName: true, signupToken: await issueSignupToken(email) };
-  }
-  if (await blockedSignIn(user, "Email code")) return { ok: false, error: DISABLED_MESSAGE, spent: true };
-  await startSession(user.id, user);
-  await signedIn(user, "Email code");
-  redirect(destinationFor(user.role, safeNext(String(input.next ?? "/"))));
+    const checked = await authenticate(email, password);
+    if (!checked.ok) {
+      const lockedNow = await recordFailure(email);
+      await signInFailed(email, lockedNow ? "locked" : "wrong");
+      return { ok: false, error: lockedNow ? LOCKED_MESSAGE : WRONG_CREDENTIALS };
+    }
+    if (await blockedSignIn(checked.user, "Password")) return { ok: false, error: DISABLED_MESSAGE };
+    await clearFailures(email);
+    await startSession(checked.user.id, checked.user);
+    await signedIn(checked.user, "Password");
+    return { ok: true, message: destinationFor(checked.user.role, nextPath) };
+  });
+  // redirect() throws, so it runs outside the store guard.
+  if (result.ok) redirect(result.message);
+  return result;
 }
 
-export async function completeSignup(input: {
-  email: string;
+/** A new account: name, email, password (twice) and whether they are a patient or a doctor. */
+export async function signUpWithPassword(input: {
   name: string;
-  signupToken: string;
+  email: string;
+  password: string;
+  confirm: string;
+  role: "patient" | "doctor";
   next: string;
-  /** What they said they are. Defaults to a patient. */
-  role?: "patient" | "doctor";
-}): Promise<{ ok: false; error: string; spent?: boolean }> {
-  const problem = nameError(String(input.name ?? ""));
-  if (problem) return { ok: false, error: problem };
+}): Promise<AuthResult> {
   const email = normaliseEmail(String(input.email ?? ""));
-  if (input.signupToken !== "supabase" && !(await consumeSignupToken(email, String(input.signupToken ?? "")))) {
-    return { ok: false, error: "This sign-in has timed out. Start again with your email.", spent: true };
-  }
-  const existing = await findUserByEmail(email);
-  if (await blockedSignIn(existing, "Email code")) return { ok: false, error: DISABLED_MESSAGE, spent: true };
-  const asDoctor = input.role === "doctor";
-  const user = existing ?? (asDoctor ? await createDoctorSelfSignup(email, String(input.name)) : await createPatient(email, String(input.name)));
-  // The session comes first: it is what keeps this person signed in. The log entries follow it
-  // after the response, so a slow or failing log write can't hold up or abort the sign-in.
-  await startSession(user.id, user);
-  if (!existing) await patientSignedUp(user, "Email code");
-  await signedIn(user, "Email code");
-  const next = safeNext(String(input.next ?? "/"));
-  if (!existing) {
+  const name = String(input.name ?? "");
+  const password = String(input.password ?? "");
+  const role = input.role === "doctor" ? "doctor" : "patient";
+  const nextPath = safeNext(String(input.next ?? "/"));
+  const result = await guarded(async () => {
+    const problem =
+      nameError(name) ??
+      (!isEmail(email) ? "Enter a valid email address, like name@example.com." : undefined) ??
+      passwordError(password, String(input.confirm ?? ""));
+    if (problem) return { ok: false, error: problem };
+    if (await findUserByEmail(email)) {
+      return { ok: false, error: "There’s already an account for that email. Sign in, or use “Forgot password” to set a new one." };
+    }
+    const hash = hashPassword(password);
+    const user = role === "doctor" ? await createDoctorSelfSignup(email, name, hash) : await createPatient(email, name, hash);
+    await startSession(user.id, user);
+    await patientSignedUp(user, "Password");
+    await signedIn(user, "Password");
     // New accounts start with their own set-up: a doctor's profile and sessions, a patient's phone and details.
-    if (user.role === "doctor") redirect("/dashboard/profile?welcome=1");
-    if (user.role === "patient") redirect(next === "/" ? "/profile?welcome=1" : `/profile?welcome=1&next=${encodeURIComponent(next)}`);
-  }
-  redirect(destinationFor(user.role, next));
+    if (user.role === "doctor") return { ok: true, message: "/dashboard/profile?welcome=1" };
+    return { ok: true, message: nextPath === "/" ? "/profile?welcome=1" : `/profile?welcome=1&next=${encodeURIComponent(nextPath)}` };
+  });
+  if (result.ok) redirect(result.message);
+  return result;
 }
 
-/** Plain form action for the one-tap sample staff accounts. */
-export async function signInFromDemo(formData: FormData): Promise<void> {
-  const nextPath = safeNext(String(formData.get("next") ?? "/"));
-  const result = await authenticate(String(formData.get("email") ?? ""), String(formData.get("password") ?? ""));
-  if (!result.ok) redirect("/sign-in?as=staff");
-  if (await blockedSignIn(result.user, "Password")) redirect("/sign-in?as=staff");
-  await startSession(result.user.id);
-  await signedIn(result.user, "Password");
-  redirect(destinationFor(result.user.role, nextPath));
+/**
+ * Email a one-time link to choose a new password. The answer is the same whether or not the
+ * email has an account, so this can't be used to find out who is registered.
+ */
+export async function requestPasswordReset(input: { email: string }): Promise<AuthResult> {
+  const email = normaliseEmail(String(input.email ?? ""));
+  return guarded(async () => {
+    if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
+    const user = await findUserByEmail(email);
+    if (!user || user.disabledAt || !isDeliverableEmail(email)) return { ok: true, message: RESET_SENT };
+    const issued = await issueResetToken(email);
+    if (!issued.ok) return { ok: true, message: RESET_SENT };
+    const link = `${siteUrl()}/reset-password?email=${encodeURIComponent(email)}&token=${encodeURIComponent(issued.token)}`;
+    try {
+      await sendPasswordReset(email, link);
+    } catch (error) {
+      console.error(`[password-reset] Could not send: ${error instanceof Error ? error.message : "unknown error"}`);
+      await (await getStore()).deleteLoginCode(`reset:${email}`).catch(() => undefined);
+      return { ok: false, error: "We couldn’t send the email just now. Try again in a minute." };
+    }
+    return { ok: true, message: RESET_SENT };
+  });
+}
+
+/** Set a new password from an emailed link. Ends every other session, clears any lockout, and signs in. */
+export async function resetPassword(input: { email: string; token: string; password: string; confirm: string }): Promise<AuthResult> {
+  const email = normaliseEmail(String(input.email ?? ""));
+  const password = String(input.password ?? "");
+  const result = await guarded(async () => {
+    const problem = passwordError(password, String(input.confirm ?? ""));
+    if (problem) return { ok: false, error: problem };
+    const user = await findUserByEmail(email);
+    if (!user || !(await consumeResetToken(email, String(input.token ?? "")))) {
+      return { ok: false, error: "This reset link has expired or was already used. Ask for a new one." };
+    }
+    if (await blockedSignIn(user, "Password")) return { ok: false, error: DISABLED_MESSAGE };
+    const store = await getStore();
+    await store.updateUser(user.id, { passwordHash: hashPassword(password) });
+    await store.deleteSessionsForUser(user.id);
+    await clearFailures(email);
+    await passwordChanged(user);
+    await startSession(user.id, user);
+    await signedIn(user, "Password");
+    return { ok: true, message: destinationFor(user.role, "/") };
+  });
+  if (result.ok) redirect(result.message);
+  return result;
 }
 
 /** Expire our session cookie and every Supabase auth cookie (chunked or not) this browser sent. */

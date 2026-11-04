@@ -7,7 +7,7 @@ import { normaliseEmail } from "./passwords";
 
 export const DISABLED_MESSAGE = `This account is turned off. Please call the practice on ${practice.phoneDisplay}.`;
 
-export type SignInMethod = "Email code" | "Google" | "Password" | "Supabase email link";
+export type SignInMethod = "Google" | "Password";
 
 export async function signedIn(user: Pick<PublicUser, "id" | "name" | "role" | "email">, method: SignInMethod): Promise<void> {
   // The session is already set: the log entry follows after the response rather than delaying it.
@@ -25,17 +25,16 @@ export async function signedOut(user: Pick<PublicUser, "id" | "name" | "role" | 
 }
 
 /**
- * A wrong code, or a code tried after the five-try lock. Logged against the account when
- * there is one, so the admin can see who is being targeted.
+ * A wrong password, or a try while the email is locked after five wrong ones. Logged against the
+ * account when there is one, so the admin can see who is being targeted.
  */
-export async function signInFailed(rawEmail: string, outcome: "wrong" | "locked", attemptsLeft?: number): Promise<void> {
+export async function signInFailed(rawEmail: string, outcome: "wrong" | "locked"): Promise<void> {
   const email = normaliseEmail(rawEmail);
   const account = await findUserByEmail(email).catch(() => null);
-  const detail =
-    outcome === "locked" ? "five wrong tries; a new code is needed" : `${attemptsLeft === 1 ? "1 try" : `${attemptsLeft ?? 0} tries`} left`;
+  const detail = outcome === "locked" ? "locked for 15 minutes after five wrong passwords" : "wrong password";
   await recordEvent({
     actor: account ? actorOf(account) : anonymousActor(email),
-    action: outcome === "locked" ? "signin.locked" : "signin.code_failed",
+    action: outcome === "locked" ? "signin.locked" : "signin.password_failed",
     subjectType: "email",
     subjectId: email,
     summary: `${email} · ${detail}`,
@@ -62,5 +61,15 @@ export async function patientSignedUp(user: Pick<PublicUser, "id" | "name" | "ro
     subjectType: "user",
     subjectId: user.id,
     summary: `${user.name} · ${user.email} · ${method}${user.role === "doctor" ? " · signed up as a doctor" : ""}`,
+  });
+}
+
+export async function passwordChanged(user: Pick<PublicUser, "id" | "name" | "role" | "email">): Promise<void> {
+  await recordEvent({
+    actor: actorOf(user),
+    action: "account.password_reset",
+    subjectType: "user",
+    subjectId: user.id,
+    summary: `${user.email} · set a new password from an emailed link; other sessions ended`,
   });
 }

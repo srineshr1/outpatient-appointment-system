@@ -71,67 +71,55 @@ describe("sign-in routing", () => {
   });
 });
 
-describe("email sign-in codes", () => {
-  it("accepts the right code once, counts wrong ones, and throttles resends", async () => {
-    const { checkCode, issueCode, MAX_ATTEMPTS } = await import("./login-codes");
+describe("password lockout and reset links", () => {
+  it("locks an email for 15 minutes after five wrong passwords, and clears", async () => {
+    const { clearFailures, lockedFor, recordFailure, MAX_ATTEMPTS } = await import("./login-codes");
     const at = new Date("2026-10-26T10:00:00Z");
-    const issued = await issueCode("Code.Test@Example.com", at);
-    expect(issued.ok).toBe(true);
-    if (!issued.ok) return;
-    expect(issued.code).toMatch(/^\d{4}$/);
-
-    // A second request within the minute is refused.
-    expect(await issueCode("code.test@example.com", new Date(at.getTime() + 5_000))).toMatchObject({ ok: false });
-
-    const wrong = issued.code === "0000" ? "1111" : "0000";
-    expect(await checkCode("code.test@example.com", wrong, at)).toEqual({
-      ok: false,
-      reason: "wrong",
-      attemptsLeft: MAX_ATTEMPTS - 1,
-    });
-    expect(await checkCode("code.test@example.com", issued.code, at)).toEqual({ ok: true });
-    // Used up.
-    expect(await checkCode("code.test@example.com", issued.code, at)).toMatchObject({ reason: "missing" });
-
-    // The store keeps only a hash.
-    const again = await issueCode("hash.test@example.com", at);
-    const record = await (await getStore()).getLoginCode("hash.test@example.com");
-    expect(again.ok && record?.codeHash.includes(again.code)).toBe(false);
+    for (let i = 1; i < MAX_ATTEMPTS; i += 1) expect(await recordFailure("Lock.Test@Example.com", at)).toBe(false);
+    expect(await lockedFor("lock.test@example.com", at)).toBe(0);
+    expect(await recordFailure("lock.test@example.com", at)).toBe(true);
+    expect(await lockedFor("lock.test@example.com", at)).toBeGreaterThan(14 * 60_000);
+    expect(await lockedFor("lock.test@example.com", new Date(at.getTime() + 16 * 60_000))).toBe(0);
+    await recordFailure("clear.test@example.com", at);
+    await clearFailures("clear.test@example.com");
+    expect(await (await getStore()).getLoginCode("lock:clear.test@example.com")).toBeNull();
   });
 
-  it("stores a code while it is delivered, and drops it again when delivery fails", async () => {
-    const { checkCode, issueCode } = await import("./login-codes");
+  it("issues a single-use reset token that expires and is stored only as a hash", async () => {
+    const { consumeResetToken, issueResetToken, resetTokenValid } = await import("./login-codes");
     const at = new Date("2026-10-26T10:00:00Z");
-    const sent: string[] = [];
-    const ok = await issueCode("deliver.ok@example.com", at, true, async (code) => void sent.push(code));
-    expect(ok.ok && sent).toEqual([ok.ok ? ok.code : ""]);
-    expect(await (await getStore()).getLoginCode("deliver.ok@example.com")).not.toBeNull();
+    const issued = await issueResetToken("Reset.Test@Example.com", at);
+    if (!issued.ok) throw new Error("not issued");
+    // Asking again straight away is throttled.
+    expect(await issueResetToken("reset.test@example.com", new Date(at.getTime() + 5_000))).toMatchObject({ ok: false });
+    const record = await (await getStore()).getLoginCode("reset:reset.test@example.com");
+    expect(record?.codeHash.includes(issued.token)).toBe(false);
+    expect(await resetTokenValid("reset.test@example.com", "wrong-token", at)).toBe(false);
+    expect(await consumeResetToken("reset.test@example.com", issued.token, at)).toBe(true);
+    expect(await consumeResetToken("reset.test@example.com", issued.token, at)).toBe(false);
 
-    await expect(
-      issueCode("deliver.fail@example.com", at, true, async () => {
-        throw new Error("mail down");
-      }),
-    ).rejects.toThrow("mail down");
-    // Nothing is left to throttle the next try, and a new code can be asked for straight away.
-    expect(await (await getStore()).getLoginCode("deliver.fail@example.com")).toBeNull();
-    expect(await issueCode("deliver.fail@example.com", new Date(at.getTime() + 1_000))).toMatchObject({ ok: true });
-    expect(await checkCode("deliver.ok@example.com", "0000", at)).toBeDefined();
+    const late = await issueResetToken("late.test@example.com", at);
+    if (!late.ok) throw new Error("not issued");
+    expect(await consumeResetToken("late.test@example.com", late.token, new Date(at.getTime() + 31 * 60_000))).toBe(false);
   });
 
-  it("expires after ten minutes and locks after five wrong tries", async () => {
-    const { checkCode, issueCode } = await import("./login-codes");
-    const at = new Date("2026-10-26T11:00:00Z");
-    const first = await issueCode("expire.test@example.com", at);
-    if (!first.ok) throw new Error("not issued");
-    expect(await checkCode("expire.test@example.com", first.code, new Date(at.getTime() + 11 * 60_000))).toMatchObject({
-      reason: "expired",
-    });
+  it("never signs in an account that has no password", async () => {
+    const { authenticate, createPatient } = await import("./accounts");
+    await createPatient("google.only@example.com", "Google Only");
+    expect(await authenticate("google.only@example.com", "not-a-real-password")).toEqual({ ok: false });
+    expect(await authenticate("google.only@example.com", "")).toEqual({ ok: false });
+  });
 
-    const second = await issueCode("lock.test@example.com", at);
-    if (!second.ok) throw new Error("not issued");
-    const wrong = second.code === "0000" ? "1111" : "0000";
-    for (let i = 0; i < 4; i += 1) await checkCode("lock.test@example.com", wrong, at);
-    expect(await checkCode("lock.test@example.com", wrong, at)).toMatchObject({ reason: "locked" });
-    expect(await checkCode("lock.test@example.com", second.code, at)).toMatchObject({ reason: "locked" });
+  it("hashes passwords with salted scrypt and still verifies the older format", async () => {
+    const { hashPassword, verifyPassword } = await import("./passwords");
+    const { scryptSync } = await import("node:crypto");
+    const hash = hashPassword("correct horse");
+    expect(hash).toMatch(/^scrypt2\$32768\$8\$3\$/);
+    expect(hash).not.toContain("correct horse");
+    expect(hashPassword("correct horse")).not.toBe(hash);
+    expect(verifyPassword("correct horse", hash)).toBe(true);
+    expect(verifyPassword("wrong horse", hash)).toBe(false);
+    const legacy = `scrypt$salt$${scryptSync("old one", "salt", 32, { N: 16384, r: 8, p: 1 }).toString("base64url")}`;
+    expect(verifyPassword("old one", legacy)).toBe(true);
   });
 });

@@ -12,17 +12,19 @@ import { requireAdminPage } from "@/lib/admin-page";
 import { SECURITY_ACTIONS } from "@/lib/audit-labels";
 import type { LoginCodeRecord } from "@/lib/clinic-types";
 import { now } from "@/lib/clock";
-import { MAX_ATTEMPTS } from "@/lib/login-codes";
+import { MAX_ATTEMPTS, recordKind } from "@/lib/login-codes";
 import { pluralise } from "@/lib/format";
 import { clearCodeAction } from "@/server/admin-actions";
 
 export const metadata: Metadata = { title: "Sign-in attempts" };
 
 function codeState(code: LoginCodeRecord, at: number): { label: string; tone: Tone } {
-  if (code.signupTokenHash) return { label: "Right code, giving their name", tone: "info" };
+  const { kind } = recordKind(code.email);
   if (new Date(code.expiresAt).getTime() <= at) return { label: "Expired", tone: "neutral" };
-  if (code.attempts >= MAX_ATTEMPTS) return { label: "Locked", tone: "danger" };
-  return { label: "Waiting for the code", tone: "warn" };
+  if (kind === "reset") return { label: "Reset link sent", tone: "info" };
+  if (kind === "lock" && code.attempts >= MAX_ATTEMPTS) return { label: "Locked", tone: "danger" };
+  if (kind === "lock") return { label: "Wrong passwords", tone: "warn" };
+  return { label: "Old sign-in code", tone: "neutral" };
 }
 
 export default async function AttemptsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -55,30 +57,30 @@ export default async function AttemptsPage({ searchParams }: { searchParams: Pro
       <AdminTitle
         title="Sign-in attempts"
         today={snapshot.today}
-        description={`Wrong codes, lockouts and turned-off accounts trying to sign in. A code locks after ${MAX_ATTEMPTS} wrong tries.`}
+        description={`Wrong passwords, lockouts and turned-off accounts trying to sign in. An email locks for 15 minutes after ${MAX_ATTEMPTS} wrong passwords.`}
       />
 
       <Kpis
         items={[
-          { label: "Wrong codes, last day", value: wrongCodes, sub: pluralise(failures.length, "email"), tone: wrongCodes > 0 ? "warn" : undefined },
-          { label: "Locked now", value: locked, sub: "Need a new code", tone: locked > 0 ? "danger" : undefined },
+          { label: "Wrong passwords, last day", value: wrongCodes, sub: pluralise(failures.length, "email"), tone: wrongCodes > 0 ? "warn" : undefined },
+          { label: "Locked now", value: locked, sub: "For 15 minutes, or until cleared", tone: locked > 0 ? "danger" : undefined },
           { label: "Turned-off accounts", value: blocked, sub: "Tried to sign in, last 7 days" },
-          { label: "Codes waiting", value: codes.length, sub: "Sent and not used yet" },
+          { label: "Locks and reset links", value: codes.length, sub: "Live records" },
         ]}
       />
 
       <section aria-labelledby="failures-title" className="mt-8 grid gap-3">
-        <SectionHeading id="failures-title" title="Wrong codes in the last day" description="Many tries on one email can mean someone is guessing." />
+        <SectionHeading id="failures-title" title="Wrong passwords in the last day" description="Many tries on one email can mean someone is guessing." />
         {failures.length === 0 ? (
-          <Empty>No wrong codes in the last day.</Empty>
+          <Empty>No wrong passwords in the last day.</Empty>
         ) : (
-          <TableWrap label="Wrong codes by email">
+          <TableWrap label="Wrong passwords by email">
             <table className={tableClass}>
-              <caption className="sr-only">Wrong sign-in codes by email, last 24 hours</caption>
+              <caption className="sr-only">Wrong passwords by email, last 24 hours</caption>
               <thead className={theadClass}>
                 <tr>
                   <Th>Email</Th>
-                  <Th align="right">Wrong codes</Th>
+                  <Th align="right">Wrong passwords</Th>
                   <Th>Last try</Th>
                   <Th>Locked</Th>
                 </tr>
@@ -101,20 +103,20 @@ export default async function AttemptsPage({ searchParams }: { searchParams: Pro
       <section aria-labelledby="codes-title" className="mt-8 grid gap-3">
         <SectionHeading
           id="codes-title"
-          title="Codes waiting"
+          title="Locks and reset links"
           count={codes.length}
-          description="Only a hash of each code is stored, so codes can’t be shown here. Clear one to let someone ask for a new code straight away."
+          description="Only a hash of each reset link is stored. Clear a lock to let someone try again straight away, or a reset link to cancel it."
         />
         {codes.length === 0 ? (
-          <Empty>No codes waiting.</Empty>
+          <Empty>No locks or reset links.</Empty>
         ) : (
-          <TableWrap label="Sign-in codes waiting">
+          <TableWrap label="Locks and reset links">
             <table className={tableClass}>
-              <caption className="sr-only">Sign-in codes not used yet</caption>
+              <caption className="sr-only">Sign-in locks and reset links</caption>
               <thead className={theadClass}>
                 <tr>
                   <Th>Email</Th>
-                  <Th>Sent</Th>
+                  <Th>Started</Th>
                   <Th>Expires</Th>
                   <Th align="right">Wrong tries</Th>
                   <Th>State</Th>
@@ -128,8 +130,8 @@ export default async function AttemptsPage({ searchParams }: { searchParams: Pro
                   const state = codeState(code, at);
                   return (
                     <tr key={code.email}>
-                      <Td className="break-all">{code.email}</Td>
-                      <Td className="whitespace-nowrap tabular-nums">{code.signupTokenHash ? "—" : instantLabel(code.sentAt, snapshot.today)}</Td>
+                      <Td className="break-all">{recordKind(code.email).email}</Td>
+                      <Td className="whitespace-nowrap tabular-nums">{instantLabel(code.sentAt, snapshot.today)}</Td>
                       <Td className="whitespace-nowrap tabular-nums">{instantLabel(code.expiresAt, snapshot.today)}</Td>
                       <Td align="right">
                         {code.attempts} of {MAX_ATTEMPTS}
@@ -142,7 +144,7 @@ export default async function AttemptsPage({ searchParams }: { searchParams: Pro
                           <input type="hidden" name="email" value={code.email} />
                           <input type="hidden" name="return" value="/admin/security/attempts" />
                           <SubmitButton variant="secondary" pendingLabel="Clearing…">
-                            Clear<span className="sr-only"> the code for {code.email}</span>
+                            Clear<span className="sr-only"> {code.email}</span>
                           </SubmitButton>
                         </ActionForm>
                       </Td>
