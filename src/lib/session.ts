@@ -1,0 +1,162 @@
+import { cookies, headers } from "next/headers";
+import { cache } from "react";
+import type { SessionUser } from "./clinic-types";
+import { createPatient } from "./accounts";
+import { describeDevice } from "./device";
+import { loadDoctors } from "./doctors";
+import { hashToken, newToken } from "./passwords";
+import { getStore } from "./store";
+import { createSupabase, supabaseConfigured } from "./supabase";
+import { revokedSession, sessionStartedAt } from "./supabase-session";
+
+export const SESSION_COOKIE = "hsp_session";
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
+
+export function sessionExpiry(from = new Date()): string {
+  return new Date(from.getTime() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+}
+
+export function safeNext(value: string): string {
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("://")) return "/";
+  return value;
+}
+
+async function readToken(): Promise<string | null> {
+  try {
+    const jar = await cookies();
+    return jar.get(SESSION_COOKIE)?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The signed-in person for this request. The layout, the page and the admin guard all ask, so the
+ * answer is remembered for the rest of the request instead of reading the session again each time.
+ */
+export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
+  // Pages and actions look doctors up by id; make sure ones added in the admin console are known.
+  // That refresh and the session lookup don't depend on each other, so they run together.
+  try {
+    const [user] = await Promise.all([lookupWithRetry(), loadDoctors()]);
+    return user;
+  } catch (error) {
+    // When the data store is down, public pages still render, as a signed-out visitor.
+    console.error(`[session] Could not read the signed-in user: ${error instanceof Error ? error.message : "unknown error"}`);
+    return null;
+  }
+});
+
+/**
+ * A store hiccup right after sign-in must not look like "signed out": that sends the person back
+ * to the sign-in page with a session that is in fact valid. Try once more before giving up.
+ */
+async function lookupWithRetry(): Promise<SessionUser | null> {
+  try {
+    return await lookupUser();
+  } catch (first) {
+    console.error(`[session] Retrying the sign-in lookup: ${first instanceof Error ? first.message : "unknown error"}`);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return lookupUser();
+  }
+}
+
+async function lookupUser(): Promise<SessionUser | null> {
+  if (supabaseConfigured()) {
+    try {
+      const supabase = await createSupabase();
+      const { data } = await supabase.auth.getUser();
+      const account = data.user;
+      const email = account?.email;
+      if (account && email) {
+        const store = await getStore();
+        let stored = await store.getUserByEmail(email);
+        if (!stored) {
+          const metaName = typeof account.user_metadata?.full_name === "string" ? account.user_metadata.full_name : "";
+          const name = metaName || email.split("@")[0] || "Patient";
+          await createPatient(email, name);
+          stored = await store.getUserByEmail(email);
+        }
+        if (!stored || stored.disabledAt) return null;
+        if (stored.sessionsRevokedAt) {
+          const { data: current } = await supabase.auth.getSession();
+          if (revokedSession(stored, sessionStartedAt(current.session?.access_token))) return null;
+        }
+        const { passwordHash: _secret, ...profile } = stored;
+        const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+        return { ...profile, expiresAt, sessionId: null };
+      }
+    } catch {
+      // Fall through to the local session when Supabase is unreachable.
+    }
+  }
+
+  const token = await readToken();
+  if (!token) return null;
+  const store = await getStore();
+  const tokenHash = hashToken(token);
+  const session = await store.getSession(tokenHash);
+  if (!session) return null;
+  if (session.expiresAt <= new Date().toISOString()) {
+    await store.deleteSession(tokenHash);
+    return null;
+  }
+  const user = await store.getUserById(session.userId);
+  if (!user || user.disabledAt) return null;
+  return { ...user, expiresAt: session.expiresAt, sessionId: session.id };
+}
+
+/** A turned-off account can't start a session. Callers check first and show a message. */
+export class AccountDisabledError extends Error {
+  constructor() {
+    super("This account is turned off.");
+    this.name = "AccountDisabledError";
+  }
+}
+
+async function deviceLabel(): Promise<string> {
+  try {
+    return describeDevice((await headers()).get("user-agent"));
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Sign `userId` in on this browser. Callers that just read the account pass it as `known`, so the
+ * disabled check doesn't read it again.
+ */
+export async function startSession(userId: string, known?: { disabledAt: string | null }): Promise<void> {
+  const token = newToken();
+  const store = await getStore();
+  const [account, device] = await Promise.all([known ?? store.getUserById(userId), deviceLabel()]);
+  if (account?.disabledAt) throw new AccountDisabledError();
+  const expiresAt = sessionExpiry();
+  await store.createSession(hashToken(token), userId, expiresAt, device);
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
+}
+
+export async function destroySession(): Promise<void> {
+  const token = await readToken();
+  try {
+    if (token) {
+      const store = await getStore();
+      await store.deleteSession(hashToken(token));
+    }
+  } finally {
+    // The cookie goes even when the store can't be reached, so signing out always works in this browser.
+    try {
+      const jar = await cookies();
+      jar.delete(SESSION_COOKIE);
+    } catch {
+      // Tests call this outside a request. The session row is already gone.
+    }
+  }
+}
