@@ -74,8 +74,8 @@ describe("SupabaseClinicStore", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it("loads charges with their payments in one request", async () => {
-    const calls = stubApi(() => ({
+  it("loads charges with their payments in one request, hiding charges for removed visits", async () => {
+    const calls = stubApi((url) => url.pathname.endsWith("/clinic_appointments") ? { status: 200, body: [{ id: "a1" }] } : ({
       status: 200,
       body: [
         {
@@ -97,7 +97,8 @@ describe("SupabaseClinicStore", () => {
       ],
     }));
     const charges = await store().listCharges();
-    expect(calls).toHaveLength(1);
+    expect(calls.filter((call) => call.url.pathname.endsWith("/clinic_charges"))).toHaveLength(1);
+    expect(charges).toHaveLength(1);
     expect(charges[0]!.entries.map((entry) => entry.id)).toEqual(["e1", "e2"]);
     expect(charges[0]!.waiver).toBeNull();
   });
