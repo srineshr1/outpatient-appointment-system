@@ -1,3 +1,4 @@
+import { PRACTICE_TZ } from "@/lib/clock";
 import Link from "next/link";
 import { reasons, findDoctor } from "@/lib/data";
 import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
@@ -38,7 +39,7 @@ function roleLabel(role: string): string {
 }
 
 function movedOn(at: string): string {
-  return `${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }).format(new Date(at))}`;
+  return `${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: PRACTICE_TZ }).format(new Date(at))}`;
 }
 
 export function groupVisits(visits: readonly AppointmentRecord[], today: string) {

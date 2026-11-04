@@ -1,10 +1,10 @@
-import { addDays, londonToInstant, londonWallClock, mondayOf } from "./clock";
+import { addDays, practiceToInstant, practiceWallClock, mondayOf } from "./clock";
 import { practice, type BookWindow, type Slot } from "./data";
 
 export type SlotStatus = "open" | "past" | "taken" | "teaching";
 
 export function slotStart(slot: Pick<Slot, "date" | "time">): Date {
-  return londonToInstant(slot.date, slot.time);
+  return practiceToInstant(slot.date, slot.time);
 }
 
 /**
@@ -13,7 +13,7 @@ export function slotStart(slot: Pick<Slot, "date" | "time">): Date {
  */
 export function slotStatus(slot: Slot, takenIds: readonly string[], instant: Date): SlotStatus {
   if (slotStart(slot).getTime() <= instant.getTime()) return "past";
-  const wall = londonWallClock(instant);
+  const wall = practiceWallClock(instant);
   if (slot.date === wall.date && wall.time >= practice.sameDayClose) return "past";
   if (slot.taken || takenIds.includes(slot.id)) return "taken";
   if (slot.teaching) return "teaching";

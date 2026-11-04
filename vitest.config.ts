@@ -12,6 +12,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
-    env: { TZ: "Asia/Kolkata" },
+    env: { TZ: "America/New_York" },
   },
 });

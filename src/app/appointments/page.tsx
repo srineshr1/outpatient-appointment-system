@@ -1,3 +1,4 @@
+import { PRACTICE_TZ } from "@/lib/clock";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -36,7 +37,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
       <p className="mt-2 max-w-prose text-body text-ink-2">
         Signed in as {user.name}. This session runs until{" "}
         <time dateTime={user.expiresAt} className="tabular">
-          {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" }).format(
+          {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: PRACTICE_TZ }).format(
             new Date(user.expiresAt),
           )}
         </time>

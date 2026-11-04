@@ -3,8 +3,8 @@ import {
   addDays,
   addMinutes,
   isIsoDate,
-  londonToInstant,
-  londonWallClock,
+  practiceToInstant,
+  practiceWallClock,
   mondayOf,
   now,
   setNow,
@@ -12,8 +12,8 @@ import {
 } from "./clock";
 
 describe("clock", () => {
-  it("runs in a non-London host time zone, so these tests prove TZ independence", () => {
-    expect(process.env.TZ).toBe("Asia/Kolkata");
+  it("runs in a non-IST host time zone, so these tests prove TZ independence", () => {
+    expect(process.env.TZ).toBe("America/New_York");
   });
 
   it("can be pinned and released", () => {
@@ -23,20 +23,21 @@ describe("clock", () => {
     expect(Math.abs(now().getTime() - Date.now())).toBeLessThan(1000);
   });
 
-  it("reads London wall time in GMT and in BST", () => {
-    expect(londonWallClock(new Date("2026-01-15T09:00:00Z")).time).toBe("09:00");
-    expect(londonWallClock(new Date("2026-07-15T09:00:00Z")).time).toBe("10:00");
+  it("reads IST wall time (UTC+5:30, no daylight saving)", () => {
+    expect(practiceWallClock(new Date("2026-01-15T09:00:00Z")).time).toBe("14:30");
+    expect(practiceWallClock(new Date("2026-07-15T09:00:00Z")).time).toBe("14:30");
   });
 
-  it("uses the London date, not the host date, near midnight", () => {
-    // 23:30 UTC on 1 March is already 2 March in Kolkata, but still 1 March in London.
-    expect(todayIso(new Date("2026-03-01T23:30:00Z"))).toBe("2026-03-01");
+  it("uses the IST date, not the UTC or host date, near midnight", () => {
+    // 18:45 UTC on 1 March is already 00:15 on 2 March in India.
+    expect(todayIso(new Date("2026-03-01T18:45:00Z"))).toBe("2026-03-02");
+    expect(todayIso(new Date("2026-03-01T18:15:00Z"))).toBe("2026-03-01");
   });
 
-  it("converts London wall time to the correct instant either side of the clock change", () => {
-    expect(londonToInstant("2026-10-24", "09:00").toISOString()).toBe("2026-10-24T08:00:00.000Z");
-    expect(londonToInstant("2026-10-26", "09:00").toISOString()).toBe("2026-10-26T09:00:00.000Z");
-    expect(londonToInstant("2026-03-30", "14:20").toISOString()).toBe("2026-03-30T13:20:00.000Z");
+  it("converts IST wall time to the instant it names, in any season", () => {
+    expect(practiceToInstant("2026-10-24", "09:00").toISOString()).toBe("2026-10-24T03:30:00.000Z");
+    expect(practiceToInstant("2026-07-15", "09:00").toISOString()).toBe("2026-07-15T03:30:00.000Z");
+    expect(practiceToInstant("2026-11-05", "00:10").toISOString()).toBe("2026-11-04T18:40:00.000Z");
   });
 
   it("does date arithmetic without drifting across months and years", () => {

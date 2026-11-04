@@ -53,9 +53,9 @@ export interface Doctor {
 export interface Slot {
   id: string;
   doctorId: string;
-  /** London calendar date, YYYY-MM-DD. */
+  /** Clinic (IST) calendar date, YYYY-MM-DD. */
   date: string;
-  /** London wall-clock start, HH:MM. */
+  /** Clinic (IST) wall-clock start, HH:MM. */
   time: string;
   taken?: boolean;
   /** Registrar teaching session: on the list but not bookable. */

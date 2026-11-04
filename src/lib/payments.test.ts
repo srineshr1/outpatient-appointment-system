@@ -81,7 +81,7 @@ describe("summarise", () => {
 });
 
 describe("daily takings", () => {
-  it("adds up a day by method, doctor and member of staff, in UK time", () => {
+  it("adds up a day by method, doctor and member of staff, in India time", () => {
     const visits = [visit("a", "cho"), visit("b", "reid"), visit("c", "cho", "cancelled")];
     const charges = [
       charge(4000, [entry("payment", "online_card", 4000, "2026-10-27T08:10:00.000Z", "Online")], false, "a"),
@@ -92,8 +92,8 @@ describe("daily takings", () => {
         false,
         "c",
       ),
-      // 23:30 UTC on 27 October is 23:30 in London: the clocks went back on the 25th.
-      charge(4000, [entry("payment", "desk_card", 4000, "2026-10-27T23:30:00.000Z", "Desk")], false, "a2"),
+      // 18:00 UTC on 27 October is 23:30 IST, still the 27th in India.
+      charge(4000, [entry("payment", "desk_card", 4000, "2026-10-27T18:00:00.000Z", "Desk")], false, "a2"),
     ];
     const report = dailyTakings("2026-10-27", charges, visits);
     expect(report.total).toMatchObject({ payments: 3, receivedPence: 14500, refunds: 1, refundedPence: 2500, netPence: 12000 });
@@ -105,9 +105,9 @@ describe("daily takings", () => {
     expect(dailyTakings("2026-10-26", charges, visits).total.receivedPence).toBe(2500);
   });
 
-  it("counts a payment just after midnight in summer time on the right day", () => {
-    // 23:30 UTC on 1 July is 00:30 on 2 July in London (BST).
-    const charges = [charge(4000, [entry("payment", "cash", 4000, "2026-07-01T23:30:00.000Z")], false, "x")];
+  it("counts a payment just after IST midnight on the right day", () => {
+    // 19:00 UTC on 1 July is 00:30 on 2 July in India.
+    const charges = [charge(4000, [entry("payment", "cash", 4000, "2026-07-01T19:00:00.000Z")], false, "x")];
     expect(dailyTakings("2026-07-02", charges, []).total.receivedPence).toBe(4000);
     expect(dailyTakings("2026-07-01", charges, []).total.receivedPence).toBe(0);
   });
