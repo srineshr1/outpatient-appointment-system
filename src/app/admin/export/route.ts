@@ -14,19 +14,19 @@ import {
   type SearchParams,
 } from "@/lib/admin-data";
 import { isPaymentMethod } from "@/lib/clinic-types";
-import { isIsoDate, londonWallClock } from "@/lib/clock";
+import { isIsoDate, practiceWallClock } from "@/lib/clock";
 import { getCurrentUser } from "@/lib/session";
 import { STATE_LABELS, METHOD_LABELS, dailyTakings, ledger, londonDay, toCsv, type CsvValue, type LedgerRow } from "@/lib/payments";
 
 function instant(iso: string): string {
   if (!iso) return "";
-  const wall = londonWallClock(new Date(iso));
+  const wall = practiceWallClock(new Date(iso));
   return `${wall.date} ${wall.time}`;
 }
 
 function ledgerCsv(rows: readonly LedgerRow[]): CsvValue[][] {
   return [
-    ["When (UK time)", "Reference", "Patient", "Type", "Method", "Amount (GBP)", "By", "Note"],
+    ["When (IST)", "Reference", "Patient", "Type", "Method", "Amount (GBP)", "By", "Note"],
     ...rows.map(({ entry, charge, visit }) => [
       instant(entry.at),
       charge.reference,
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     const filters = readVisitFilters(query, kind === "fees" ? "all" : "upcoming");
     const matched = filterVisits(snapshot.visits, filters, snapshot.today);
     rows = [
-      ["Date", "Time", "Reference", "Patient", "Doctor", "Reason", "Visit", "Fee (GBP)", "Paid (GBP)", "Refunded (GBP)", "Owed (GBP)", "Payment", "Booked at (UK time)"],
+      ["Date", "Time", "Reference", "Patient", "Doctor", "Reason", "Visit", "Fee (GBP)", "Paid (GBP)", "Refunded (GBP)", "Owed (GBP)", "Payment", "Booked at (IST)"],
       ...matched.map((row) => [
         row.visit.date,
         row.visit.time,
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
     const filters = readEventFilters(query);
     const events = snapshot.events.filter((event) => matchesEvent(event, filters));
     rows = [
-      ["When (UK time)", "What", "Code", "Details", "Reason given", "Who", "Role"],
+      ["When (IST)", "What", "Code", "Details", "Reason given", "Who", "Role"],
       ...events.map((event) => [
         instant(event.at),
         actionLabel(event.action),

@@ -5,7 +5,7 @@
  */
 import { after } from "next/server";
 import type { AppointmentRecord } from "../clinic-types";
-import { londonWallClock, now } from "../clock";
+import { practiceWallClock, now } from "../clock";
 import { findDoctor, reasons } from "../data";
 import { formatShortDate } from "../format";
 import { salutation } from "../names";
@@ -181,7 +181,7 @@ export async function queueDailySummaries(instant: Date = now()): Promise<number
   const istHour = Number(parts.hour);
   if (istHour < hour || istHour >= Math.max(SUMMARY_LATEST_HOUR, hour + 1)) return 0;
 
-  const date = londonWallClock(instant).date;
+  const date = practiceWallClock(instant).date;
   const store = await getStore();
   const visits = (await store.listAppointments()).filter((visit) => visit.date === date && visit.status === "booked");
   const byDoctor = new Map<string, AppointmentRecord[]>();

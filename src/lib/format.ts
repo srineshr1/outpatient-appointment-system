@@ -1,4 +1,4 @@
-import { addDays, dayOfMonth, londonWallClock, monthIndex, weekdayIndex, yearOf } from "./clock";
+import { addDays, dayOfMonth, practiceWallClock, monthIndex, weekdayIndex, yearOf } from "./clock";
 import type { Slot } from "./data";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -68,7 +68,7 @@ export function formatWhen(slot: Pick<Slot, "date" | "time">, today: string): st
 }
 
 export function clockLabel(instant: Date): string {
-  return londonWallClock(instant).time;
+  return practiceWallClock(instant).time;
 }
 
 export function yearsLabel(years: number): string {

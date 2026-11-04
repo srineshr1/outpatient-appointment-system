@@ -10,7 +10,7 @@ import { createdBetween, failedSignIns, loadSnapshot, navCounts, param, weekLoad
 import { percent } from "@/lib/admin-format";
 import { noticeText } from "@/lib/admin-notices";
 import { requireAdminPage } from "@/lib/admin-page";
-import { addDays, londonWallClock, now } from "@/lib/clock";
+import { addDays, practiceWallClock, now } from "@/lib/clock";
 import { formatMoney } from "@/lib/fees";
 import { londonDay, dailyTakings } from "@/lib/payments";
 import { formatWeekRange, pluralise } from "@/lib/format";
@@ -29,7 +29,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
   const query = await searchParams;
   const snapshot = await loadSnapshot();
   const { today, visits, users, events } = snapshot;
-  const time = londonWallClock(now()).time;
+  const time = practiceWallClock(now()).time;
 
   const todayRows = visits.filter((row) => row.visit.date === today);
   const live = todayRows.filter((row) => !isClosedStatus(row.visit.status));

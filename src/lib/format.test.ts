@@ -86,16 +86,16 @@ describe("buildIcs", () => {
   };
   const stamp = new Date("2026-10-26T13:40:00Z");
 
-  it("writes GMT times as UTC", () => {
+  it("writes IST times as UTC", () => {
     const ics = buildIcs({ ...event, date: "2026-10-29" }, stamp);
-    expect(ics).toContain("DTSTART:20261029T142000Z");
-    expect(ics).toContain("DTEND:20261029T143500Z");
+    expect(ics).toContain("DTSTART:20261029T085000Z");
+    expect(ics).toContain("DTEND:20261029T090500Z");
     expect(ics).toContain("DTSTAMP:20261026T134000Z");
   });
 
-  it("converts British Summer Time to UTC", () => {
+  it("uses the same IST offset all year", () => {
     const ics = buildIcs({ ...event, date: "2026-07-15" }, stamp);
-    expect(ics).toContain("DTSTART:20260715T132000Z");
+    expect(ics).toContain("DTSTART:20260715T085000Z");
   });
 
   it("uses CRLF, escapes text and folds long lines", () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { bookWindow, doctors, firstWeekFor, generateSlots } from "./data";
 import { canShiftWeek, clampWeek, nextOpening, slotStatus } from "./schedule";
 
-const monday1340 = new Date("2026-10-26T13:40:00Z"); // GMT, so 13:40 in London
+const monday1340 = new Date("2026-10-26T08:10:00Z"); // 13:40 IST
 
 describe("book window", () => {
   it("opens on this week on a weekday and next week at the weekend", () => {
@@ -54,7 +54,7 @@ describe("slotStatus", () => {
   });
 
   it("closes same-day booking at 16:00", () => {
-    const at1600 = new Date("2026-10-26T16:00:00Z");
+    const at1600 = new Date("2026-10-26T10:30:00Z"); // 16:00 IST
     expect(slotStatus({ ...base, time: "16:10" }, [], at1600)).toBe("past");
     expect(slotStatus({ ...base, date: "2026-10-27" }, [], at1600)).toBe("open");
   });
@@ -65,10 +65,17 @@ describe("slotStatus", () => {
     expect(slotStatus({ ...base, teaching: true }, [], monday1340)).toBe("teaching");
   });
 
-  it("uses London time during BST", () => {
-    const julyMorning = new Date("2026-07-15T08:30:00Z"); // 09:30 in London
-    expect(slotStatus({ ...base, date: "2026-07-15", time: "09:20" }, [], julyMorning)).toBe("past");
-    expect(slotStatus({ ...base, date: "2026-07-15", time: "09:40" }, [], julyMorning)).toBe("open");
+  it("uses India time: at 11:17 IST this morning's 09:00 is past, not open", () => {
+    const lateMorning = new Date("2026-11-04T05:47:00Z"); // 11:17 IST, still 05:47 in London
+    expect(slotStatus({ ...base, date: "2026-11-04", time: "09:00" }, [], lateMorning)).toBe("past");
+    expect(slotStatus({ ...base, date: "2026-11-04", time: "11:10" }, [], lateMorning)).toBe("past");
+    expect(slotStatus({ ...base, date: "2026-11-04", time: "11:20" }, [], lateMorning)).toBe("open");
+  });
+
+  it("rolls over to the next day at IST midnight", () => {
+    const justAfterMidnight = new Date("2026-11-04T18:35:00Z"); // 00:05 IST on 5 November
+    expect(slotStatus({ ...base, date: "2026-11-04", time: "17:00" }, [], justAfterMidnight)).toBe("past");
+    expect(slotStatus({ ...base, date: "2026-11-05", time: "09:00" }, [], justAfterMidnight)).toBe("open");
   });
 });
 
