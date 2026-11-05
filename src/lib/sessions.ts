@@ -163,6 +163,61 @@ export function sessionCalendar(sessions: readonly ConsultSession[], first: stri
   return days;
 }
 
+/** Inclusive hour window that covers the given times, never narrower than floor–ceil (clinic day defaults). */
+export function weekHourBounds(
+  times: readonly { startTime: string; endTime: string }[],
+  floor = 8,
+  ceil = 17,
+): { startHour: number; endHour: number } {
+  let startHour = floor;
+  let endHour = ceil;
+  for (const { startTime, endTime } of times) {
+    if (!isTime(startTime) || !isTime(endTime) || startTime >= endTime) continue;
+    startHour = Math.min(startHour, Math.floor(toMinutes(startTime) / 60));
+    endHour = Math.max(endHour, Math.ceil(toMinutes(endTime) / 60));
+  }
+  if (endHour <= startHour) endHour = startHour + 1;
+  return { startHour, endHour };
+}
+
+/** True when start/end look like intentional clinic hours (not empty or 00:00–00:00). */
+export function timesLookSet(startTime: string, endTime: string): boolean {
+  if (!isTime(startTime) || !isTime(endTime) || startTime >= endTime) return false;
+  if (startTime === "00:00" && toMinutes(endTime) - toMinutes(startTime) >= 12 * 60) return false;
+  return true;
+}
+
+/**
+ * First clinic date on or after `from` that the session runs (within optional start/end or
+ * `limitDays` ahead). Null if it never runs in that window.
+ */
+export function firstRunDate(session: Dated, from: string, limitDays = 120): string | null {
+  if (session.onDate) return session.onDate >= from ? session.onDate : null;
+  if (!session.weekdays.length) return null;
+  const start = session.startDate && session.startDate > from ? session.startDate : from;
+  const last = session.endDate ?? addDays(start, limitDays);
+  if (last < start) return null;
+  for (let date = start; date <= last; date = addDays(date, 1)) {
+    if (sessionRunsOn(session, date)) return date;
+  }
+  return null;
+}
+
+/** "2–8 Nov 2026" / "28 Nov – 4 Dec 2026" for a Monday ISO date. */
+export function weekRangeTitle(monday: string): string {
+  const sunday = addDays(monday, 6);
+  const start = new Date(`${monday}T00:00:00Z`);
+  const end = new Date(`${sunday}T00:00:00Z`);
+  const sameMonth = start.getUTCMonth() === end.getUTCMonth();
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  const day = (d: Date) => d.getUTCDate();
+  const month = (d: Date) => d.toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" });
+  const year = (d: Date) => d.getUTCFullYear();
+  if (sameMonth && sameYear) return `${day(start)}–${day(end)} ${month(start)} ${year(end)}`;
+  if (sameYear) return `${day(start)} ${month(start)} – ${day(end)} ${month(end)} ${year(end)}`;
+  return `${day(start)} ${month(start)} ${year(start)} – ${day(end)} ${month(end)} ${year(end)}`;
+}
+
 /** The slots (stream) or waves (wave) one day of the session is cut into. */
 export function sessionBlocks(
   session: Pick<ConsultSession, "mode" | "startTime" | "endTime" | "slotMinutes" | "waveMinutes">,
