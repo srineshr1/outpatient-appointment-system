@@ -1,6 +1,6 @@
 import type { ConsultSession } from "./clinic-types";
 import { addDays, mondayOf, todayIso, weekdayIndex } from "./clock";
-import { demoSessions, slotId as streamSlotId, slotsForSession, weekdaysLabel } from "./sessions";
+import { demoSessions, overriddenDates, slotId as streamSlotId, slotsForSession, weekdaysLabel } from "./sessions";
 
 export interface Practice {
   name: string;
@@ -373,8 +373,12 @@ export function generateSlots(window: BookWindow): Slot[] {
   const lastDate = addDays(window.firstWeek, WEEKS_OPEN * 7 - 1);
   for (const doctor of allDoctors()) {
     const teaching = TEACHING_SHARE[doctor.id];
-    for (const session of sessionsOf(doctor.id)) {
-      for (const slot of slotsForSession(session, doctor.id, window.firstWeek, lastDate)) {
+    const sessions = sessionsOf(doctor.id);
+    // On a date with a one-off session, the doctor's weekly sessions are not offered. Visits already
+    // booked into them stay as they are (they live in the appointments, not in these slots).
+    const overridden = overriddenDates(sessions);
+    for (const session of sessions) {
+      for (const slot of slotsForSession(session, doctor.id, window.firstWeek, lastDate, overridden)) {
         if (teaching && slot.mode === "stream" && unitHash(`${slot.id}#teach`) < teaching) slot.teaching = true;
         slots.push(slot);
       }
