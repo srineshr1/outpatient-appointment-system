@@ -18,13 +18,17 @@ function draftFrom(form: HTMLFormElement): ConsultSession {
   const num = (key: string) => (text(key) ? Number(text(key)) : null);
   const once = text("kind") === "once";
   const mode = text("mode") === "wave" ? "wave" : "stream";
+  const startTime = text("startTime");
+  const endTime = text("endTime");
+  // Incomplete or midnight-default times: leave blank so the calendar does not preview a bogus block.
+  const timesReady = /^\d\d:\d\d$/.test(startTime) && /^\d\d:\d\d$/.test(endTime) && startTime < endTime && !(startTime === "00:00" && endTime === "00:00");
   return {
     id: "__draft__",
     doctorId: "",
     label: text("label") || "New session",
     weekdays: once ? [] : data.getAll("weekdays").map(Number),
-    startTime: text("startTime"),
-    endTime: text("endTime"),
+    startTime: timesReady ? startTime : "",
+    endTime: timesReady ? endTime : "",
     room: text("room"),
     mode,
     slotMinutes: mode === "stream" ? num("slotMinutes") : null,
@@ -147,11 +151,33 @@ export function SessionForm({
         <legend className="mb-2 text-callout font-semibold text-ink">Session hours</legend>
         <p className="mb-3 text-callout text-muted">When this clinic block runs that day — not the length of each patient visit.</p>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field id={`${idPrefix}-start`} label="Session starts">
-            {({ id }) => <input id={id} name="startTime" type="time" step={300} defaultValue={v("startTime", defaults.startTime)} className="field tabular" />}
+          <Field id={`${idPrefix}-start`} label="Session starts" hint="Clinic block start (for example 09:00).">
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                name="startTime"
+                type="time"
+                step={300}
+                required
+                aria-describedby={describedBy}
+                defaultValue={v("startTime", defaults.startTime || "09:00")}
+                className="field tabular"
+              />
+            )}
           </Field>
-          <Field id={`${idPrefix}-end`} label="Session ends">
-            {({ id }) => <input id={id} name="endTime" type="time" step={300} defaultValue={v("endTime", defaults.endTime)} className="field tabular" />}
+          <Field id={`${idPrefix}-end`} label="Session ends" hint="Clinic block end (for example 12:00).">
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                name="endTime"
+                type="time"
+                step={300}
+                required
+                aria-describedby={describedBy}
+                defaultValue={v("endTime", defaults.endTime || "12:00")}
+                className="field tabular"
+              />
+            )}
           </Field>
         </div>
       </fieldset>
