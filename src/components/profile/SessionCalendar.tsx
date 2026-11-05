@@ -62,11 +62,11 @@ export function SessionCalendar({ sessions, today, months = 2 }: { sessions: rea
                       <div
                         key={session.id}
                         title={`${session.label || "Session"} ${session.startTime}–${session.endTime}${replaced ? " (replaced by a one-off session)" : ""}`}
-                        className={`tabular mt-0.5 truncate rounded-sm px-1 leading-tight ${
+                        className={`tabular mt-0.5 rounded-sm px-1 text-[11px] leading-tight break-words ${
                           session.mode === "wave" ? "bg-amber-100 text-amber-900" : "bg-accent-soft text-accent"
                         } ${replaced ? "line-through opacity-50" : ""} ${session.onDate ? "font-bold" : ""}`}
                       >
-                        {session.onDate ? "★" : "↻"} {session.startTime}–{session.endTime}
+                        {session.onDate ? "★" : "↻"} {session.startTime}–<wbr />{session.endTime}
                       </div>
                     ))}
                   </div>
