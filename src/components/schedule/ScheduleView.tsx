@@ -2,31 +2,19 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
-import { Alert, ChevronLeft, ChevronRight } from "@/components/icons";
+import { useEffect, useRef } from "react";
+import { Alert, ChevronLeft } from "@/components/icons";
 import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
+import { WeekPicker } from "./WeekPicker";
 import { PageHeading } from "@/components/shell/PageHeading";
-import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Card";
-import { addDays, dayOfMonth, mondayOf } from "@/lib/clock";
 import type { ConsultSession } from "@/lib/clinic-types";
-import { practice, type Doctor, type Slot } from "@/lib/data";
-import { weekdayIndex } from "@/lib/clock";
-import { describeSession, placesLabel, slotTimeLabel } from "@/lib/sessions";
-import {
-  formatShortDate,
-  formatWeekRange,
-  formatWhen,
-  monthLong,
-  pluralise,
-  weekdayLong,
-  yearsLabel,
-} from "@/lib/format";
+import type { Doctor, Slot } from "@/lib/data";
+import { describeSession } from "@/lib/sessions";
+import { yearsLabel } from "@/lib/format";
 import { spring } from "@/lib/motion";
-import { canShiftWeek, clampWeek, openSlots, slotsOn, slotStatus, weekDays, type SlotStatus } from "@/lib/schedule";
 
 interface Props {
   doctor: Doctor;
@@ -40,66 +28,17 @@ interface Props {
   sessions?: ConsultSession[];
 }
 
-const STATUS_TEXT: Record<Exclude<SlotStatus, "open">, string> = {
-  taken: "booked",
-  past: "closed",
-  teaching: "teaching session",
-};
-
 export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, allDoctorsHref = "/#doctors", sessions = [] }: Props) {
-  const router = useRouter();
-  const [continuing, startContinue] = useTransition();
-  const { state, dispatch } = useBooking();
-  const { now, window } = useClock();
-  const [week, setWeek] = useState(initialWeek);
-  const [direction, setDirection] = useState<1 | -1>(1);
-  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const { state } = useBooking();
+  const { window } = useClock();
   const flashRef = useRef<HTMLDivElement>(null);
-
-  const held =
-    state.held && state.held.doctorId === doctor.id && slotStatus(state.held, [], now) === "open"
-      ? state.held
-      : null;
   const flash = state.flash?.doctorId === doctor.id ? state.flash.message : null;
-
-  // Keep the URL in step with the visible week, so refresh and sharing land in the same place.
-  useEffect(() => {
-    const url = new URL(globalThis.location.href);
-    if (url.searchParams.get("week") === week) return;
-    url.searchParams.set("week", week);
-    globalThis.history.replaceState(globalThis.history.state, "", url);
-  }, [week]);
 
   useEffect(() => {
     if (flash) flashRef.current?.focus();
   }, [flash]);
 
-  function goToWeek(next: string) {
-    const target = clampWeek(next, window);
-    if (target === week) return;
-    setDirection(target > week ? 1 : -1);
-    setWeek(target);
-  }
-
-  function choose(slot: Slot) {
-    dispatch({ type: "hold", slot });
-  }
-
   const current = sessions.filter((session) => (session.onDate ?? session.endDate ?? "9999-12-31") >= window.today);
-  const withSaturday =
-    sessions.some((session) => session.weekdays.includes(6)) || slots.some((slot) => weekdayIndex(slot.date) === 6);
-  const days = weekDays(week, withSaturday);
-  const lastDay = days[days.length - 1]!;
-  const weekSlots = slots.filter((slot) => slot.date >= week && slot.date <= lastDay);
-  const openThisWeek = openSlots(weekSlots, [], now);
-  const upcoming = openSlots(slots, [], now).find((slot) => slot.date > lastDay) ?? null;
-  const firstOpenDay = days.find((iso) => openSlots(slotsOn(weekSlots, doctor.id, iso), [], now).length > 0);
-  const shownDay =
-    pickedDay && days.includes(pickedDay)
-      ? pickedDay
-      : held && days.includes(held.date)
-        ? held.date
-        : (firstOpenDay ?? days[0]!);
 
   return (
     <div className="mx-auto max-w-page px-5 pt-6 pb-16 md:px-8 md:pt-10">
@@ -177,240 +116,15 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
         </section>
       ) : null}
 
-      <section aria-labelledby="week-title" className="mt-10">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <h2 id="week-title" className="text-title3 font-semibold text-ink">
-              Choose a time
-            </h2>
-            <p className="tabular mt-1 text-callout text-muted" aria-live="polite">
-              {formatWeekRange(week, days.length)} · {pluralise(openThisWeek.length, "time")} available
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <WeekButton
-              label="Previous week"
-              disabled={!canShiftWeek(week, -1, window)}
-              onClick={() => goToWeek(addDays(week, -7))}
-            >
-              <ChevronLeft size={22} />
-            </WeekButton>
-            <WeekButton
-              label="Next week"
-              disabled={!canShiftWeek(week, 1, window)}
-              onClick={() => goToWeek(addDays(week, 7))}
-            >
-              <ChevronRight size={22} />
-            </WeekButton>
-          </div>
-        </div>
-
-        <div className="relative mt-5 overflow-hidden">
-          <AnimatePresence mode="popLayout" initial={false} custom={direction}>
-            <motion.div
-              key={week}
-              custom={direction}
-              variants={{
-                enter: (dir: number) => ({ x: dir * 48, opacity: 0 }),
-                center: { x: 0, opacity: 1 },
-                exit: (dir: number) => ({ x: dir * -48, opacity: 0 }),
-              }}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={spring.gentle}
-            >
-              {openThisWeek.length === 0 ? (
-                <Notice tone="info" className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p>
-                    {upcoming
-                      ? `No times left with ${doctor.short} this week. The next one is ${formatWhen(upcoming, window.today)}.`
-                      : `${doctor.short} has no more times online. Call the desk on ${practice.phoneDisplay}.`}
-                  </p>
-                  {upcoming ? (
-                    <Button variant="secondary" onClick={() => goToWeek(mondayOf(upcoming.date))}>
-                      Go to {formatShortDate(upcoming.date)}
-                    </Button>
-                  ) : null}
-                </Notice>
-              ) : null}
-
-              <DayAndTimePicker
-                doctorName={doctor.name}
-                days={days}
-                today={window.today}
-                now={now}
-                slotsFor={(iso) => slotsOn(weekSlots, doctor.id, iso)}
-                day={shownDay}
-                onDay={setPickedDay}
-                held={held}
-                onChoose={choose}
-              />
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </section>
-
-      <AnimatePresence>
-        {held ? (
-          <motion.div
-            key="continue"
-            initial={{ y: 96, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 96, opacity: 0 }}
-            transition={spring.gentle}
-            className="sticky bottom-0 z-20 -mx-5 mt-6 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:bottom-4 md:mx-0 md:px-0 md:pb-0"
-          >
-            <div className="flex flex-col gap-3 rounded-sheet bg-surface/90 p-4 shadow-float ring-1 ring-black/[0.04] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between md:p-5">
-              <div aria-live="polite">
-                <p className="text-caption text-muted">Your time</p>
-                <p className="tabular text-body font-semibold text-ink">
-                  {weekdayLong(held.date)} {dayOfMonth(held.date)} {monthLong(held.date)}, {slotTimeLabel(held)}
-                </p>
-                {held.mode === "wave" ? (
-                  <p className="mt-0.5 text-caption text-muted">
-                    This is a wave. You’ll get a token number and be seen in arrival order.
-                  </p>
-                ) : null}
-                {signedIn ? null : (
-                  <p className="mt-0.5 text-caption text-muted">Next, sign in. We’ll keep this time for you.</p>
-                )}
-              </div>
-              <Button
-                size="lg"
-                className="w-full sm:w-auto"
-                loading={continuing}
-                loadingLabel="Continuing…"
-                onClick={() =>
-                  startContinue(() =>
-                    router.push(signedIn ? "/book/details" : `/sign-in?next=${encodeURIComponent("/book/details")}`),
-                  )
-                }
-              >
-                Continue
-              </Button>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function WeekButton({
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <motion.button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      whileTap={disabled ? undefined : { scale: 0.92 }}
-      transition={spring.press}
-      className="grid size-11 place-items-center rounded-full bg-surface text-accent shadow-card transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:bg-fill disabled:text-control disabled:shadow-none"
-    >
-      {children}
-    </motion.button>
-  );
-}
-
-interface PickerProps {
-  doctorName: string;
-  days: string[];
-  today: string;
-  now: Date;
-  slotsFor: (iso: string) => Slot[];
-  day: string;
-  onDay: (iso: string) => void;
-  held: Slot | null;
-  onChoose: (slot: Slot) => void;
-}
-
-/** Pick a day of the week, then a time range from a dropdown. Closed and booked times stay listed, disabled. */
-function DayAndTimePicker({ doctorName, days, today, now, slotsFor, day, onDay, held, onChoose }: PickerProps) {
-  const items = slotsFor(day);
-  const statuses = items.map((slot) => slotStatus(slot, [], now));
-  const open = statuses.filter((status) => status === "open").length;
-  const sameDayClosed = day === today && items.length > 0 && open === 0 && statuses.some((status) => status === "past");
-  const heldHere = held && items.some((slot) => slot.id === held.id) ? held.id : "";
-  const selectId = `slot-${day}`;
-
-  return (
-    <div className="rounded-card bg-surface p-4 shadow-card md:p-5">
-      <fieldset>
-        <legend className="mb-2 text-callout font-semibold text-ink">1. Choose a day</legend>
-        <div className="flex flex-wrap gap-2">
-          {days.map((iso) => {
-            const dayItems = slotsFor(iso);
-            const free = dayItems.filter((slot) => slotStatus(slot, [], now) === "open").length;
-            return (
-              <label key={iso} className="relative cursor-pointer">
-                <input type="radio" name="day" value={iso} checked={iso === day} onChange={() => onDay(iso)} className="peer sr-only" />
-                <span
-                  className={`flex min-h-14 min-w-24 flex-col items-center justify-center rounded-field px-3 py-1 text-callout shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55 ${
-                    free ? "text-accent" : "text-muted"
-                  }`}
-                >
-                  <span className="font-semibold">
-                    {weekdayLong(iso).slice(0, 3)} {dayOfMonth(iso)}
-                    {iso === today ? " · Today" : ""}
-                  </span>
-                  <span className="tabular text-caption">{dayItems.length === 0 ? "No clinic" : `${free} open`}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
-
-      <div className="mt-5">
-        <label htmlFor={selectId} className="mb-2 block text-callout font-semibold text-ink">
-          2. Choose a time on {weekdayLong(day)} {dayOfMonth(day)} {monthLong(day)}
-        </label>
-        {items.length === 0 ? (
-          <p className="text-callout text-muted">No clinic with {doctorName} this day.</p>
-        ) : (
-          <select
-            id={selectId}
-            name="slot"
-            value={heldHere}
-            disabled={open === 0}
-            onChange={(event) => {
-              const slot = items.find((item) => item.id === event.target.value);
-              if (slot) onChoose(slot);
-            }}
-            className="field tabular w-full md:max-w-md"
-          >
-            <option value="" disabled>
-              {open === 0 ? "No times left this day" : `Choose a time (${open} open)`}
-            </option>
-            {items.map((slot, index) => {
-              const status = statuses[index]!;
-              const places = slot.mode === "wave" ? placesLabel(slot) : "";
-              const note = status === "open" ? (places ? ` · Wave, ${places}` : "") : ` · ${STATUS_TEXT[status]}`;
-              return (
-                <option key={slot.id} value={slot.id} disabled={status !== "open"}>
-                  {slotTimeLabel(slot)}
-                  {note}
-                </option>
-              );
-            })}
-          </select>
-        )}
-        {sameDayClosed ? (
-          <p className="mt-3 text-callout text-muted">
-            Same-day booking closes at {practice.sameDayClose}. Call the desk for today.
-          </p>
-        ) : null}
+      <div className="mt-10">
+        <WeekPicker
+          doctor={doctor}
+          slots={slots}
+          initialWeek={initialWeek}
+          signedIn={signedIn}
+          saturday={sessions.some((session) => session.weekdays.includes(6))}
+          syncUrl
+        />
       </div>
     </div>
   );

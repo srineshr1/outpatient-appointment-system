@@ -30,10 +30,9 @@ async function signOut(page: Page) {
 
 async function chooseFirstOpenTime(page: import("@playwright/test").Page) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const select = page.locator('select[name="slot"]:not([disabled])');
-    if ((await select.count()) > 0) {
-      const value = await select.locator("option:not([disabled])").first().getAttribute("value");
-      await select.selectOption(value!);
+    const open = page.locator('input[name="slot"]:not([disabled])');
+    if ((await open.count()) > 0) {
+      await open.first().locator("..").click();
       return;
     }
     await page.getByRole("button", { name: "Next week" }).click();

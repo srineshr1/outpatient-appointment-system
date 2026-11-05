@@ -39,6 +39,22 @@ beforeEach(() => {
 });
 
 describe("DoctorDirectory", () => {
+  it("opens several doctors in place, with one selection driving Continue", async () => {
+    const all = await getSlots();
+    const slots: Record<string, typeof all> = {};
+    for (const slot of all) (slots[slot.doctorId] ??= []).push(slot);
+    renderWithProviders(<DoctorDirectory doctors={doctors} upcoming={await getUpcoming()} slots={slots} signedIn />);
+    const toggles = screen.getAllByRole("button", { expanded: false });
+    await userEvent.click(toggles[0]!);
+    await userEvent.click(toggles[1]!);
+    expect(toggles[0]).toHaveAttribute("aria-expanded", "true");
+    expect(toggles[1]).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("button", { name: "Next week" })).toHaveLength(2);
+    const open = [...document.querySelectorAll<HTMLInputElement>('input[name="slot"]')].find((radio) => !radio.disabled)!;
+    await userEvent.click(open);
+    expect(await screen.findAllByRole("button", { name: "Continue" })).toHaveLength(1);
+  });
+
   async function setup() {
     renderWithProviders(<DoctorDirectory doctors={doctors} upcoming={await getUpcoming()} />);
   }
@@ -89,10 +105,10 @@ describe("ScheduleView", () => {
     renderWithProviders(<ScheduleView doctor={cho} slots={await getSlots("cho")} initialWeek="2026-10-26" signedIn />);
 
     expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled();
-    // Dr Cho's 09:30 slot today has passed at 13:40: listed in the dropdown but disabled, shown as a range.
-    expect(screen.getAllByRole("option", { name: /^09:30–\d\d:\d\d · closed/ })[0]).toBeDisabled();
-    const open = [...(screen.getByRole("combobox") as HTMLSelectElement).options].find((option) => option.value && !option.disabled)!;
-    await userEvent.selectOptions(screen.getByRole("combobox"), open.value);
+    // Dr Cho's 09:30 slot today has passed at 13:40: shown as a range, disabled.
+    expect(screen.getAllByRole("radio", { name: /09:30–\d\d:\d\d, closed/ })[0]).toBeDisabled();
+    const open = screen.getAllByRole("radio").find((radio) => !(radio as HTMLInputElement).disabled) as HTMLInputElement;
+    await userEvent.click(open);
     expect(await screen.findByRole("button", { name: "Continue" })).toBeInTheDocument();
     await waitFor(() => expect(window.sessionStorage.getItem(STORAGE_KEY)).toContain(open.value));
 
@@ -103,8 +119,8 @@ describe("ScheduleView", () => {
   it("asks a signed-out patient to sign in, keeping the time", async () => {
     const cho = doctors.find((doctor) => doctor.id === "cho")!;
     renderWithProviders(<ScheduleView doctor={cho} slots={await getSlots("cho")} initialWeek="2026-10-26" />);
-    const open = [...(screen.getByRole("combobox") as HTMLSelectElement).options].find((option) => option.value && !option.disabled)!;
-    await userEvent.selectOptions(screen.getByRole("combobox"), open.value);
+    const open = screen.getAllByRole("radio").find((radio) => !(radio as HTMLInputElement).disabled) as HTMLInputElement;
+    await userEvent.click(open);
     expect(await screen.findByText(/Next, sign in/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(router.push).toHaveBeenCalledWith("/sign-in?next=%2Fbook%2Fdetails");
