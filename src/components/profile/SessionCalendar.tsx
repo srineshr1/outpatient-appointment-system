@@ -14,14 +14,13 @@ function weekTitle(monday: string): string {
   const start = new Date(`${monday}T00:00:00Z`);
   const end = new Date(`${sunday}T00:00:00Z`);
   const sameMonth = start.getUTCMonth() === end.getUTCMonth();
-  const left = start.toLocaleDateString("en-IN", { month: "short", day: "numeric", timeZone: "UTC" });
-  const right = end.toLocaleDateString("en-IN", {
-    month: sameMonth ? undefined : "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  return `${left} – ${right}`;
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  const day = (d: Date) => d.getUTCDate();
+  const month = (d: Date) => d.toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" });
+  const year = (d: Date) => d.getUTCFullYear();
+  if (sameMonth && sameYear) return `${day(start)}–${day(end)} ${month(start)} ${year(end)}`;
+  if (sameYear) return `${day(start)} ${month(start)} – ${day(end)} ${month(end)} ${year(end)}`;
+  return `${day(start)} ${month(start)} ${year(start)} – ${day(end)} ${month(end)} ${year(end)}`;
 }
 
 function barLabel(session: ConsultSession, draft: boolean): string {
