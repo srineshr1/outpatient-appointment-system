@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { SessionForm } from "@/components/profile/SessionForm";
 import { defaultsFor } from "@/lib/session-defaults";
 import { SessionCard } from "@/components/profile/SessionList";
+import { SessionCalendar } from "@/components/profile/SessionCalendar";
+import { todayIso } from "@/lib/clock";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { Notice } from "@/components/ui/Card";
 import { doctorStatus } from "@/lib/doctor-status";
@@ -44,8 +46,8 @@ export default async function SessionsPage({
       </PageHeading>
       <p className="mt-2 max-w-prose text-body text-ink-2">
         {welcome ? "Step 2 of 2. " : ""}A session is a block of hours on the days you choose. In a <strong>stream</strong> session each patient
-        gets their own fixed slot. In a <strong>wave</strong> session the hours are split into waves, and each wave takes several patients,
-        seen in token order.
+        gets their own fixed slot. In a <strong>wave</strong> session the whole session is one wave for up to a set number of patients,
+        seen in token order. A one-off session replaces your weekly sessions on its date.
       </p>
       {saved ? (
         <Notice tone="success" role="status" className="mt-6">
@@ -78,6 +80,8 @@ export default async function SessionsPage({
           ))}
         </ul>
       ) : null}
+
+      {status.sessions.length > 0 ? <SessionCalendar sessions={status.sessions} today={todayIso()} /> : null}
 
       <section className="mt-10 rounded-card bg-surface p-5 shadow-card md:p-6" aria-labelledby="add-session">
         <h2 id="add-session" className="text-title3 font-semibold text-ink">
