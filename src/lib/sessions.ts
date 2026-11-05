@@ -8,7 +8,8 @@ import type { Slot } from "./data";
  * STREAM: the session is cut into fixed slots (10, 15, 20 or 30 minutes). Each slot takes one
  * patient, at that time. The slot id is `<doctor>-<date>-<HHMM>`.
  *
- * WAVE: the session is cut into waves (30, 45, 60 or 90 minutes). Each wave takes up to N patients.
+ * WAVE: the whole session is one wave that takes up to N patients (older sessions may still carry a
+ * wave length and are cut into several waves, so their existing bookings keep working).
  * Patients are told the wave, not a minute, and are seen in token order. The wave id is
  * `w-<session>-<date>-<HHMM>`; each booking holds `<wave id>#<token>`, so the database's
  * one-booking-per-held-slot index also stops two patients sharing a token.
@@ -119,9 +120,47 @@ export interface Block {
   endTime: string;
 }
 
-/** The step of a session in minutes: the slot length for a stream, the wave length for a wave. */
-export function stepMinutes(session: Pick<ConsultSession, "mode" | "slotMinutes" | "waveMinutes">): number {
-  return (session.mode === "stream" ? session.slotMinutes : session.waveMinutes) ?? 0;
+/**
+ * The step of a session in minutes: the slot length for a stream. For a wave, the whole session,
+ * unless an older session still has a wave length saved (then it keeps its sub-waves).
+ */
+export function stepMinutes(session: Pick<ConsultSession, "mode" | "slotMinutes" | "waveMinutes"> & Partial<Pick<ConsultSession, "startTime" | "endTime">>): number {
+  if (session.mode === "stream") return session.slotMinutes ?? 0;
+  if (session.waveMinutes) return session.waveMinutes;
+  if (!session.startTime || !session.endTime || !isTime(session.startTime) || !isTime(session.endTime)) return 0;
+  return toMinutes(session.endTime) - toMinutes(session.startTime);
+}
+
+/** Live one-off sessions win over weekly ones: the dates on which a doctor's weekly sessions step aside. */
+export function overriddenDates(sessions: readonly (Dated & Pick<ConsultSession, "archivedAt">)[]): Set<string> {
+  return new Set(sessions.filter((session) => !session.archivedAt && session.onDate).map((session) => session.onDate!));
+}
+
+/** Does this session actually run on the date, once one-off sessions have replaced weekly ones? */
+export function sessionShownOn(session: Dated, date: string, overridden: ReadonlySet<string>): boolean {
+  if (!sessionRunsOn(session, date)) return false;
+  return Boolean(session.onDate) || !overridden.has(date);
+}
+
+export interface CalendarEntry {
+  session: ConsultSession;
+  /** A weekly session replaced that day by a one-off session. */
+  replaced: boolean;
+}
+
+/** For each date from `first` to `last`, the doctor's live sessions that fall on it (replaced ones flagged). */
+export function sessionCalendar(sessions: readonly ConsultSession[], first: string, last: string): Map<string, CalendarEntry[]> {
+  const live = sessions.filter((session) => !session.archivedAt);
+  const overridden = overriddenDates(live);
+  const days = new Map<string, CalendarEntry[]>();
+  for (let date = first; date <= last; date = addDays(date, 1)) {
+    const entries = live
+      .filter((session) => sessionRunsOn(session, date))
+      .map((session) => ({ session, replaced: !session.onDate && overridden.has(date) }))
+      .sort((a, b) => a.session.startTime.localeCompare(b.session.startTime));
+    if (entries.length) days.set(date, entries);
+  }
+  return days;
 }
 
 /** The slots (stream) or waves (wave) one day of the session is cut into. */
@@ -139,12 +178,18 @@ export function sessionBlocks(
 }
 
 /** Every slot or wave of one session from `firstDate` up to and including `lastDate`. */
-export function slotsForSession(session: ConsultSession, doctorId: string, firstDate: string, lastDate: string): Slot[] {
+export function slotsForSession(
+  session: ConsultSession,
+  doctorId: string,
+  firstDate: string,
+  lastDate: string,
+  overridden: ReadonlySet<string> = new Set(),
+): Slot[] {
   if (session.archivedAt) return [];
   const blocks = sessionBlocks(session);
   const slots: Slot[] = [];
   for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
-    if (!sessionRunsOn(session, date)) continue;
+    if (!sessionShownOn(session, date, overridden)) continue;
     for (const block of blocks) {
       if (session.mode === "wave") {
         slots.push({
@@ -242,7 +287,8 @@ export function weekdaysLabel(weekdays: readonly number[], long = false): string
 export function modeSummary(session: Pick<ConsultSession, "mode" | "slotMinutes" | "waveMinutes" | "waveCapacity">): string {
   if (session.mode === "stream") return `${session.slotMinutes}-minute slots, one patient each`;
   const places = session.waveCapacity ?? 1;
-  return `${session.waveMinutes}-minute waves, up to ${places} patient${places === 1 ? "" : "s"} each`;
+  const who = `up to ${places} patient${places === 1 ? "" : "s"}`;
+  return session.waveMinutes ? `${session.waveMinutes}-minute waves, ${who} each` : `one wave, ${who}, seen in token order`;
 }
 
 export function describeSession(session: ConsultSession): string {
@@ -285,8 +331,8 @@ type Overlapping = Dated & Pick<ConsultSession, "startTime" | "endTime">;
 /** Could two sessions ever run on the same date? */
 function shareADate(a: Dated, b: Dated): boolean {
   if (a.onDate && b.onDate) return a.onDate === b.onDate;
-  if (a.onDate) return sessionRunsOn(b, a.onDate);
-  if (b.onDate) return sessionRunsOn(a, b.onDate);
+  // A one-off session replaces the weekly ones on its date, so the two never run together.
+  if (a.onDate || b.onDate) return false;
   if (!a.weekdays.some((day) => b.weekdays.includes(day))) return false;
   const start = [a.startDate, b.startDate].filter(Boolean).sort().pop();
   const ends = [a.endDate, b.endDate].filter(Boolean).sort();
@@ -348,13 +394,12 @@ export function checkSession(input: SessionInput, others: readonly ConsultSessio
     }
     slotMinutes = input.slotMinutes;
   } else {
-    if (!allowed(WAVE_MINUTES, input.waveMinutes)) {
-      return { ok: false, message: `Choose a wave length of ${WAVE_MINUTES.join(", ")} minutes.` };
-    }
-    waveMinutes = input.waveMinutes;
+    // New and changed waves are one block for the whole session. A legacy wave length is kept only
+    // when it is sent back unchanged (allowed list), so old sub-waves and their bookings stay valid.
+    waveMinutes = allowed(WAVE_MINUTES, input.waveMinutes) ? input.waveMinutes : null;
     const capacity = input.waveCapacity;
     if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity < 1 || capacity > MAX_WAVE_CAPACITY) {
-      return { ok: false, message: `A wave takes between 1 and ${MAX_WAVE_CAPACITY} patients.` };
+      return { ok: false, message: `A wave session takes between 1 and ${MAX_WAVE_CAPACITY} patients.` };
     }
     waveCapacity = capacity;
   }
@@ -449,9 +494,9 @@ export function defaultSession(doctorId: string, room: string, now: string): Con
   };
 }
 
-/** "09:20" for a stream slot, "14:00–14:30" for a wave. */
+/** "09:20–09:40": every slot and wave shows when it starts and ends. */
 export function slotTimeLabel(slot: Pick<Slot, "time" | "endTime" | "mode">): string {
-  return slot.mode === "wave" && slot.endTime ? `${slot.time}–${slot.endTime}` : slot.time;
+  return slot.endTime ? `${slot.time}–${slot.endTime}` : slot.time;
 }
 
 /** "3 of 8 places left" for a wave, "" for a stream slot. */
