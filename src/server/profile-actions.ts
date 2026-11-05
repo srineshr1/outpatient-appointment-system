@@ -125,7 +125,7 @@ export async function saveDoctorProfile(_previous: FormState, formData: FormData
   redirect("/dashboard/profile?saved=1");
 }
 
-const SESSION_KEYS = ["label", "weekdays", "startTime", "endTime", "room", "mode", "slotMinutes", "waveMinutes", "waveCapacity"];
+const SESSION_KEYS = ["label", "kind", "onDate", "startDate", "endDate", "weekdays", "startTime", "endTime", "room", "mode", "slotMinutes", "waveMinutes", "waveCapacity"];
 
 function sessionInput(formData: FormData): SessionInput {
   const number = (key: string) => {
@@ -134,6 +134,10 @@ function sessionInput(formData: FormData): SessionInput {
   };
   return {
     label: text(formData, "label"),
+    kind: text(formData, "kind") === "once" ? "once" : "recurring",
+    onDate: text(formData, "onDate").trim() || null,
+    startDate: text(formData, "startDate").trim() || null,
+    endDate: text(formData, "endDate").trim() || null,
     weekdays: formData.getAll("weekdays").map((day) => Number(day)),
     startTime: text(formData, "startTime"),
     endTime: text(formData, "endTime"),
@@ -155,9 +159,11 @@ async function upcomingIn(doctorId: string, sessionId: string): Promise<number> 
 function shapeChanged(a: ConsultSession, b: Omit<SessionInput, "label" | "room">): boolean {
   return (
     a.mode !== b.mode ||
+    (a.onDate ?? null) !== (b.kind === "once" ? (b.onDate ?? null) : null) ||
+    (b.kind !== "once" && ((a.startDate ?? null) !== (b.startDate ?? null) || (a.endDate ?? null) !== (b.endDate ?? null))) ||
     a.startTime !== b.startTime ||
     a.endTime !== b.endTime ||
-    a.weekdays.join(",") !== [...new Set(b.weekdays)].sort((x, y) => x - y).join(",") ||
+    (b.kind !== "once" && a.weekdays.join(",") !== [...new Set(b.weekdays)].sort((x, y) => x - y).join(",")) ||
     (a.mode === "stream" ? a.slotMinutes !== b.slotMinutes : a.waveMinutes !== b.waveMinutes || a.waveCapacity !== b.waveCapacity)
   );
 }
@@ -174,7 +180,7 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   const existing = id ? await store.getConsultSession(id) : null;
   if (id && (!existing || existing.doctorId !== user.id || existing.archivedAt)) return fail("That session no longer exists. Reload the page.");
 
-  const checked = checkSession(input, mine.filter((session) => session.id !== id));
+  const checked = checkSession(input, mine.filter((session) => session.id !== id), todayIso(now()));
   if (!checked.ok) return fail(checked.message);
 
   if (existing && shapeChanged(existing, input)) {

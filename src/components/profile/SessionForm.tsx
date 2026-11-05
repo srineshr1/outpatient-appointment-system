@@ -15,6 +15,8 @@ export function SessionForm({ defaults, submitLabel }: { defaults: SessionDefaul
   const [state, action] = useActionState(saveSession, null);
   const typedDays = state?.values?.weekdays ? state.values.weekdays.split(",").filter(Boolean).map(Number) : defaults.weekdays;
   const [mode, setMode] = useState<"stream" | "wave">(defaults.mode);
+  const [kind, setKind] = useState<"recurring" | "once">(defaults.kind);
+  const shownKind = state?.values?.kind === "once" || state?.values?.kind === "recurring" ? state.values.kind : kind;
   const shown = state?.values?.mode === "wave" || state?.values?.mode === "stream" ? state.values.mode : mode;
   const v = (key: string, fallback: string | number) => state?.values?.[key] ?? String(fallback);
   const idPrefix = `session-${defaults.id || "new"}`;
@@ -31,6 +33,30 @@ export function SessionForm({ defaults, submitLabel }: { defaults: SessionDefaul
         {({ id, describedBy }) => <input id={id} name="label" defaultValue={v("label", defaults.label)} aria-describedby={describedBy} maxLength={60} className="field" />}
       </Field>
       <fieldset className="md:col-span-2">
+        <legend className="mb-2 text-callout font-semibold text-ink">When it runs</legend>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ["recurring", "Recurring", "Every week on chosen days, optionally between two dates."],
+              ["once", "One date", "A single date, for example an extra Saturday clinic."],
+            ] as const
+          ).map(([value, title, text]) => (
+            <label key={value} className="relative" title={text}>
+              <input type="radio" name="kind" value={value} checked={shownKind === value} onChange={() => setKind(value)} className="peer sr-only" />
+              <span className="inline-flex min-h-11 cursor-pointer items-center rounded-full px-4 text-callout font-semibold text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+                {title}
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {shownKind === "once" ? (
+        <Field id={`${idPrefix}-on`} label="Date" hint="Monday to Saturday. Slots are made for this date only." className="md:col-span-2">
+          {({ id, describedBy }) => <input id={id} name="onDate" type="date" defaultValue={v("onDate", defaults.onDate)} aria-describedby={describedBy} className="field tabular" />}
+        </Field>
+      ) : (
+        <>
+      <fieldset className="md:col-span-2">
         <legend className="mb-2 text-callout font-semibold text-ink">Days</legend>
         <div className="flex flex-wrap gap-2">
           {WEEKDAY_NAMES.map((name, index) => (
@@ -43,6 +69,14 @@ export function SessionForm({ defaults, submitLabel }: { defaults: SessionDefaul
           ))}
         </div>
       </fieldset>
+      <Field id={`${idPrefix}-from`} label="From date" optional hint="Leave empty to start now.">
+        {({ id, describedBy }) => <input id={id} name="startDate" type="date" defaultValue={v("startDate", defaults.startDate)} aria-describedby={describedBy} className="field tabular" />}
+      </Field>
+      <Field id={`${idPrefix}-until`} label="Until date" optional hint="Leave empty to repeat every week.">
+        {({ id, describedBy }) => <input id={id} name="endDate" type="date" defaultValue={v("endDate", defaults.endDate)} aria-describedby={describedBy} className="field tabular" />}
+      </Field>
+        </>
+      )}
       <Field id={`${idPrefix}-start`} label="Starts">
         {({ id }) => <input id={id} name="startTime" type="time" step={300} defaultValue={v("startTime", defaults.startTime)} className="field tabular" />}
       </Field>
@@ -85,7 +119,7 @@ export function SessionForm({ defaults, submitLabel }: { defaults: SessionDefaul
         </Field>
       ) : (
         <>
-          <Field id={`${idPrefix}-wave`} label="Wave length">
+          <Field id={`${idPrefix}-wave`} label="Sub-slot length">
             {({ id }) => (
               <select id={id} name="waveMinutes" defaultValue={v("waveMinutes", defaults.waveMinutes)} className="field">
                 {WAVE_MINUTES.map((minutes) => (
@@ -96,7 +130,7 @@ export function SessionForm({ defaults, submitLabel }: { defaults: SessionDefaul
               </select>
             )}
           </Field>
-          <Field id={`${idPrefix}-capacity`} label="Patients per wave" hint={`1 to ${MAX_WAVE_CAPACITY}. Each gets a token in booking order.`}>
+          <Field id={`${idPrefix}-capacity`} label="Patients per sub-slot" hint={`1 to ${MAX_WAVE_CAPACITY}. Each gets a token in booking order.`}>
             {({ id, describedBy }) => (
               <input id={id} name="waveCapacity" type="number" min={1} max={MAX_WAVE_CAPACITY} inputMode="numeric" aria-describedby={describedBy} defaultValue={v("waveCapacity", defaults.waveCapacity)} className="field tabular" />
             )}

@@ -92,6 +92,9 @@ interface ConsultSessionRow {
   slot_minutes: number | null;
   wave_minutes: number | null;
   wave_capacity: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  on_date?: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -244,6 +247,9 @@ function toConsultSession(row: ConsultSessionRow): ConsultSession {
     slotMinutes: row.slot_minutes,
     waveMinutes: row.wave_minutes,
     waveCapacity: row.wave_capacity,
+    startDate: row.start_date ?? null,
+    endDate: row.end_date ?? null,
+    onDate: row.on_date ?? null,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -517,6 +523,9 @@ export class SqliteClinicStore implements ClinicStore {
     this.addColumn("users", "sessions_revoked_at", "TEXT");
     this.addColumn("users", "doctor_room", "TEXT");
     this.addColumn("users", "doctor_interest", "TEXT");
+    this.addColumn("consult_sessions", "start_date", "TEXT");
+    this.addColumn("consult_sessions", "end_date", "TEXT");
+    this.addColumn("consult_sessions", "on_date", "TEXT");
     this.addColumn("appointments", "session_id", "TEXT");
     this.addColumn("appointments", "token", "INTEGER");
     this.addColumn("appointments", "wave_capacity", "INTEGER");
@@ -934,14 +943,15 @@ export class SqliteClinicStore implements ClinicStore {
     this.db
       .prepare(
         `INSERT INTO consult_sessions (id, doctor_id, label, weekdays, start_time, end_time, room, mode,
-           slot_minutes, wave_minutes, wave_capacity, archived_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           slot_minutes, wave_minutes, wave_capacity, start_date, end_date, on_date, archived_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ${
            replace
              ? `ON CONFLICT(id) DO UPDATE SET label = excluded.label, weekdays = excluded.weekdays,
                   start_time = excluded.start_time, end_time = excluded.end_time, room = excluded.room, mode = excluded.mode,
                   slot_minutes = excluded.slot_minutes, wave_minutes = excluded.wave_minutes,
-                  wave_capacity = excluded.wave_capacity, archived_at = excluded.archived_at, updated_at = excluded.updated_at`
+                  wave_capacity = excluded.wave_capacity, start_date = excluded.start_date,
+                  end_date = excluded.end_date, on_date = excluded.on_date, archived_at = excluded.archived_at, updated_at = excluded.updated_at`
              : ""
          }`,
       )
@@ -957,6 +967,9 @@ export class SqliteClinicStore implements ClinicStore {
         session.slotMinutes,
         session.waveMinutes,
         session.waveCapacity,
+        session.startDate ?? null,
+        session.endDate ?? null,
+        session.onDate ?? null,
         session.archivedAt,
         session.createdAt,
         session.updatedAt,

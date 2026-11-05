@@ -18,7 +18,7 @@ import type { Slot } from "./data";
  */
 
 export const STREAM_SLOT_MINUTES = [10, 15, 20, 30] as const;
-export const WAVE_MINUTES = [30, 45, 60, 90] as const;
+export const WAVE_MINUTES = [15, 20, 30, 45, 60, 90] as const;
 export const MAX_WAVE_CAPACITY = 20;
 export const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 export const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -70,6 +70,50 @@ export function isWaveId(id: string): boolean {
   return id.startsWith("w-");
 }
 
+const ISO_DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+export function isIsoDate(value: string | null | undefined): value is string {
+  return typeof value === "string" && ISO_DATE.test(value) && addDays(value, 0) === value;
+}
+
+type Dated = Pick<ConsultSession, "weekdays"> & Partial<Pick<ConsultSession, "startDate" | "endDate" | "onDate">>;
+
+/** Is this a one-off session (one specific date) rather than a weekly pattern? */
+export function isOneOff(session: Dated): boolean {
+  return Boolean(session.onDate);
+}
+
+/**
+ * Does the session run on this clinic (IST) date? One-off: only its date. Recurring: a chosen
+ * weekday that falls inside the optional start/end dates.
+ */
+export function sessionRunsOn(session: Dated, date: string): boolean {
+  if (session.onDate) return session.onDate === date;
+  if (!session.weekdays.includes(weekdayIndex(date))) return false;
+  if (session.startDate && date < session.startDate) return false;
+  if (session.endDate && date > session.endDate) return false;
+  return true;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Fri 6 Nov 2026". */
+export function shortDate(iso: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  return `${DAY_SHORT[weekdayIndex(iso)]} ${day} ${MONTHS[(month ?? 1) - 1]} ${year}`;
+}
+
+/** "Mon, Tue and Thu", "Mon–Fri from 1 Dec 2026 to 31 Jan 2027" or "Fri 6 Nov 2026 only". */
+export function daysLabel(session: Dated): string {
+  if (session.onDate) return `${shortDate(session.onDate)} only`;
+  const days = weekdaysLabel(session.weekdays);
+  if (session.startDate && session.endDate) return `${days}, ${shortDate(session.startDate)} to ${shortDate(session.endDate)}`;
+  if (session.startDate) return `${days}, from ${shortDate(session.startDate)}`;
+  if (session.endDate) return `${days}, until ${shortDate(session.endDate)}`;
+  return days;
+}
+
 export interface Block {
   time: string;
   endTime: string;
@@ -100,7 +144,7 @@ export function slotsForSession(session: ConsultSession, doctorId: string, first
   const blocks = sessionBlocks(session);
   const slots: Slot[] = [];
   for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
-    if (!session.weekdays.includes(weekdayIndex(date))) continue;
+    if (!sessionRunsOn(session, date)) continue;
     for (const block of blocks) {
       if (session.mode === "wave") {
         slots.push({
@@ -202,11 +246,16 @@ export function modeSummary(session: Pick<ConsultSession, "mode" | "slotMinutes"
 }
 
 export function describeSession(session: ConsultSession): string {
-  return `${weekdaysLabel(session.weekdays)} · ${session.startTime}–${session.endTime} · ${modeSummary(session)}`;
+  return `${daysLabel(session)} · ${session.startTime}–${session.endTime} · ${modeSummary(session)}`;
 }
 
 export interface SessionInput {
   label: string;
+  /** "recurring" (weekly, optional date range) or "once" (one date). Missing means recurring. */
+  kind?: string;
+  onDate?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
   weekdays: readonly number[];
   startTime: string;
   endTime: string;
@@ -223,7 +272,7 @@ export type SessionCheck =
       value: Pick<
         ConsultSession,
         "label" | "weekdays" | "startTime" | "endTime" | "room" | "mode" | "slotMinutes" | "waveMinutes" | "waveCapacity"
-      >;
+      > & { startDate: string | null; endDate: string | null; onDate: string | null };
     }
   | { ok: false; message: string };
 
@@ -231,12 +280,22 @@ function allowed(list: readonly number[], value: number | null | undefined): val
   return typeof value === "number" && list.includes(value);
 }
 
-/** Do two sessions share a weekday and any minute of the day? */
-export function sessionsOverlap(
-  a: Pick<ConsultSession, "weekdays" | "startTime" | "endTime">,
-  b: Pick<ConsultSession, "weekdays" | "startTime" | "endTime">,
-): boolean {
+type Overlapping = Dated & Pick<ConsultSession, "startTime" | "endTime">;
+
+/** Could two sessions ever run on the same date? */
+function shareADate(a: Dated, b: Dated): boolean {
+  if (a.onDate && b.onDate) return a.onDate === b.onDate;
+  if (a.onDate) return sessionRunsOn(b, a.onDate);
+  if (b.onDate) return sessionRunsOn(a, b.onDate);
   if (!a.weekdays.some((day) => b.weekdays.includes(day))) return false;
+  const start = [a.startDate, b.startDate].filter(Boolean).sort().pop();
+  const ends = [a.endDate, b.endDate].filter(Boolean).sort();
+  return !(start && ends[0] && start > ends[0]);
+}
+
+/** Do two sessions share a date and any minute of the day? */
+export function sessionsOverlap(a: Overlapping, b: Overlapping): boolean {
+  if (!shareADate(a, b)) return false;
   return toMinutes(a.startTime) < toMinutes(b.endTime) && toMinutes(b.startTime) < toMinutes(a.endTime);
 }
 
@@ -244,9 +303,35 @@ export function sessionsOverlap(
  * Check what a doctor typed for a session. `others` are the doctor's other live sessions (not the
  * one being edited): two sessions on the same day may not overlap, which also keeps every slot id unique.
  */
-export function checkSession(input: SessionInput, others: readonly ConsultSession[]): SessionCheck {
-  const weekdays = [...new Set(input.weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 6).sort((a, b) => a - b);
-  if (weekdays.length === 0) return { ok: false, message: "Choose at least one weekday." };
+export function checkSession(input: SessionInput, others: readonly ConsultSession[], today?: string): SessionCheck {
+  const once = input.kind === "once";
+  let weekdays = [...new Set(input.weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 6).sort((a, b) => a - b);
+  let onDate: string | null = null;
+  let startDate: string | null = null;
+  let endDate: string | null = null;
+  if (once) {
+    if (!isIsoDate(input.onDate)) return { ok: false, message: "Choose the date of this session." };
+    const day = weekdayIndex(input.onDate);
+    if (day < 1 || day > 6) return { ok: false, message: "The clinic books Monday to Saturday. Choose another date." };
+    if (today && input.onDate < today) return { ok: false, message: "That date has passed. Choose today or a later date." };
+    onDate = input.onDate;
+    weekdays = [];
+  } else {
+    if (weekdays.length === 0) return { ok: false, message: "Choose at least one weekday." };
+    const start = input.startDate?.trim() || null;
+    const end = input.endDate?.trim() || null;
+    if (start && !isIsoDate(start)) return { ok: false, message: "Enter the start date as a date." };
+    if (end && !isIsoDate(end)) return { ok: false, message: "Enter the end date as a date." };
+    if (start && end && end < start) return { ok: false, message: "The end date must be on or after the start date." };
+    if (end && today && end < today) return { ok: false, message: "The end date has passed. Choose a later end date." };
+    if (start && end) {
+      let any = false;
+      for (let date = start; date <= end && !any; date = addDays(date, 1)) any = weekdays.includes(weekdayIndex(date));
+      if (!any) return { ok: false, message: "None of the chosen weekdays fall between those dates." };
+    }
+    startDate = start;
+    endDate = end;
+  }
   if (!isTime(input.startTime) || !isTime(input.endTime)) return { ok: false, message: "Enter the start and end time as HH:MM." };
   if (toMinutes(input.startTime) >= toMinutes(input.endTime)) return { ok: false, message: "The session must end after it starts." };
   const room = input.room.trim().slice(0, 60);
@@ -273,7 +358,7 @@ export function checkSession(input: SessionInput, others: readonly ConsultSessio
     }
     waveCapacity = capacity;
   }
-  const value = { label, weekdays, startTime: input.startTime, endTime: input.endTime, room, mode, slotMinutes, waveMinutes, waveCapacity };
+  const value = { label, weekdays, startTime: input.startTime, endTime: input.endTime, room, mode, slotMinutes, waveMinutes, waveCapacity, startDate, endDate, onDate };
   const blocks = sessionBlocks(value);
   const step = stepMinutes(value);
   const length = toMinutes(input.endTime) - toMinutes(input.startTime);
@@ -287,7 +372,7 @@ export function checkSession(input: SessionInput, others: readonly ConsultSessio
   if (clash) {
     return {
       ok: false,
-      message: `That overlaps your ${clash.label || "other"} session (${weekdaysLabel(clash.weekdays)}, ${clash.startTime}–${clash.endTime}).`,
+      message: `That overlaps your ${clash.label || "other"} session (${daysLabel(clash)}, ${clash.startTime}–${clash.endTime}).`,
     };
   }
   return { ok: true, value };
@@ -373,5 +458,5 @@ export function slotTimeLabel(slot: Pick<Slot, "time" | "endTime" | "mode">): st
 export function placesLabel(slot: Pick<Slot, "mode" | "capacity" | "booked">): string {
   if (slot.mode !== "wave") return "";
   const left = remainingPlaces(slot);
-  return left === 0 ? "Full" : `${left} of ${slot.capacity ?? 1} ${left === 1 ? "place" : "places"} left`;
+  return left === 0 ? "Full" : `${left} of ${slot.capacity ?? 1} places left`;
 }
