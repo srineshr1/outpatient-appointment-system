@@ -69,7 +69,7 @@ export function SessionForm({
   useEffect(() => report(formRef.current));
 
   return (
-    <form ref={formRef} action={action} onInput={(event) => report(event.currentTarget)} onChange={(event) => report(event.currentTarget)} className="group grid gap-5 md:grid-cols-2">
+    <form ref={formRef} action={action} onInput={(event) => report(event.currentTarget)} onChange={(event) => report(event.currentTarget)} className="group grid gap-4 md:grid-cols-2">
       <input type="hidden" name="id" value={defaults.id} />
       {state && !state.ok ? (
         <Notice tone="danger" role="alert" className="md:col-span-2">
@@ -84,7 +84,7 @@ export function SessionForm({
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ["recurring", "Recurring", "Every week on chosen days, optionally between two dates."],
+              ["recurring", "Weekly", "Every week on chosen days, optionally between two dates."],
               ["once", "One date", "A single date, for example an extra Saturday clinic."],
             ] as const
           ).map(([value, title, text]) => (
@@ -126,27 +126,44 @@ export function SessionForm({
       )}
       <fieldset className="md:col-span-2">
         <legend className="mb-2 text-callout font-semibold text-ink">How patients book this session</legend>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-stretch">
           {(
             [
               ["stream", "Stream", "One patient per fixed slot. Each slot can be booked once."],
               ["wave", "Wave", "The whole session is one wave. Up to a set number of patients, seen in token order."],
             ] as const
           ).map(([value, title, text]) => (
-            <label key={value} className="relative block cursor-pointer">
+            <label key={value} className="relative flex h-full cursor-pointer">
               <input type="radio" name="mode" value={value} checked={shown === value} onChange={() => setMode(value)} className="peer sr-only" />
-              <span className="block rounded-card p-4 shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent-soft peer-checked:shadow-[inset_0_0_0_2px_var(--color-accent)] peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+              <span className="flex h-full min-h-[6.75rem] w-full flex-col rounded-card p-4 shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent-soft peer-checked:shadow-[inset_0_0_0_2px_var(--color-accent)] peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
                 <span className="block text-body font-semibold text-ink">{title}</span>
-                <span className="mt-1 block text-callout text-ink-2">{text}</span>
+                <span className="mt-1 line-clamp-3 text-callout text-ink-2">{text}</span>
               </span>
             </label>
           ))}
         </div>
       </fieldset>
+      <fieldset className="md:col-span-2">
+        <legend className="mb-2 text-callout font-semibold text-ink">Session hours</legend>
+        <p className="mb-3 text-callout text-muted">When this clinic block runs that day — not the length of each patient visit.</p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field id={`${idPrefix}-start`} label="Session starts">
+            {({ id }) => <input id={id} name="startTime" type="time" step={300} defaultValue={v("startTime", defaults.startTime)} className="field tabular" />}
+          </Field>
+          <Field id={`${idPrefix}-end`} label="Session ends">
+            {({ id }) => <input id={id} name="endTime" type="time" step={300} defaultValue={v("endTime", defaults.endTime)} className="field tabular" />}
+          </Field>
+        </div>
+      </fieldset>
       {shown === "stream" ? (
-        <Field id={`${idPrefix}-slot`} label="Slot length" className="md:col-span-2">
-          {({ id }) => (
-            <select id={id} name="slotMinutes" defaultValue={v("slotMinutes", defaults.slotMinutes)} className="field">
+        <Field
+          id={`${idPrefix}-slot`}
+          label="Patient slot length"
+          hint="Splits the session hours into bookable slots (e.g. 09:00–12:00 with 20 min → 09:00, 09:20, …)."
+          className="md:col-span-2"
+        >
+          {({ id, describedBy }) => (
+            <select id={id} name="slotMinutes" defaultValue={v("slotMinutes", defaults.slotMinutes)} aria-describedby={describedBy} className="field">
               {STREAM_SLOT_MINUTES.map((minutes) => (
                 <option key={minutes} value={minutes}>
                   {minutes} minutes
@@ -162,12 +179,6 @@ export function SessionForm({
           )}
         </Field>
       )}
-      <Field id={`${idPrefix}-start`} label="Starts">
-        {({ id }) => <input id={id} name="startTime" type="time" step={300} defaultValue={v("startTime", defaults.startTime)} className="field tabular" />}
-      </Field>
-      <Field id={`${idPrefix}-end`} label="Ends">
-        {({ id }) => <input id={id} name="endTime" type="time" step={300} defaultValue={v("endTime", defaults.endTime)} className="field tabular" />}
-      </Field>
       <Field id={`${idPrefix}-room`} label="Room or clinic" className="md:col-span-2">
         {({ id }) => <input id={id} name="room" defaultValue={v("room", defaults.room)} maxLength={60} className="field" />}
       </Field>

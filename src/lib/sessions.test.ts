@@ -16,6 +16,7 @@ import {
   modeSummary,
   overriddenDates,
   sessionCalendar,
+  weekHourBounds,
   tokenOfHeld,
   waveSlotId,
 } from "./sessions";
@@ -254,6 +255,12 @@ describe("whole-session waves and one-off overrides", () => {
     ]);
   });
 
+
+  it("widens the week hour window to cover session times", () => {
+    expect(weekHourBounds([])).toEqual({ startHour: 8, endHour: 17 });
+    expect(weekHourBounds([{ startTime: "07:30", endTime: "18:15" }])).toEqual({ startHour: 7, endHour: 19 });
+    expect(weekHourBounds([{ startTime: "09:00", endTime: "12:00" }])).toEqual({ startHour: 8, endHour: 17 });
+  });
   it("shows every slot as a start–end range", () => {
     expect(slotTimeLabel({ time: "09:00", endTime: "09:30", mode: "stream" })).toBe("09:00–09:30");
   });

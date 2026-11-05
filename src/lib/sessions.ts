@@ -163,6 +163,23 @@ export function sessionCalendar(sessions: readonly ConsultSession[], first: stri
   return days;
 }
 
+/** Inclusive hour window that covers the given times, never narrower than floor–ceil (clinic day defaults). */
+export function weekHourBounds(
+  times: readonly { startTime: string; endTime: string }[],
+  floor = 8,
+  ceil = 17,
+): { startHour: number; endHour: number } {
+  let startHour = floor;
+  let endHour = ceil;
+  for (const { startTime, endTime } of times) {
+    if (!isTime(startTime) || !isTime(endTime) || startTime >= endTime) continue;
+    startHour = Math.min(startHour, Math.floor(toMinutes(startTime) / 60));
+    endHour = Math.max(endHour, Math.ceil(toMinutes(endTime) / 60));
+  }
+  if (endHour <= startHour) endHour = startHour + 1;
+  return { startHour, endHour };
+}
+
 /** The slots (stream) or waves (wave) one day of the session is cut into. */
 export function sessionBlocks(
   session: Pick<ConsultSession, "mode" | "startTime" | "endTime" | "slotMinutes" | "waveMinutes">,
