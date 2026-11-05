@@ -5,9 +5,9 @@ import { DoctorDirectory } from "@/components/directory/DoctorDirectory";
 import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { todayIso, now } from "@/lib/clock";
-import { findDoctor } from "@/lib/data";
+import { findDoctor, type Slot } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
-import { getDoctors, getUpcoming } from "@/lib/repository";
+import { getDoctors, getSlots, getUpcoming } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
 import { visitsFor } from "@/lib/visits";
 
@@ -25,7 +25,9 @@ export default async function BookPage() {
   if (!user) redirect(`/sign-in?next=${encodeURIComponent("/book")}`);
   if (user.role !== "patient") redirect("/dashboard");
 
-  const [doctors, upcoming, visits] = await Promise.all([getDoctors(), getUpcoming(), visitsFor(user)]);
+  const [doctors, upcoming, visits, allSlots] = await Promise.all([getDoctors(), getUpcoming(), visitsFor(user), getSlots()]);
+  const slots: Record<string, Slot[]> = {};
+  for (const slot of allSlots) (slots[slot.doctorId] ??= []).push(slot);
   const today = todayIso(now());
   const nextVisit = visits.find((visit) => visit.status === "booked" && visit.date >= today) ?? null;
   const nextDoctor = nextVisit ? findDoctor(nextVisit.doctorId) : null;
@@ -36,6 +38,8 @@ export default async function BookPage() {
       <DoctorDirectory
         doctors={doctors}
         upcoming={upcoming}
+        slots={slots}
+        signedIn
         labelledBy="book-title"
         heading={
           <PageHeading id="book-title" className="text-title3 font-bold text-ink md:text-title2">
@@ -45,7 +49,7 @@ export default async function BookPage() {
         lead={
           <>
             <p className="max-w-prose text-body text-ink-2">
-              Choose a doctor, then pick a time. You can book up to four weeks ahead.
+              Tap a doctor to see their week, then pick a time. You can book up to four weeks ahead.
             </p>
             {nextVisit && nextDoctor ? (
               <div className="flex flex-wrap items-center gap-4 rounded-sheet bg-surface p-4 shadow-card md:p-5">
