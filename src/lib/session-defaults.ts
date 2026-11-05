@@ -13,7 +13,6 @@ export interface SessionDefaults {
   room: string;
   mode: "stream" | "wave";
   slotMinutes: number;
-  waveMinutes: number;
   waveCapacity: number;
 }
 
@@ -31,7 +30,6 @@ export function defaultsFor(session: ConsultSession | null, room: string): Sessi
     room: session?.room ?? room,
     mode: session?.mode ?? "stream",
     slotMinutes: session?.slotMinutes ?? 20,
-    waveMinutes: session?.waveMinutes ?? 60,
     waveCapacity: session?.waveCapacity ?? 6,
   };
 }
