@@ -16,6 +16,7 @@ import { getStore } from "../store";
 import { channelFor } from "./channels";
 import { getDoctorPrefs, prefForKind } from "./doctor-prefs";
 import { reminderSchedule, resolveOffsets } from "./reminders";
+import { SMS_KINDS, renderSms, smsMode } from "./sms";
 import { renderNotice } from "./templates";
 import type { ChannelName, NoticeData, NotificationKind } from "./types";
 
@@ -42,19 +43,23 @@ export function noticeData(visit: AppointmentRecord, firstName: string, extra: P
 async function activeChannels(ops: OpsStore): Promise<ChannelName[]> {
   const raw = await ops.getSetting("notification_channels");
   const list = Array.isArray(raw) ? raw.filter((value): value is ChannelName => value === "email" || value === "sms" || value === "whatsapp") : [];
-  return list.length > 0 ? list : ["email"];
+  const active: ChannelName[] = list.length > 0 ? list : ["email"];
+  // Text messages follow SMS_MODE (mock by default, so nothing is spent) unless switched off.
+  if (smsMode() !== "off" && !active.includes("sms")) active.push("sms");
+  return smsMode() === "off" ? active.filter((name) => name !== "sms") : active;
 }
 
 interface Contact {
   firstName: string;
   email: string | null;
+  mobile: string | null;
 }
 
 async function contactFor(visit: AppointmentRecord): Promise<Contact | null> {
   if (!visit.patientUserId) return null;
   const user = await (await getStore()).getUserById(visit.patientUserId);
   if (!user) return null;
-  return { firstName: salutation(user.name), email: user.email };
+  return { firstName: salutation(user.name), email: user.email, mobile: user.mobile || null };
 }
 
 export interface NoticeOptions {
@@ -62,6 +67,14 @@ export interface NoticeOptions {
   dedupe: string;
   scheduledFor?: Date;
   extra?: Partial<NoticeData>;
+}
+
+/** Texts cost money, so only some notices go by SMS, and only the last (shortest) reminder. */
+async function smsWanted(kind: NotificationKind, options: NoticeOptions): Promise<boolean> {
+  if (!SMS_KINDS.includes(kind)) return false;
+  if (kind !== REMINDER_KIND) return true;
+  const offsets = await reminderOffsets();
+  return offsets.length > 0 && options.extra?.offsetMinutes === Math.min(...offsets);
 }
 
 /** Queue a notice to the visit's patient on every active channel. Returns whether anything was queued. */
@@ -72,7 +85,8 @@ export async function queueNotice(kind: NotificationKind, visit: AppointmentReco
     const ops = await getOps();
     let queued = false;
     for (const channel of await activeChannels(ops)) {
-      const recipient = channel === "email" ? contact.email : visit.patientMobile;
+      if (channel === "sms" && !(await smsWanted(kind, options))) continue;
+      const recipient = channel === "email" ? contact.email : visit.patientMobile || contact.mobile;
       if (!recipient) continue;
       const result = await ops.enqueueNotification({
         dedupeKey: `${options.dedupe}:${channel}`,
@@ -279,7 +293,9 @@ async function deliver(row: NotificationRecord, ops: OpsStore, store: Awaited<Re
     await ops.finishNotification(row.id, "skipped", `Unknown channel ${row.channel}`);
     return "skipped";
   }
-  const result = await channel.send(row.recipient, renderNotice(row.kind as NotificationKind, data));
+  const message = renderNotice(row.kind as NotificationKind, data);
+  if (row.channel === "sms") message.sms = renderSms(row.kind as NotificationKind, data);
+  const result = await channel.send(row.recipient, message);
   if (result === "sent") {
     await ops.finishNotification(row.id, "sent");
     return "sent";

@@ -36,6 +36,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [name, setName] = useState("");
+  const [mobile, setMobile] = useState("");
   const [role, setRole] = useState<SignupRole>("patient");
   const [error, setError] = useState<string | null>(notice);
   const [sent, setSent] = useState<string | null>(null);
@@ -86,7 +87,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
       return;
     }
     run(role === "doctor" ? "Creating your doctor account…" : "Creating your account…", () =>
-      signUpWithPassword({ name, email, password, confirm, role, next: nextPath }),
+      signUpWithPassword({ name, email, password, confirm, role, next: nextPath, mobile }),
     );
   }
 
@@ -165,6 +166,18 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
         </fieldset>
         <TextField id="name" label="Full name" autoComplete="name" value={name} onChange={setName} pending={pending} error={error} maxLength={100} autoFocus />
         <TextField id="email" label="Email" type="email" autoComplete="email" value={email} onChange={setEmail} pending={pending} error={error} />
+        <TextField
+          id="mobile"
+          label="Mobile (optional)"
+          type="tel"
+          autoComplete="tel"
+          value={mobile}
+          onChange={setMobile}
+          pending={pending}
+          error={error}
+          hint="For booking texts and reminders, e.g. +91 98765 43210."
+          maxLength={20}
+        />
         <TextField
           id="password"
           label="Password"
@@ -321,7 +334,7 @@ function TextField({
   onChange: (value: string) => void;
   pending: boolean;
   error: string | null;
-  type?: "text" | "email" | "password";
+  type?: "text" | "email" | "password" | "tel";
   autoComplete?: string;
   autoFocus?: boolean;
   maxLength?: number;

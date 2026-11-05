@@ -1,4 +1,5 @@
 import { sendNotice } from "../mailer";
+import { sendSms } from "./sms";
 import type { ChannelName, NotificationChannel, RenderedMessage, SendResult } from "./types";
 
 export const emailChannel: NotificationChannel = {
@@ -23,7 +24,7 @@ function stub(name: "sms" | "whatsapp"): NotificationChannel {
 
 const channels: Record<ChannelName, NotificationChannel> = {
   email: emailChannel,
-  sms: stub("sms"),
+  sms: { name: "sms", send: (recipient, message) => sendSms(recipient, message.sms ?? message.subject) },
   whatsapp: stub("whatsapp"),
 };
 

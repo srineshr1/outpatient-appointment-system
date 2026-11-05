@@ -12,6 +12,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
-    env: { TZ: "America/New_York" },
+    env: { TZ: "America/New_York", SMS_MODE: "off" },
   },
 });
