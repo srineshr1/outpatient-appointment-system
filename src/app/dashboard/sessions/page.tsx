@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { SessionForm } from "@/components/profile/SessionForm";
 import { defaultsFor } from "@/lib/session-defaults";
 import { SessionCard } from "@/components/profile/SessionList";
-import { SessionCalendar } from "@/components/profile/SessionCalendar";
+import { SessionPlanner } from "@/components/profile/SessionPlanner";
 import { todayIso } from "@/lib/clock";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { Notice } from "@/components/ui/Card";
@@ -37,7 +36,7 @@ export default async function SessionsPage({
   const busy = query.notice === "busy";
 
   return (
-    <div className="mx-auto max-w-3xl px-5 pt-8 pb-20 md:px-8 md:pt-12">
+    <div className="mx-auto max-w-6xl px-5 pt-8 pb-20 md:px-8 md:pt-12">
       <Link href="/dashboard" className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-accent hover:bg-accent-soft">
         Clinic book
       </Link>
@@ -74,23 +73,19 @@ export default async function SessionsPage({
       ) : null}
 
       {status.sessions.length > 0 ? (
-        <ul className="mt-8 grid gap-4" aria-label="Your sessions">
+        <ul className="mt-8 grid gap-4 lg:grid-cols-2" aria-label="Your sessions">
           {status.sessions.map((session) => (
             <SessionCard key={session.id} session={session} room={room} />
           ))}
         </ul>
       ) : null}
 
-      {status.sessions.length > 0 ? <SessionCalendar sessions={status.sessions} today={todayIso()} /> : null}
-
-      <section className="mt-10 rounded-card bg-surface p-5 shadow-card md:p-6" aria-labelledby="add-session">
-        <h2 id="add-session" className="text-title3 font-semibold text-ink">
-          {status.sessions.length > 0 ? "Add another session" : "Add your first session"}
-        </h2>
-        <div className="mt-5">
-          <SessionForm defaults={defaultsFor(null, room)} submitLabel="Add session" />
-        </div>
-      </section>
+      <SessionPlanner
+        sessions={status.sessions}
+        defaults={defaultsFor(null, room)}
+        today={todayIso()}
+        title={status.sessions.length > 0 ? "Add another session" : "Add your first session"}
+      />
     </div>
   );
 }

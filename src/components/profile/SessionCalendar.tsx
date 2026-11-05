@@ -18,15 +18,28 @@ function monthTitle(iso: string): string {
  * A month-by-month preview of when the doctor's sessions run. One-off sessions replace the weekly
  * sessions on their date, so replaced weekly sessions are shown struck through.
  */
-export function SessionCalendar({ sessions, today, months = 2 }: { sessions: readonly ConsultSession[]; today: string; months?: number }) {
+export function SessionCalendar({
+  sessions,
+  draft = null,
+  today,
+  months = 2,
+}: {
+  sessions: readonly ConsultSession[];
+  /** The session being added, previewed live (dashed outline). */
+  draft?: ConsultSession | null;
+  today: string;
+  months?: number;
+}) {
+  const valid = draft && /^\d\d:\d\d$/.test(draft.startTime) && /^\d\d:\d\d$/.test(draft.endTime) && draft.startTime < draft.endTime;
+  const all = valid ? [...sessions, draft] : sessions;
   const starts = Array.from({ length: months }, (_, index) => monthStart(today, index));
   return (
-    <section aria-labelledby="session-calendar" className="mt-8 rounded-card bg-surface p-5 shadow-card md:p-6">
+    <section aria-labelledby="session-calendar" className="rounded-card bg-surface p-5 shadow-card md:p-6">
       <h2 id="session-calendar" className="text-title3 font-semibold text-ink">
         Calendar preview
       </h2>
       <p className="mt-1 text-callout text-muted">
-        How your sessions fall on the dates ahead. A one-off session takes priority over weekly sessions on its date.
+        How your sessions fall on the dates ahead, with the session you are adding shown live. A one-off session takes priority over weekly sessions on its date.
       </p>
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-2" aria-label="Key">
         <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-accent-soft ring-1 ring-accent/40" /> Stream</li>
@@ -34,11 +47,12 @@ export function SessionCalendar({ sessions, today, months = 2 }: { sessions: rea
         <li className="flex items-center gap-1.5"><span className="font-bold">★</span> One date</li>
         <li className="flex items-center gap-1.5"><span>↻</span> Weekly</li>
         <li className="flex items-center gap-1.5"><span className="line-through">Replaced</span> by a one-off session</li>
+        <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm outline-2 outline-dashed outline-ink" /> New session (preview)</li>
       </ul>
       {starts.map((first) => {
         const last = addDays(monthStart(first, 1), -1);
         const gridStart = mondayOf(first);
-        const days = sessionCalendar(sessions, first, last);
+        const days = sessionCalendar(all, first, last);
         const cells: string[] = [];
         for (let day = gridStart; day <= last || cells.length % 7 !== 0; day = addDays(day, 1)) cells.push(day);
         return (
@@ -64,9 +78,12 @@ export function SessionCalendar({ sessions, today, months = 2 }: { sessions: rea
                         title={`${session.label || "Session"} ${session.startTime}–${session.endTime}${replaced ? " (replaced by a one-off session)" : ""}`}
                         className={`tabular mt-0.5 rounded-sm px-1 text-[11px] leading-tight break-words ${
                           session.mode === "wave" ? "bg-amber-100 text-amber-900" : "bg-accent-soft text-accent"
-                        } ${replaced ? "line-through opacity-50" : ""} ${session.onDate ? "font-bold" : ""}`}
+                        } ${replaced ? "line-through opacity-50" : ""} ${session.onDate ? "font-bold" : ""} ${
+                          session.id === "__draft__" ? "outline-2 -outline-offset-2 outline-dashed outline-ink" : ""
+                        }`}
+                        data-draft={session.id === "__draft__" ? "true" : undefined}
                       >
-                        {session.onDate ? "★" : "↻"} {session.startTime}–<wbr />{session.endTime}
+                        {session.id === "__draft__" ? "New " : ""}{session.onDate ? "★" : "↻"} {session.startTime}–<wbr />{session.endTime}
                       </div>
                     ))}
                   </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { PendingButton } from "@/components/ui/PendingButton";
@@ -11,7 +11,43 @@ import type { SessionDefaults } from "@/lib/session-defaults";
 import { saveSession } from "@/server/profile-actions";
 
 /** Add or change one consulting session: when it runs first, then how patients book, then the hours. */
-export function SessionForm({ defaults, submitLabel }: { defaults: SessionDefaults; submitLabel: string }) {
+/** Read the form as it stands into a draft session, for the live calendar preview. */
+function draftFrom(form: HTMLFormElement): ConsultSession {
+  const data = new FormData(form);
+  const text = (key: string) => String(data.get(key) ?? "");
+  const num = (key: string) => (text(key) ? Number(text(key)) : null);
+  const once = text("kind") === "once";
+  const mode = text("mode") === "wave" ? "wave" : "stream";
+  return {
+    id: "__draft__",
+    doctorId: "",
+    label: text("label") || "New session",
+    weekdays: once ? [] : data.getAll("weekdays").map(Number),
+    startTime: text("startTime"),
+    endTime: text("endTime"),
+    room: text("room"),
+    mode,
+    slotMinutes: mode === "stream" ? num("slotMinutes") : null,
+    waveMinutes: null,
+    waveCapacity: mode === "wave" ? num("waveCapacity") : null,
+    startDate: once ? null : text("startDate") || null,
+    endDate: once ? null : text("endDate") || null,
+    onDate: once ? text("onDate") || null : null,
+    archivedAt: null,
+  } as ConsultSession;
+}
+
+export function SessionForm({
+  defaults,
+  submitLabel,
+  onDraft,
+}: {
+  defaults: SessionDefaults;
+  submitLabel: string;
+  /** Called with the draft whenever a field changes (live preview). */
+  onDraft?: (draft: ConsultSession) => void;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
   const [state, action] = useActionState(saveSession, null);
   const typedDays = state?.values?.weekdays ? state.values.weekdays.split(",").filter(Boolean).map(Number) : defaults.weekdays;
   const [mode, setMode] = useState<"stream" | "wave">(defaults.mode);
@@ -20,9 +56,20 @@ export function SessionForm({ defaults, submitLabel }: { defaults: SessionDefaul
   const shown = state?.values?.mode === "wave" || state?.values?.mode === "stream" ? state.values.mode : mode;
   const v = (key: string, fallback: string | number) => state?.values?.[key] ?? String(fallback);
   const idPrefix = `session-${defaults.id || "new"}`;
+  // Report after every render too: switching kind or mode swaps fields without a change event.
+  const lastDraft = useRef("");
+  const report = (form: HTMLFormElement | null) => {
+    if (!onDraft || !form) return;
+    const draft = draftFrom(form);
+    const key = JSON.stringify(draft);
+    if (key === lastDraft.current) return;
+    lastDraft.current = key;
+    onDraft(draft);
+  };
+  useEffect(() => report(formRef.current));
 
   return (
-    <form action={action} className="group grid gap-5 md:grid-cols-2">
+    <form ref={formRef} action={action} onInput={(event) => report(event.currentTarget)} onChange={(event) => report(event.currentTarget)} className="group grid gap-5 md:grid-cols-2">
       <input type="hidden" name="id" value={defaults.id} />
       {state && !state.ok ? (
         <Notice tone="danger" role="alert" className="md:col-span-2">
