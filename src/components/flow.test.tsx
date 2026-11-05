@@ -89,13 +89,12 @@ describe("ScheduleView", () => {
     renderWithProviders(<ScheduleView doctor={cho} slots={await getSlots("cho")} initialWeek="2026-10-26" signedIn />);
 
     expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled();
-    // Dr Cho's 09:30 slot today has passed at 13:40.
-    expect(screen.getAllByRole("radio", { name: /09:30–\d\d:\d\d, closed/ })[0]).toBeDisabled();
-
-    const open = screen.getAllByRole("radio").find((radio) => !(radio as HTMLInputElement).disabled)!;
-    await userEvent.click(open);
+    // Dr Cho's 09:30 slot today has passed at 13:40: listed in the dropdown but disabled, shown as a range.
+    expect(screen.getAllByRole("option", { name: /^09:30–\d\d:\d\d · closed/ })[0]).toBeDisabled();
+    const open = [...(screen.getByRole("combobox") as HTMLSelectElement).options].find((option) => option.value && !option.disabled)!;
+    await userEvent.selectOptions(screen.getByRole("combobox"), open.value);
     expect(await screen.findByRole("button", { name: "Continue" })).toBeInTheDocument();
-    await waitFor(() => expect(window.sessionStorage.getItem(STORAGE_KEY)).toContain((open as HTMLInputElement).value));
+    await waitFor(() => expect(window.sessionStorage.getItem(STORAGE_KEY)).toContain(open.value));
 
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(router.push).toHaveBeenCalledWith("/book/details");
@@ -104,12 +103,12 @@ describe("ScheduleView", () => {
   it("asks a signed-out patient to sign in, keeping the time", async () => {
     const cho = doctors.find((doctor) => doctor.id === "cho")!;
     renderWithProviders(<ScheduleView doctor={cho} slots={await getSlots("cho")} initialWeek="2026-10-26" />);
-    const open = screen.getAllByRole("radio").find((radio) => !(radio as HTMLInputElement).disabled)!;
-    await userEvent.click(open);
+    const open = [...(screen.getByRole("combobox") as HTMLSelectElement).options].find((option) => option.value && !option.disabled)!;
+    await userEvent.selectOptions(screen.getByRole("combobox"), open.value);
     expect(await screen.findByText(/Next, sign in/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(router.push).toHaveBeenCalledWith("/sign-in?next=%2Fbook%2Fdetails");
-    expect(window.sessionStorage.getItem(STORAGE_KEY)).toContain((open as HTMLInputElement).value);
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toContain(open.value);
   });
 
   it("moves between weeks", async () => {

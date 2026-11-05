@@ -19,9 +19,10 @@ async function expectAccessible(page: Page) {
 async function chooseFirstOpenTime(page: Page) {
   // The visible week may be full; step forward until something is open.
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const open = page.locator('input[name="slot"]:not([disabled])');
-    if ((await open.count()) > 0) {
-      await open.first().locator("..").click();
+    const select = page.locator('select[name="slot"]:not([disabled])');
+    if ((await select.count()) > 0) {
+      const value = await select.locator("option:not([disabled])").first().getAttribute("value");
+      await select.selectOption(value!);
       return;
     }
     await page.getByRole("button", { name: "Next week" }).click();
@@ -202,8 +203,9 @@ test("keyboard-only booking", async ({ page, isMobile }) => {
   await page.goto("/doctors/cho");
   await page.keyboard.press("Tab"); // skip link
   await expect(page.getByRole("link", { name: "Skip to main content" })).toBeFocused();
-  await page.locator('input[name="slot"]:not([disabled])').first().focus();
-  await page.keyboard.press("Space");
+  const select = page.locator('select[name="slot"]:not([disabled])');
+  await select.focus();
+  await select.selectOption((await select.locator("option:not([disabled])").first().getAttribute("value"))!);
   await page.getByRole("button", { name: "Continue" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/book\/details$/);

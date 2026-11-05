@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
@@ -53,6 +53,7 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
   const { now, window } = useClock();
   const [week, setWeek] = useState(initialWeek);
   const [direction, setDirection] = useState<1 | -1>(1);
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
   const flashRef = useRef<HTMLDivElement>(null);
 
   const held =
@@ -92,6 +93,13 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
   const weekSlots = slots.filter((slot) => slot.date >= week && slot.date <= lastDay);
   const openThisWeek = openSlots(weekSlots, [], now);
   const upcoming = openSlots(slots, [], now).find((slot) => slot.date > lastDay) ?? null;
+  const firstOpenDay = days.find((iso) => openSlots(slotsOn(weekSlots, doctor.id, iso), [], now).length > 0);
+  const shownDay =
+    pickedDay && days.includes(pickedDay)
+      ? pickedDay
+      : held && days.includes(held.date)
+        ? held.date
+        : (firstOpenDay ?? days[0]!);
 
   return (
     <div className="mx-auto max-w-page px-5 pt-6 pb-16 md:px-8 md:pt-10">
@@ -227,26 +235,17 @@ export function ScheduleView({ doctor, slots, initialWeek, signedIn = false, all
                 </Notice>
               ) : null}
 
-              <LayoutGroup id="slots">
-                <fieldset>
-                  <legend className="sr-only">
-                    Times with {doctor.name}, {formatWeekRange(week, days.length)}
-                  </legend>
-                  <div className="grid gap-3">
-                    {days.map((iso) => (
-                      <DayCard
-                        key={iso}
-                        iso={iso}
-                        today={window.today}
-                        now={now}
-                        items={slotsOn(weekSlots, doctor.id, iso)}
-                        heldId={held?.id ?? null}
-                        onChoose={choose}
-                      />
-                    ))}
-                  </div>
-                </fieldset>
-              </LayoutGroup>
+              <DayAndTimePicker
+                doctorName={doctor.name}
+                days={days}
+                today={window.today}
+                now={now}
+                slotsFor={(iso) => slotsOn(weekSlots, doctor.id, iso)}
+                day={shownDay}
+                onDay={setPickedDay}
+                held={held}
+                onChoose={choose}
+              />
             </motion.div>
           </AnimatePresence>
         </div>
@@ -324,49 +323,88 @@ function WeekButton({
   );
 }
 
-interface DayCardProps {
-  iso: string;
+interface PickerProps {
+  doctorName: string;
+  days: string[];
   today: string;
   now: Date;
-  items: Slot[];
-  heldId: string | null;
+  slotsFor: (iso: string) => Slot[];
+  day: string;
+  onDay: (iso: string) => void;
+  held: Slot | null;
   onChoose: (slot: Slot) => void;
 }
 
-function DayCard({ iso, today, now, items, heldId, onChoose }: DayCardProps) {
+/** Pick a day of the week, then a time range from a dropdown. Closed and booked times stay listed, disabled. */
+function DayAndTimePicker({ doctorName, days, today, now, slotsFor, day, onDay, held, onChoose }: PickerProps) {
+  const items = slotsFor(day);
   const statuses = items.map((slot) => slotStatus(slot, [], now));
   const open = statuses.filter((status) => status === "open").length;
-  const isToday = iso === today;
-  const sameDayClosed = isToday && items.length > 0 && open === 0 && statuses.some((status) => status === "past");
+  const sameDayClosed = day === today && items.length > 0 && open === 0 && statuses.some((status) => status === "past");
+  const heldHere = held && items.some((slot) => slot.id === held.id) ? held.id : "";
+  const selectId = `slot-${day}`;
 
   return (
-    <div className="rounded-card bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
-      <div className="mb-3 flex items-baseline justify-between gap-3 md:mb-0 md:block md:w-52 md:shrink-0">
-        <h3 className="text-body font-semibold text-ink">
-          {weekdayLong(iso)} {dayOfMonth(iso)} {monthLong(iso)}
-        </h3>
-        <p className="mt-0.5 flex items-center gap-2 text-callout text-muted">
-          {isToday ? (
-            <span className="rounded-full bg-accent-soft px-2 py-px text-caption font-semibold text-accent">Today</span>
-          ) : null}
-          <span className="tabular">{items.length === 0 ? "Not in clinic" : `${open} available`}</span>
-        </p>
-      </div>
-      <div className="min-w-0 flex-1">
+    <div className="rounded-card bg-surface p-4 shadow-card md:p-5">
+      <fieldset>
+        <legend className="mb-2 text-callout font-semibold text-ink">1. Choose a day</legend>
+        <div className="flex flex-wrap gap-2">
+          {days.map((iso) => {
+            const dayItems = slotsFor(iso);
+            const free = dayItems.filter((slot) => slotStatus(slot, [], now) === "open").length;
+            return (
+              <label key={iso} className="relative cursor-pointer">
+                <input type="radio" name="day" value={iso} checked={iso === day} onChange={() => onDay(iso)} className="peer sr-only" />
+                <span
+                  className={`flex min-h-14 min-w-24 flex-col items-center justify-center rounded-field px-3 py-1 text-callout shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55 ${
+                    free ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  <span className="font-semibold">
+                    {weekdayLong(iso).slice(0, 3)} {dayOfMonth(iso)}
+                    {iso === today ? " · Today" : ""}
+                  </span>
+                  <span className="tabular text-caption">{dayItems.length === 0 ? "No clinic" : `${free} open`}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <div className="mt-5">
+        <label htmlFor={selectId} className="mb-2 block text-callout font-semibold text-ink">
+          2. Choose a time on {weekdayLong(day)} {dayOfMonth(day)} {monthLong(day)}
+        </label>
         {items.length === 0 ? (
-          <p className="text-callout text-muted md:pt-2">No clinic this day.</p>
+          <p className="text-callout text-muted">No clinic with {doctorName} this day.</p>
         ) : (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-            {items.map((slot, index) => (
-              <SlotPill
-                key={slot.id}
-                slot={slot}
-                status={statuses[index]!}
-                checked={slot.id === heldId}
-                onChoose={onChoose}
-              />
-            ))}
-          </div>
+          <select
+            id={selectId}
+            name="slot"
+            value={heldHere}
+            disabled={open === 0}
+            onChange={(event) => {
+              const slot = items.find((item) => item.id === event.target.value);
+              if (slot) onChoose(slot);
+            }}
+            className="field tabular w-full md:max-w-md"
+          >
+            <option value="" disabled>
+              {open === 0 ? "No times left this day" : `Choose a time (${open} open)`}
+            </option>
+            {items.map((slot, index) => {
+              const status = statuses[index]!;
+              const places = slot.mode === "wave" ? placesLabel(slot) : "";
+              const note = status === "open" ? (places ? ` · Wave, ${places}` : "") : ` · ${STATUS_TEXT[status]}`;
+              return (
+                <option key={slot.id} value={slot.id} disabled={status !== "open"}>
+                  {slotTimeLabel(slot)}
+                  {note}
+                </option>
+              );
+            })}
+          </select>
         )}
         {sameDayClosed ? (
           <p className="mt-3 text-callout text-muted">
@@ -375,55 +413,5 @@ function DayCard({ iso, today, now, items, heldId, onChoose }: DayCardProps) {
         ) : null}
       </div>
     </div>
-  );
-}
-
-function SlotPill({
-  slot,
-  status,
-  checked,
-  onChoose,
-}: {
-  slot: Slot;
-  status: SlotStatus;
-  checked: boolean;
-  onChoose: (slot: Slot) => void;
-}) {
-  const open = status === "open";
-  return (
-    <label className={`relative block ${open ? "cursor-pointer" : "cursor-not-allowed"}`}>
-      <input
-        type="radio"
-        name="slot"
-        value={slot.id}
-        checked={checked}
-        disabled={!open}
-        onChange={() => onChoose(slot)}
-        className="peer sr-only"
-      />
-      <motion.span
-        whileTap={open ? { scale: 0.95 } : undefined}
-        transition={spring.press}
-        className={`tabular relative isolate flex ${slot.mode === "wave" ? "min-h-14 flex-col py-1" : "h-11"} items-center justify-center rounded-field text-callout font-medium transition-colors duration-200 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55 ${
-          checked
-            ? "text-white"
-            : open
-              ? "text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-accent-soft hover:shadow-[inset_0_0_0_1px_var(--color-accent)]"
-              : "bg-fill text-muted line-through decoration-1"
-        }`}
-      >
-        {checked ? (
-          <motion.span
-            layoutId="slot-highlight"
-            transition={spring.snap}
-            aria-hidden="true"
-            className="absolute inset-0 -z-10 rounded-field bg-accent"
-          />
-        ) : null}
-        {slotTimeLabel(slot)}
-        {slot.mode === "wave" ? <span className={`text-caption font-normal ${checked ? "text-white/90" : "text-muted"}`}>{placesLabel(slot)}</span> : null}
-        {open ? null : <span className="sr-only">, {STATUS_TEXT[status]}</span>}
-      </motion.span>
-    </label>
   );
 }
