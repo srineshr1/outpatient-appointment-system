@@ -523,7 +523,11 @@ export class SqliteClinicStore implements ClinicStore {
     // Columns added after the first release. Older databases get them here.
     this.addColumn("users", "disabled_at", "TEXT");
     this.addColumn("users", "sessions_revoked_at", "TEXT");
-    this.addColumn("users", "verified_at", "TEXT");
+    // Doctors already here when verification arrived count as verified, as in the Supabase migration.
+    if (!this.columns("users").has("verified_at")) {
+      this.addColumn("users", "verified_at", "TEXT");
+      this.db.exec("UPDATE users SET verified_at = COALESCE(created_at, datetime('now')) WHERE role = 'doctor'");
+    }
     this.addColumn("users", "doctor_room", "TEXT");
     this.addColumn("users", "doctor_interest", "TEXT");
     this.addColumn("consult_sessions", "start_date", "TEXT");
