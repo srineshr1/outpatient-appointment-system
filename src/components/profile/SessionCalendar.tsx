@@ -216,6 +216,8 @@ export function SessionCalendar({
               >
                 {entries.map(({ session, replaced }) => {
                   const isDraft = session.id === DRAFT_ID;
+                  // When the draft lands on a day that already has a session, nudge it right so both stay readable.
+                  const shareDay = isDraft && entries.some((entry) => entry.session.id !== DRAFT_ID && !entry.replaced);
                   const wave = session.mode === "wave";
                   const label = barLabel(session, isDraft);
                   return (
@@ -225,15 +227,15 @@ export function SessionCalendar({
                       aria-label={replaced ? `${label}, replaced by a one-off session` : label}
                       data-draft={isDraft ? "true" : undefined}
                       data-replaced={replaced ? "true" : undefined}
-                      className={`absolute right-1 left-1 overflow-hidden rounded-xl border-l-4 px-2.5 py-1.5 text-[12px] leading-snug ${
+                      className={`absolute right-1 overflow-hidden rounded-xl px-2.5 py-1.5 text-[12px] leading-snug ${
                         isDraft
                           ? wave
-                            ? "z-[3] border border-dashed border-l-4 border-amber-400 bg-amber-50/90 text-amber-900"
-                            : "z-[3] border border-dashed border-l-4 border-accent/60 bg-accent-soft/80 text-accent"
+                            ? "z-[3] border border-dashed border-amber-400 bg-amber-50/95 text-amber-900 shadow-sm"
+                            : "z-[3] border border-dashed border-accent/60 bg-white/95 text-accent shadow-sm"
                           : wave
-                            ? "z-[2] border-amber-500 bg-amber-100 text-amber-950 shadow-sm"
-                            : "z-[2] border-accent bg-accent-soft text-ink shadow-sm"
-                      } ${replaced ? "z-[1] left-[30%] opacity-50 line-through" : ""}`}
+                            ? "z-[2] border-l-4 border-amber-500 bg-amber-100 text-amber-950 shadow-sm"
+                            : "z-[2] border-l-4 border-accent bg-accent-soft text-ink shadow-sm"
+                      } ${replaced ? "z-[1] left-[30%] opacity-50 line-through" : ""} ${shareDay ? "left-[40%]" : replaced ? "" : "left-1"}`}
                       style={barStyle(session.startTime, session.endTime)}
                     >
                       <span className="block truncate font-semibold">
@@ -261,7 +263,7 @@ export function SessionCalendar({
           <span className="h-3 w-3 rounded border-l-4 border-amber-500 bg-amber-100" aria-hidden="true" /> Wave
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded border border-dashed border-accent/60 bg-accent-soft/80" aria-hidden="true" /> Draft
+          <span className="h-3 w-3 rounded border border-dashed border-accent/60 bg-white" aria-hidden="true" /> Draft
         </li>
         <li className="line-through">Replaced by a one-off</li>
       </ul>
