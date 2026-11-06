@@ -39,6 +39,7 @@ interface UserRow {
   created_at: string | null;
   disabled_at: string | null;
   sessions_revoked_at: string | null;
+  verified_at?: string | null;
   doctor_room?: string | null;
   doctor_interest?: string | null;
 }
@@ -185,6 +186,7 @@ function toUser(row: UserRow): StoredUser {
     createdAt: row.created_at ?? "",
     disabledAt: row.disabled_at,
     sessionsRevokedAt: row.sessions_revoked_at,
+    verifiedAt: row.verified_at ?? null,
     ...(row.doctor_room ? { doctorRoom: row.doctor_room } : {}),
     ...(row.doctor_interest ? { doctorInterest: row.doctor_interest } : {}),
   };
@@ -521,6 +523,11 @@ export class SqliteClinicStore implements ClinicStore {
     // Columns added after the first release. Older databases get them here.
     this.addColumn("users", "disabled_at", "TEXT");
     this.addColumn("users", "sessions_revoked_at", "TEXT");
+    // Doctors already here when verification arrived count as verified, as in the Supabase migration.
+    if (!this.columns("users").has("verified_at")) {
+      this.addColumn("users", "verified_at", "TEXT");
+      this.db.exec("UPDATE users SET verified_at = COALESCE(created_at, datetime('now')) WHERE role = 'doctor'");
+    }
     this.addColumn("users", "doctor_room", "TEXT");
     this.addColumn("users", "doctor_interest", "TEXT");
     this.addColumn("consult_sessions", "start_date", "TEXT");
@@ -583,6 +590,7 @@ export class SqliteClinicStore implements ClinicStore {
       doctorId: "doctor_id",
       disabledAt: "disabled_at",
       sessionsRevokedAt: "sessions_revoked_at",
+      verifiedAt: "verified_at",
       doctorRoom: "doctor_room",
       doctorInterest: "doctor_interest",
       mobile: "mobile",

@@ -322,7 +322,17 @@ function CardBody({ doctor, next, today, action }: { doctor: Doctor; next: Slot 
           className="transition-transform duration-300 ease-out-quint group-hover:scale-105 group-hover:-rotate-2"
         />
         <span className="min-w-0 flex-1">
-          <span className="block text-title3 font-bold text-ink">{doctor.name}</span>
+          <span className="flex flex-wrap items-center gap-2 text-title3 font-bold text-ink">
+            {doctor.name}
+            {doctor.verified ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-[#e2f1e6] px-2 py-0.5 text-caption font-bold text-[#215631]"
+                title="Verified by the practice"
+              >
+                ✓ Verified
+              </span>
+            ) : null}
+          </span>
           <span className="mt-1.5 inline-flex rounded-full bg-accent-soft px-2.5 py-0.5 text-caption font-bold text-accent">
             {doctor.interest}
           </span>

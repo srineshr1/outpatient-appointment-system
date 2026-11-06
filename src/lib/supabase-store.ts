@@ -46,6 +46,7 @@ interface UserRow {
   created_at: string | null;
   disabled_at: string | null;
   sessions_revoked_at: string | null;
+  verified_at?: string | null;
   doctor_room: string | null;
   doctor_interest: string | null;
 }
@@ -205,6 +206,7 @@ function toUser(row: UserRow): StoredUser {
     createdAt: row.created_at ?? "",
     disabledAt: row.disabled_at,
     sessionsRevokedAt: row.sessions_revoked_at,
+    verifiedAt: row.verified_at ?? null,
     ...(row.doctor_room ? { doctorRoom: row.doctor_room } : {}),
     ...(row.doctor_interest ? { doctorInterest: row.doctor_interest } : {}),
   };
@@ -486,6 +488,7 @@ export class SupabaseClinicStore implements ClinicStore {
       doctorId: "doctor_id",
       disabledAt: "disabled_at",
       sessionsRevokedAt: "sessions_revoked_at",
+      verifiedAt: "verified_at",
       doctorRoom: "doctor_room",
       doctorInterest: "doctor_interest",
       mobile: "mobile",

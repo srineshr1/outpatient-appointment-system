@@ -37,6 +37,8 @@ export interface UserAccount extends PublicUser {
   disabledAt: string | null;
   /** Sessions that began before this instant are no longer accepted ("sign out everywhere"). */
   sessionsRevokedAt: string | null;
+  /** Doctors only: set when an admin has verified them. Patients can only book verified doctors. */
+  verifiedAt: string | null;
   /** Doctors with their own book: the room shown to patients. Empty or missing uses the default. */
   doctorRoom?: string;
   /** Doctors with their own book: the special interest shown to patients. */
@@ -70,7 +72,7 @@ export interface NewUser {
 export type UserPatch = Partial<
   Pick<
     UserAccount,
-    "name" | "role" | "doctorId" | "disabledAt" | "sessionsRevokedAt" | "doctorRoom" | "doctorInterest" | "mobile" | "dob"
+    "name" | "role" | "doctorId" | "disabledAt" | "sessionsRevokedAt" | "verifiedAt" | "doctorRoom" | "doctorInterest" | "mobile" | "dob"
   > & {
     /** A new scrypt hash (see passwords.ts). Never a plain password. */
     passwordHash: string;

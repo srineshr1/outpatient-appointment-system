@@ -48,6 +48,8 @@ export interface Doctor {
   portrait: Portrait;
   /** Consultation fee in pence, when the doctor sets one. Otherwise the practice's fee for the visit reason applies. */
   feePence?: number;
+  /** An admin has checked this doctor. Shown as a badge in the directory. */
+  verified?: boolean;
 }
 
 export interface Slot {
@@ -292,7 +294,7 @@ function pick<T>(list: readonly T[], seed: string): T {
 
 /** A listing for a doctor account that has its own book, from what the doctor wrote in their profile. */
 export function staffDoctorProfile(
-  account: { id: string; name: string; doctorRoom?: string; doctorInterest?: string },
+  account: { id: string; name: string; doctorRoom?: string; doctorInterest?: string; verifiedAt?: string | null },
   profile?: {
     specialty: string;
     qualification: string;
@@ -327,6 +329,7 @@ export function staffDoctorProfile(
       shirt: pick(PALETTE.shirt, `${account.id}#shirt`),
     },
     ...(profile?.feePence ? { feePence: profile.feePence } : {}),
+    ...(account.verifiedAt ? { verified: true } : {}),
   };
 }
 
