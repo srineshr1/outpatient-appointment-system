@@ -3,6 +3,8 @@ import type { ClinicStore } from "../clinic-types";
 import type {
   ConfirmOutcome,
   DoctorFee,
+  InboxItem,
+  NewInboxItem,
   NewNotification,
   NotificationRecord,
   NotificationStatus,
@@ -23,6 +25,7 @@ export class MemoryOps implements OpsStore {
   readonly events = new Map<string, { processedAt: string | null; outcome: string }>();
   readonly refunds = new Map<string, RefundRecord>();
   readonly notifications = new Map<string, NotificationRecord>();
+  readonly inbox = new Map<string, InboxItem>();
 
   constructor(private readonly clinic: ClinicStore) {}
 
@@ -225,5 +228,31 @@ export class MemoryOps implements OpsStore {
           (!filter.kind || row.kind === filter.kind),
       )
       .map((row) => ({ ...row }));
+  }
+
+  async createInboxItem(item: NewInboxItem) {
+    if (this.inbox.has(item.id)) return "exists" as const;
+    this.inbox.set(item.id, { ...item, readAt: null, createdAt: item.createdAt ?? now().toISOString() });
+    return "ok" as const;
+  }
+  async listInbox(userId: string, options: { limit?: number } = {}) {
+    return [...this.inbox.values()]
+      .filter((row) => row.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, options.limit ?? 50)
+      .map((row) => ({ ...row }));
+  }
+  async countUnread(userId: string) {
+    return [...this.inbox.values()].filter((row) => row.userId === userId && !row.readAt).length;
+  }
+  async markInboxRead(userId: string, id: string) {
+    const at = now().toISOString();
+    let changed = 0;
+    for (const row of this.inbox.values()) {
+      if (row.userId !== userId || row.readAt || (id !== "all" && row.id !== id)) continue;
+      row.readAt = at;
+      changed += 1;
+    }
+    return changed;
   }
 }

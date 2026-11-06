@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type RefObject } from "react";
-import { ChevronDown, ChevronRight, Close, Menu, Phone, SignOut } from "@/components/icons";
+import { Bell, ChevronDown, ChevronRight, Close, Menu, Phone, SignOut } from "@/components/icons";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { homeFor } from "@/lib/auth-routing";
 import type { PublicUser } from "@/lib/clinic-types";
@@ -141,7 +141,7 @@ function leftBy(event: FocusEvent<HTMLElement>): boolean {
   return next instanceof Node && !event.currentTarget.contains(next);
 }
 
-export function SiteHeader({ user }: { user: HeaderUser | null }) {
+export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unread?: number }) {
   const pathname = usePathname();
   const { dispatch } = useBooking();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -206,6 +206,25 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
               <Phone size={18} />
               <span className="hidden lg:inline">{practice.phoneDisplay}</span>
             </a>
+
+            {user ? (
+              <Link
+                href="/inbox"
+                aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+                aria-current={pathname === "/inbox" ? "page" : undefined}
+                className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-fill hover:text-ink"
+              >
+                <Bell size={20} />
+                {unread > 0 ? (
+                  <span
+                    aria-hidden="true"
+                    className="tabular absolute top-1 right-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-[#d92d20] px-1 text-[11px] leading-[18px] font-bold text-white"
+                  >
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                ) : null}
+              </Link>
+            ) : null}
 
             {user ? (
               <AccountMenu

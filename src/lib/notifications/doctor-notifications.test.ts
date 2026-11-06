@@ -67,6 +67,25 @@ describe("doctor notifications", () => {
     expect(await rows(held.id, "doctor_booking")).toHaveLength(0);
   });
 
+  it("puts a confirmed visit in the patient's and the doctor's inbox once, and only they can mark it read", async () => {
+    const visit = await book("reid", 1);
+    await onBookingConfirmed(visit);
+    await onBookingConfirmed(visit);
+    const mine = (await ops.listInbox("user-patient-demo")).filter((item) => item.appointmentId === visit.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ kind: "booking_confirmed", title: "Appointment confirmed", href: "/appointments", readAt: null });
+    const doctors = (await ops.listInbox("user-reid")).filter((item) => item.appointmentId === visit.id);
+    expect(doctors).toHaveLength(1);
+    expect(doctors[0]).toMatchObject({ kind: "doctor_booking", href: "/dashboard" });
+
+    expect(await ops.markInboxRead("user-reid", mine[0]!.id)).toBe(0); // not theirs
+    const before = await ops.countUnread("user-patient-demo");
+    expect(await ops.markInboxRead("user-patient-demo", mine[0]!.id)).toBe(1);
+    expect(await ops.countUnread("user-patient-demo")).toBe(before - 1);
+    await ops.markInboxRead("user-patient-demo", "all");
+    expect(await ops.countUnread("user-patient-demo")).toBe(0);
+  });
+
   it("keeps each notification kind switchable, defaulting to on", async () => {
     expect(readDoctorPrefs(undefined)).toEqual(DEFAULT_DOCTOR_PREFS);
     expect(readDoctorPrefs({ booked: false, cancelled: "no", junk: false })).toEqual({ ...DEFAULT_DOCTOR_PREFS, booked: false });

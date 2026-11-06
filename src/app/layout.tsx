@@ -8,6 +8,7 @@ import { SiteFooter } from "@/components/shell/SiteFooter";
 import { SiteChrome } from "@/components/shell/SiteChrome";
 import { HeaderSkeleton } from "@/components/loading/HeaderSkeleton";
 import { SiteHeader } from "@/components/shell/SiteHeader";
+import { getOps } from "@/lib/ops";
 import { now } from "@/lib/clock";
 import { practice } from "@/lib/data";
 import { getCurrentUser } from "@/lib/session";
@@ -80,5 +81,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 }
 
 async function HeaderWithUser() {
-  return <SiteHeader user={await getCurrentUser()} />;
+  const user = await getCurrentUser();
+  return <SiteHeader user={user} unread={user ? await unreadFor(user.id) : 0} />;
+}
+
+/** The number on the bell. A failed read shows no number rather than breaking the page. */
+async function unreadFor(userId: string): Promise<number> {
+  try {
+    return await (await getOps()).countUnread(userId);
+  } catch {
+    return 0;
+  }
 }

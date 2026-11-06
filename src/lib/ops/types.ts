@@ -69,6 +69,21 @@ export type NewNotification = Pick<NotificationRecord, "dedupeKey" | "kind" | "r
   scheduledFor?: string;
 };
 
+/** One row in someone's in-app inbox (the bell in the header). */
+export interface InboxItem {
+  id: string;
+  userId: string;
+  kind: string;
+  title: string;
+  body: string;
+  href: string;
+  appointmentId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export type NewInboxItem = Omit<InboxItem, "readAt" | "createdAt"> & { createdAt?: string };
+
 export interface DoctorFee {
   doctorId: string;
   feeMinor: number;
@@ -113,4 +128,12 @@ export interface OpsStore {
   claimDueNotifications(limit: number, now: Date): Promise<NotificationRecord[]>;
   finishNotification(id: string, status: Extract<NotificationStatus, "sent" | "failed" | "skipped" | "cancelled">, error?: string): Promise<void>;
   listNotifications(filter?: { appointmentId?: string; status?: NotificationStatus; kind?: string }): Promise<NotificationRecord[]>;
+  // In-app inbox.
+  /** The id is the dedupe key: adding the same id twice keeps the first. */
+  createInboxItem(item: NewInboxItem): Promise<"ok" | "exists">;
+  /** Newest first. */
+  listInbox(userId: string, options?: { limit?: number }): Promise<InboxItem[]>;
+  countUnread(userId: string): Promise<number>;
+  /** Mark one item, or every item ("all"), read. Only touches the user's own rows. Returns how many changed. */
+  markInboxRead(userId: string, id: string | "all"): Promise<number>;
 }

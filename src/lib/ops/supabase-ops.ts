@@ -3,6 +3,8 @@ import { supabaseServiceKey } from "../supabase-store";
 import type {
   ConfirmOutcome,
   DoctorFee,
+  InboxItem,
+  NewInboxItem,
   NewNotification,
   NotificationRecord,
   NotificationStatus,
@@ -30,6 +32,20 @@ const sn = (value: unknown): string | null => (typeof value === "string" ? value
 const n = (value: unknown): number => (typeof value === "number" ? value : Number(value ?? 0));
 const iso = (value: unknown): string => (typeof value === "string" ? new Date(value).toISOString() : new Date(0).toISOString());
 const isoN = (value: unknown): string | null => (typeof value === "string" ? new Date(value).toISOString() : null);
+
+function toInboxItem(row: Row): InboxItem {
+  return {
+    id: s(row.id),
+    userId: s(row.user_id),
+    kind: s(row.kind),
+    title: s(row.title),
+    body: s(row.body),
+    href: s(row.href),
+    appointmentId: sn(row.appointment_id),
+    readAt: sn(row.read_at),
+    createdAt: s(row.created_at),
+  };
+}
 
 function toPayment(row: Row): PaymentRecord {
   return {
@@ -306,5 +322,47 @@ export class SupabaseOps implements OpsStore {
     const { data, error } = await query.order("scheduled_for").limit(1000);
     fail(error);
     return (data ?? []).map(toNotification);
+  }
+
+  async createInboxItem(item: NewInboxItem): Promise<"ok" | "exists"> {
+    const { error } = await this.db.from("clinic_inbox").insert({
+      id: item.id,
+      user_id: item.userId,
+      kind: item.kind,
+      title: item.title,
+      body: item.body,
+      href: item.href,
+      appointment_id: item.appointmentId,
+      created_at: item.createdAt ?? new Date().toISOString(),
+    });
+    if (error?.code === UNIQUE_VIOLATION) return "exists";
+    fail(error);
+    return "ok";
+  }
+  async listInbox(userId: string, options: { limit?: number } = {}): Promise<InboxItem[]> {
+    const { data, error } = await this.db
+      .from("clinic_inbox")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(options.limit ?? 50);
+    fail(error);
+    return (data ?? []).map(toInboxItem);
+  }
+  async countUnread(userId: string): Promise<number> {
+    const { count, error } = await this.db
+      .from("clinic_inbox")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null);
+    fail(error);
+    return count ?? 0;
+  }
+  async markInboxRead(userId: string, id: string): Promise<number> {
+    let query = this.db.from("clinic_inbox").update({ read_at: new Date().toISOString() }).eq("user_id", userId).is("read_at", null);
+    if (id !== "all") query = query.eq("id", id);
+    const { data, error } = await query.select("id");
+    fail(error);
+    return data?.length ?? 0;
   }
 }
