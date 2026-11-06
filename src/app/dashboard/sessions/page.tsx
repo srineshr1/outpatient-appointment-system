@@ -36,7 +36,7 @@ export default async function SessionsPage({
   const busy = query.notice === "busy";
 
   return (
-    <div className="mx-auto max-w-6xl px-5 pt-8 pb-20 md:px-8 md:pt-12">
+    <div className="mx-auto max-w-[92rem] px-5 pt-8 pb-20 md:px-8 xl:px-10 md:pt-12">
       <Link href="/dashboard" className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-accent hover:bg-accent-soft">
         Clinic book
       </Link>
@@ -73,7 +73,7 @@ export default async function SessionsPage({
       ) : null}
 
       {status.sessions.length > 0 ? (
-        <ul className="mt-8 grid gap-4 lg:grid-cols-2" aria-label="Your sessions">
+        <ul className="mt-8 grid gap-4 md:grid-cols-2 2xl:grid-cols-3" aria-label="Your sessions">
           {status.sessions.map((session) => (
             <SessionCard key={session.id} session={session} room={room} />
           ))}

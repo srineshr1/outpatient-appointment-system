@@ -51,7 +51,7 @@ export default async function DashboardPage({
   const doctor = user.doctorId ? findDoctor(user.doctorId) : null;
 
   return (
-    <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
+    <div className={`mx-auto px-5 pt-8 pb-20 md:px-8 md:pt-12 ${user.role === "doctor" ? "max-w-[92rem] xl:px-10" : "max-w-page"}`}>
       <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Clinic book</PageHeading>
       <p className="mt-2 max-w-prose text-body text-ink-2">
         Signed in as {user.name}

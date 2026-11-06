@@ -15,13 +15,14 @@ import {
 } from "@/lib/sessions";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-const HOUR_PX = 52;
+const HOUR_PX = 60;
+const HEAD_PX = 56;
 const DRAFT_ID = "__draft__";
 
 function barLabel(session: ConsultSession, draft: boolean): string {
   const name = draft ? `New ${session.mode === "wave" ? "Wave" : "Stream"}` : session.label || (session.mode === "wave" ? "Wave" : "Stream");
-  const mark = session.onDate ? "★ " : "↻ ";
-  return `${mark}${name} ${session.startTime}–${session.endTime}`;
+  const kind = session.onDate ? "One date" : "Weekly";
+  return `${name} ${session.startTime}–${session.endTime} (${kind})`;
 }
 
 function draftKey(draft: ConsultSession | null): string {
@@ -108,8 +109,8 @@ export function SessionCalendar({
   const title = weekRangeTitle(monday);
 
   const barStyle = (startTime: string, endTime: string) => {
-    const top = ((toMinutes(startTime) - origin) / 60) * HOUR_PX;
-    const height = Math.max(28, ((toMinutes(endTime) - toMinutes(startTime)) / 60) * HOUR_PX);
+    const top = ((toMinutes(startTime) - origin) / 60) * HOUR_PX + 2;
+    const height = Math.max(34, ((toMinutes(endTime) - toMinutes(startTime)) / 60) * HOUR_PX);
     return { top, height };
   };
 
@@ -120,7 +121,7 @@ export function SessionCalendar({
   };
 
   return (
-    <section aria-labelledby="session-calendar" className="rounded-card bg-surface p-4 shadow-card md:p-5">
+    <section aria-labelledby="session-calendar" className="rounded-card bg-surface p-4 shadow-card md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id="session-calendar" className="text-title3 font-semibold text-ink">
@@ -172,20 +173,20 @@ export function SessionCalendar({
       </div>
 
       {!weekHasEntries ? (
-        <div className="mt-4 rounded-field bg-fill/60 px-4 py-8 text-center" role="status">
+        <div className="mt-5 rounded-xl bg-fill/50 px-4 py-12 text-center" role="status">
           <p className="text-body font-semibold text-ink">No sessions this week</p>
           <p className="mt-1 text-callout text-muted">Pick days and hours on the left to preview, or jump to a week that has sessions.</p>
         </div>
       ) : (
       <div
-        className="mt-4 grid gap-2.5 overflow-x-auto"
-        style={{ gridTemplateColumns: `3.5rem repeat(${dayIndexes.length}, minmax(5.75rem, 1fr))` }}
+        className="mt-5 grid gap-x-2 overflow-x-auto"
+        style={{ gridTemplateColumns: `3rem repeat(${dayIndexes.length}, minmax(7.5rem, 1fr))` }}
         role="grid"
         aria-label={`Week of ${title}`}
       >
-        <div className="pt-[52px] text-caption text-muted" aria-hidden="true">
+        <div className="relative text-right text-caption text-muted" style={{ paddingTop: HEAD_PX }} aria-hidden="true">
           {hourList.slice(0, -1).map((hour) => (
-            <div key={hour} className="tabular leading-none" style={{ height: HOUR_PX }}>
+            <div key={hour} className="tabular -translate-y-2 pr-1 leading-none" style={{ height: HOUR_PX }}>
               {String(hour).padStart(2, "0")}:00
             </div>
           ))}
@@ -194,26 +195,29 @@ export function SessionCalendar({
           const day = addDays(monday, index);
           const entries = days.get(day) ?? [];
           const isToday = day === today;
-          const empty = entries.length === 0;
           return (
-            <div key={day} data-date={day} className={`min-w-0 ${empty ? "opacity-55" : ""}`}>
-              <div className={`flex h-[52px] flex-col items-center justify-center ${isToday ? "text-accent" : ""}`}>
-                <span className="text-caption text-muted">{WEEKDAYS[index]}</span>
-                <span className={`text-title3 font-semibold tabular ${isToday ? "text-accent" : "text-ink"}`}>
+            <div key={day} data-date={day} className="min-w-0">
+              <div className="flex items-center justify-center gap-1.5" style={{ height: HEAD_PX }}>
+                <span className={`text-caption font-medium uppercase tracking-wide ${isToday ? "text-accent" : "text-muted"}`}>{WEEKDAYS[index]}</span>
+                <span
+                  className={`grid size-8 place-items-center rounded-full text-body font-semibold tabular ${
+                    isToday ? "bg-accent text-white" : "text-ink"
+                  }`}
+                >
                   {Number(day.slice(8))}
                 </span>
               </div>
               <div
-                className="relative rounded-[10px] bg-[repeating-linear-gradient(#fff,#fff_51px,#eef2f7_51px,#eef2f7_52px)] ring-1 ring-hairline/60"
-                style={{ height: trackHeight }}
+                className={`relative rounded-xl border border-hairline/50 ${isToday ? "bg-accent-soft/30" : entries.length === 0 ? "bg-fill/40" : "bg-white"}`}
+                style={{
+                  height: trackHeight,
+                  backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, rgba(148,163,184,0.18) ${HOUR_PX - 1}px, rgba(148,163,184,0.18) ${HOUR_PX}px)`,
+                }}
               >
-                {empty ? (
-                  <span className="pointer-events-none absolute inset-0 grid place-items-center text-title2 text-hairline" aria-hidden="true">
-                    —
-                  </span>
-                ) : null}
                 {entries.map(({ session, replaced }) => {
                   const isDraft = session.id === DRAFT_ID;
+                  // When the draft lands on a day that already has a session, nudge it right so both stay readable.
+                  const shareDay = isDraft && entries.some((entry) => entry.session.id !== DRAFT_ID && !entry.replaced);
                   const wave = session.mode === "wave";
                   const label = barLabel(session, isDraft);
                   return (
@@ -223,24 +227,23 @@ export function SessionCalendar({
                       aria-label={replaced ? `${label}, replaced by a one-off session` : label}
                       data-draft={isDraft ? "true" : undefined}
                       data-replaced={replaced ? "true" : undefined}
-                      className={`absolute right-1 left-1 overflow-hidden rounded-lg px-2 py-1.5 text-[12px] leading-snug shadow-sm ${
+                      className={`absolute right-1 overflow-hidden rounded-xl px-2.5 py-1.5 text-[12px] leading-snug ${
                         isDraft
                           ? wave
-                            ? "z-[3] border-2 border-dashed border-amber-500 bg-amber-50 text-amber-950"
-                            : "z-[3] border-2 border-dashed border-accent bg-accent-soft text-accent"
+                            ? "z-[3] border border-dashed border-amber-400 bg-amber-50/95 text-amber-900 shadow-sm"
+                            : "z-[3] border border-dashed border-accent/60 bg-white/95 text-accent shadow-sm"
                           : wave
-                            ? "z-[2] bg-amber-500 text-white"
-                            : "z-[2] bg-accent text-white"
-                      } ${replaced ? "z-[1] left-[28%] opacity-45 line-through" : ""}`}
+                            ? "z-[2] border-l-4 border-amber-500 bg-amber-100 text-amber-950 shadow-sm"
+                            : "z-[2] border-l-4 border-accent bg-accent-soft text-ink shadow-sm"
+                      } ${replaced ? "z-[1] left-[30%] opacity-50 line-through" : ""} ${shareDay ? "left-[40%]" : replaced ? "" : "left-1"}`}
                       style={barStyle(session.startTime, session.endTime)}
                     >
                       <span className="block truncate font-semibold">
-                        {isDraft ? "New " : ""}
-                        {session.onDate ? "★" : "↻"}{" "}
-                        {isDraft ? (wave ? "Wave" : "Stream") : session.label || (wave ? "Wave" : "Stream")}
+                        {isDraft ? `New ${wave ? "Wave" : "Stream"}` : session.label || (wave ? "Wave" : "Stream")}
                       </span>
-                      <span className="block truncate tabular opacity-95">
+                      <span className="block truncate tabular opacity-80">
                         {session.startTime}–{session.endTime}
+                        {session.onDate ? " · One date" : ""}
                       </span>
                     </div>
                   );
@@ -252,28 +255,17 @@ export function SessionCalendar({
       </div>
       )}
 
-      <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-hairline/70 pt-3 text-caption text-ink-2" aria-label="Key">
+      <ul className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted" aria-label="Key">
         <li className="flex items-center gap-1.5">
-          <span className="size-3 rounded-sm bg-accent" aria-hidden="true" /> Stream
+          <span className="h-3 w-3 rounded border-l-4 border-accent bg-accent-soft" aria-hidden="true" /> Stream
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="size-3 rounded-sm bg-amber-500" aria-hidden="true" /> Wave
+          <span className="h-3 w-3 rounded border-l-4 border-amber-500 bg-amber-100" aria-hidden="true" /> Wave
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="font-bold" aria-hidden="true">
-            ★
-          </span>{" "}
-          One date
+          <span className="h-3 w-3 rounded border border-dashed border-accent/60 bg-white" aria-hidden="true" /> Draft
         </li>
-        <li className="flex items-center gap-1.5">
-          <span aria-hidden="true">↻</span> Weekly
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="rounded bg-fill px-1.5 py-0.5 text-muted line-through">struck</span> Replaced by one-off
-        </li>
-        <li className="flex items-center gap-1.5">
-          <span className="size-3 rounded-sm border-2 border-dashed border-accent bg-accent-soft" aria-hidden="true" /> New draft
-        </li>
+        <li className="line-through">Replaced by a one-off</li>
       </ul>
     </section>
   );
