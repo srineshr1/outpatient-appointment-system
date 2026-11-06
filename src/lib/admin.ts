@@ -115,6 +115,8 @@ export async function createStaff(admin: SessionUser, input: NewStaff): Promise<
   // No password: staff sign in with a code sent to this email (or Google, when that's on).
   const created = await store.createUser({ id, email, passwordHash: "", name, role: input.role, doctorId, mobile: "", dob: "", ...details });
   if (created === "exists") throw new AdminError("That email already has an account.");
+  // An admin adding a doctor vouches for them, so they start verified. Self-signups wait for an admin.
+  if (input.role === "doctor") await store.updateUser(id, { verifiedAt: now().toISOString() });
   const account = await load(id);
   await giveStarterSchedule(store, account, now().toISOString());
   await loadDoctors(true);
@@ -149,7 +151,9 @@ export async function changeRole(
   if (role !== "admin") await checkNotLastAdmin(target);
 
   const store = await getStore();
-  const updated = await store.updateUser(target.id, { role, doctorId: nextDoctor, ...details });
+  // An admin making someone a doctor vouches for them; leaving the doctor role clears it.
+  const verifiedAt = role === "doctor" ? (target.verifiedAt ?? now().toISOString()) : null;
+  const updated = await store.updateUser(target.id, { role, doctorId: nextDoctor, verifiedAt, ...details });
   if (!updated) throw new AdminError("That account no longer exists.");
   await giveStarterSchedule(store, updated, now().toISOString());
   await loadDoctors(true);
@@ -195,6 +199,26 @@ export async function setAccountDisabled(
     summary: `${target.name} · ${target.email}${ended ? ` · ${ended} signed-in ${ended === 1 ? "session" : "sessions"} ended` : ""}`,
     reason: why,
   });
+  return updated;
+}
+
+/** Mark a doctor as verified, or take it away. Only verified doctors are listed for patients. */
+export async function setDoctorVerified(admin: SessionUser, userId: string, verified: boolean): Promise<UserAccount> {
+  const target = await load(userId);
+  if (target.role !== "doctor") throw new AdminError("Only doctors can be verified.");
+  if (verified === Boolean(target.verifiedAt)) throw new AdminError(verified ? "That doctor is already verified." : "That doctor isn’t verified.");
+  const store = await getStore();
+  const updated = await store.updateUser(target.id, { verifiedAt: verified ? now().toISOString() : null });
+  if (!updated) throw new AdminError("That account no longer exists.");
+  await recordEvent({
+    actor: actorOf(admin),
+    action: verified ? "doctor.verified" : "doctor.unverified",
+    subjectType: "user",
+    subjectId: target.id,
+    summary: `${target.name} · ${target.email}`,
+  });
+  // The directory caches doctors for a few seconds; refresh it so the change shows straight away.
+  await loadDoctors(true);
   return updated;
 }
 

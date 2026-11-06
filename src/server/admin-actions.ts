@@ -16,6 +16,7 @@ import {
   revokeOneSession,
   revokeSessions,
   setAccountDisabled,
+  setDoctorVerified,
 } from "@/lib/admin";
 import type { ActionResult } from "@/lib/action-result";
 import { actorOf } from "@/lib/audit";
@@ -126,6 +127,18 @@ export async function setDisabledAction(_previous: ActionResult, formData: FormD
     return failure(error);
   }
   finish(returnPath(formData, `/admin/people/${userId}`), disable ? "disabled" : "enabled");
+}
+
+export async function setVerifiedAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  const userId = text(formData, "userId");
+  const verify = text(formData, "verify") === "1";
+  try {
+    await setDoctorVerified(admin, userId, verify);
+  } catch (error) {
+    return failure(error);
+  }
+  finish(returnPath(formData, `/admin/people/${userId}`), verify ? "verified" : "unverified");
 }
 
 export async function revokeSessionsAction(_previous: ActionResult, formData: FormData): Promise<ActionResult> {

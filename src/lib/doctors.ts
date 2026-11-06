@@ -12,7 +12,7 @@ let pending: Promise<void> | null = null;
 /**
  * Split the doctor accounts that have their own clinic book into those patients can book and those
  * who are not ready yet. A doctor is ready when their profile is complete and they have at least
- * one live consulting session.
+ * one live consulting session, and an admin has verified them. Unverified doctors stay unlisted.
  */
 export function splitDoctors(
   users: readonly UserAccount[],
@@ -29,7 +29,7 @@ export function splitDoctors(
   for (const account of accounts) {
     const record = profileOf.get(account.id);
     const profile = readDoctorProfile(record);
-    const ready = Boolean(record) && isDoctorProfileComplete(account.name, profile) && withSession.has(account.id);
+    const ready = Boolean(record) && isDoctorProfileComplete(account.name, profile) && withSession.has(account.id) && Boolean(account.verifiedAt);
     (ready ? listed : unlisted).push(staffDoctorProfile(account, record ? profile : undefined));
   }
   return { listed, unlisted };
