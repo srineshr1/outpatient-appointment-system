@@ -82,6 +82,9 @@ export function SessionForm({
   return (
     <form ref={formRef} action={action} onInput={(event) => report(event.currentTarget)} onChange={(event) => report(event.currentTarget)} className="group grid gap-4 md:grid-cols-2">
       <input type="hidden" name="id" value={defaults.id} />
+      {defaults.id ? <Notice className="md:col-span-2">
+        Extend or reduce these hours to update new availability. Existing appointments and payment holds keep their original times, including visits outside reduced hours. Resized waves stay closed where they overlap existing reservations.
+      </Notice> : null}
       {state && !state.ok ? (
         <Notice tone="danger" role="alert" className="md:col-span-2">
           {state.message}

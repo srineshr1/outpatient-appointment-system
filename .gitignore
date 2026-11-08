@@ -18,3 +18,6 @@ npm-debug.log*
 /.e2e
 .vercel
 .env*
+
+# Supabase CLI local state
+/supabase/.temp/

@@ -1,3 +1,5 @@
+import { now, todayIso } from "./clock";
+import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged } from "./elastic-scheduling";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -658,9 +660,21 @@ export class SqliteClinicStore implements ClinicStore {
     return rows.map((row) => row.slot_id);
   }
 
+  private safePlacement(doctorId: string, place: Placement, excludeId?: string): boolean {
+    const sessions = (this.db.prepare("SELECT * FROM consult_sessions WHERE doctor_id = ?").all(doctorId) as unknown as ConsultSessionRow[]).map(toConsultSession);
+    const visits = (this.db.prepare("SELECT * FROM appointments WHERE doctor_id = ?").all(doctorId) as unknown as AppointmentRow[]).map(toAppointment);
+    return placementIsCurrent(doctorId, place, sessions) && !placementConflicts(doctorId, place, visits, excludeId, sessions);
+  }
+
   async createAppointment(appointment: AppointmentRecord): Promise<"ok" | "taken"> {
     this.db.exec("BEGIN IMMEDIATE");
     try {
+      const place: Placement = { ...appointment, sessionId: appointment.sessionId ?? null,
+        token: appointment.token ?? null, waveCapacity: appointment.waveCapacity ?? null, endTime: appointment.endTime ?? null };
+      if (!this.safePlacement(appointment.doctorId, place)) {
+        this.db.exec("ROLLBACK");
+        return "taken";
+      }
       const held = this.db
         .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed', 'pending_payment')")
         .get(appointment.slotId) as { held: number } | undefined;
@@ -985,7 +999,24 @@ export class SqliteClinicStore implements ClinicStore {
   }
 
   async putConsultSession(session: ConsultSession): Promise<void> {
-    this.writeConsultSession(session, true);
+    // No await between the read and write: SQLite's synchronous connection serializes this edit.
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.db.prepare("SELECT * FROM consult_sessions WHERE id = ?").get(session.id) as ConsultSessionRow | undefined;
+      if (row) {
+        const old = toConsultSession(row);
+        const visits = (this.db.prepare("SELECT * FROM appointments WHERE session_id = ?").all(session.id) as unknown as AppointmentRow[]).map(toAppointment);
+        if ((sessionStructureChanged(old, session) || old.archivedAt !== session.archivedAt) &&
+          visits.some(visit => occupiesTime(visit) && visit.date >= todayIso(now()))) {
+          throw new Error("Reserved sessions may change hours, name and room only.");
+        }
+      }
+      this.writeConsultSession(session, true);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   async createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists"> {
@@ -1013,6 +1044,11 @@ export class SqliteClinicStore implements ClinicStore {
       if (!current || current.status !== "booked" || current.slot_id !== fromSlotId) {
         this.db.exec("ROLLBACK");
         return "stale";
+      }
+      const owner = this.db.prepare("SELECT doctor_id FROM appointments WHERE id = ?").get(id) as { doctor_id: string };
+      if (!this.safePlacement(owner.doctor_id, to, id)) {
+        this.db.exec("ROLLBACK");
+        return "taken";
       }
       const held = this.db
         .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed', 'pending_payment')")

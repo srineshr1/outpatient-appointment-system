@@ -6,6 +6,7 @@ import { recordEvent, actorOf } from "@/lib/audit";
 import type { ConsultSession, PublicUser } from "@/lib/clinic-types";
 import { now, todayIso } from "@/lib/clock";
 import { loadDoctors } from "@/lib/doctors";
+import { occupiesTime, sessionStructureChanged } from "@/lib/elastic-scheduling";
 import { getOps } from "@/lib/ops";
 import type { FormState } from "@/lib/form-state";
 import {
@@ -153,19 +154,7 @@ function sessionInput(formData: FormData): SessionInput {
 async function upcomingIn(doctorId: string, sessionId: string): Promise<number> {
   const today = todayIso(now());
   const visits = await (await getStore()).listAppointments({ doctorId });
-  return visits.filter((visit) => visit.status === "booked" && visit.sessionId === sessionId && visit.date >= today).length;
-}
-
-function shapeChanged(a: ConsultSession, b: Omit<SessionInput, "label" | "room">): boolean {
-  return (
-    a.mode !== b.mode ||
-    (a.onDate ?? null) !== (b.kind === "once" ? (b.onDate ?? null) : null) ||
-    (b.kind !== "once" && ((a.startDate ?? null) !== (b.startDate ?? null) || (a.endDate ?? null) !== (b.endDate ?? null))) ||
-    a.startTime !== b.startTime ||
-    a.endTime !== b.endTime ||
-    (b.kind !== "once" && a.weekdays.join(",") !== [...new Set(b.weekdays)].sort((x, y) => x - y).join(",")) ||
-    (a.mode === "stream" ? a.slotMinutes !== b.slotMinutes : a.waveMinutes !== b.waveMinutes || a.waveCapacity !== b.waveCapacity)
-  );
+  return visits.filter((visit) => occupiesTime(visit) && visit.sessionId === sessionId && visit.date >= today).length;
 }
 
 export async function saveSession(_previous: FormState, formData: FormData): Promise<FormState> {
@@ -180,23 +169,40 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   const existing = id ? await store.getConsultSession(id) : null;
   if (id && (!existing || existing.doctorId !== user.id || existing.archivedAt)) return fail("That session no longer exists. Reload the page.");
 
+  // Old multi-wave sessions have no duration control in today's form; retain their saved step.
+  if (existing?.mode === "wave" && input.mode === "wave" && !formData.has("waveMinutes")) {
+    input.waveMinutes = existing.waveMinutes;
+  }
+
   const checked = checkSession(input, mine.filter((session) => session.id !== id), todayIso(now()));
   if (!checked.ok) return fail(checked.message);
 
-  if (existing && shapeChanged(existing, input)) {
+  if (existing && sessionStructureChanged(existing, { ...existing, ...checked.value })) {
     const upcoming = await upcomingIn(user.id, existing.id);
     if (upcoming > 0) {
       return fail(
-        `${upcoming} booked ${upcoming === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${upcoming === 1 ? "it" : "them"} first, or add a new session instead. You can still rename it or change its room.`,
+        `${upcoming} reserved ${upcoming === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${upcoming === 1 ? "it" : "them"} first, or add a new session instead. You can still change its hours, name or room. Existing visits and payment holds keep their original times.`,
       );
     }
+  }
+
+  if (existing && (existing.startTime !== checked.value.startTime || existing.endTime !== checked.value.endTime) &&
+    process.env.DATA_STORE !== "supabase" && process.env.BLOB_READ_WRITE_TOKEN) {
+    return fail("Resizing availability requires the Supabase or SQLite store. The legacy Blob store cannot safely coordinate this change.");
   }
 
   const at = now().toISOString();
   const session: ConsultSession = existing
     ? { ...existing, ...checked.value, updatedAt: at }
     : { id: `s${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`, doctorId: user.id, ...checked.value, archivedAt: null, createdAt: at, updatedAt: at };
-  await store.putConsultSession(session);
+  try {
+    await store.putConsultSession(session);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
+      return fail("A visit was reserved while you edited. Reload the session; you can still change its hours, name or room.");
+    }
+    throw error;
+  }
   forgetBlockedSlots();
   await loadDoctors(true);
   await recordEvent({
@@ -218,7 +224,14 @@ export async function archiveSession(formData: FormData): Promise<void> {
   if (!session || session.doctorId !== user.id || session.archivedAt) redirect("/dashboard/sessions?notice=missing");
   const upcoming = await upcomingIn(user.id, session.id);
   if (upcoming > 0) redirect(`/dashboard/sessions?notice=busy&n=${upcoming}`);
-  await store.putConsultSession({ ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() });
+  try {
+    await store.putConsultSession({ ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
+      redirect("/dashboard/sessions?notice=busy&n=1");
+    }
+    throw error;
+  }
   forgetBlockedSlots();
   await loadDoctors(true);
   await recordEvent({
