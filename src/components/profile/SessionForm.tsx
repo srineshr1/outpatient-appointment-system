@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { PendingButton } from "@/components/ui/PendingButton";
@@ -12,7 +13,7 @@ import { saveSession } from "@/server/profile-actions";
 
 /** Add or change one consulting session: when it runs first, then how patients book, then the hours. */
 /** Read the form as it stands into a draft session, for the live calendar preview. */
-function draftFrom(form: HTMLFormElement): ConsultSession {
+function draftFrom(form: HTMLFormElement, labelFallback: string): ConsultSession {
   const data = new FormData(form);
   const text = (key: string) => String(data.get(key) ?? "");
   const num = (key: string) => (text(key) ? Number(text(key)) : null);
@@ -25,7 +26,7 @@ function draftFrom(form: HTMLFormElement): ConsultSession {
   return {
     id: "__draft__",
     doctorId: "",
-    label: text("label") || "New session",
+    label: text("label") || labelFallback || "",
     weekdays: once ? [] : data.getAll("weekdays").map(Number),
     startTime: timesReady ? startTime : "",
     endTime: timesReady ? endTime : "",
@@ -45,11 +46,17 @@ export function SessionForm({
   defaults,
   submitLabel,
   onDraft,
+  onCancel,
+  fallbackLabel = "",
 }: {
   defaults: SessionDefaults;
   submitLabel: string;
   /** Called with the draft whenever a field changes (live preview). */
   onDraft?: (draft: ConsultSession) => void;
+  /** Drop back to add mode without saving (edit mode): shown beside the submit button. */
+  onCancel?: () => void;
+  /** Preview-bar name while the name field is empty (edit mode keeps the session's name). */
+  fallbackLabel?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, action] = useActionState(saveSession, null);
@@ -64,7 +71,7 @@ export function SessionForm({
   const lastDraft = useRef("");
   const report = (form: HTMLFormElement | null) => {
     if (!onDraft || !form) return;
-    const draft = draftFrom(form);
+    const draft = draftFrom(form, fallbackLabel);
     const key = JSON.stringify(draft);
     if (key === lastDraft.current) return;
     lastDraft.current = key;
@@ -209,9 +216,16 @@ export function SessionForm({
         {({ id }) => <input id={id} name="room" defaultValue={v("room", defaults.room)} maxLength={60} className="field" />}
       </Field>
       <div className="md:col-span-2">
-        <PendingButton pendingLabel="Saving…" className={buttonClass("primary", "lg", "group-has-[[aria-busy=true]]:pointer-events-none")}>
-          {submitLabel}
-        </PendingButton>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <PendingButton pendingLabel="Saving…" className={buttonClass("primary", "lg", "group-has-[[aria-busy=true]]:pointer-events-none")}>
+            {submitLabel}
+          </PendingButton>
+          {onCancel ? (
+            <Button variant="plain" size="md" onClick={onCancel}>
+              Cancel
+            </Button>
+          ) : null}
+        </div>
       </div>
     </form>
   );

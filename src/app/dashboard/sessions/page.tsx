@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { defaultsFor } from "@/lib/session-defaults";
-import { SessionCard } from "@/components/profile/SessionList";
 import { SessionPlanner } from "@/components/profile/SessionPlanner";
 import { todayIso } from "@/lib/clock";
 import { PageHeading } from "@/components/shell/PageHeading";
@@ -23,7 +22,7 @@ const SAVED: Record<string, string> = {
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ welcome?: string; saved?: string; notice?: string; n?: string }>;
+  searchParams: Promise<{ welcome?: string; saved?: string; notice?: string; n?: string; v?: string }>;
 }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!user) redirect("/sign-in?as=staff&next=/dashboard/sessions");
@@ -37,16 +36,19 @@ export default async function SessionsPage({
 
   return (
     <div className="mx-auto max-w-[92rem] px-5 pt-8 pb-20 md:px-8 xl:px-10 md:pt-12">
-      <Link href="/dashboard" className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-accent hover:bg-accent-soft">
+      <Link
+        href="/dashboard"
+        className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-accent hover:bg-accent-soft"
+      >
         Clinic book
       </Link>
       <PageHeading className="mt-2 text-title2 font-semibold text-ink md:text-title1">
         {welcome ? "Set up your consulting sessions" : "Consulting sessions"}
       </PageHeading>
       <p className="mt-2 max-w-prose text-body text-ink-2">
-        {welcome ? "Step 2 of 2. " : ""}A session is a block of hours on the days you choose. In a <strong>stream</strong> session each patient
-        gets their own fixed slot. In a <strong>wave</strong> session the whole session is one wave for up to a set number of patients,
-        seen in token order. A one-off session replaces your weekly sessions on its date.
+        A session is a block of hours on the days you choose — in a <strong>stream</strong> each patient keeps their own slot,
+        in a <strong>wave</strong> patients arrive within the wave and are seen in token order. A one-off session takes a
+        weekly session&rsquo;s place on its date. Edit a session by clicking it below.
       </p>
       {saved ? (
         <Notice tone="success" role="status" className="mt-6">
@@ -64,7 +66,7 @@ export default async function SessionsPage({
       ) : null}
       {!status.steps[0]!.done ? (
         <Notice tone="info" className="mt-6">
-          Patients can’t see you yet.{" "}
+          Patients can&rsquo;t see you yet.{" "}
           <Link href="/dashboard/profile" className="text-accent underline underline-offset-4">
             Finish your profile
           </Link>{" "}
@@ -72,19 +74,12 @@ export default async function SessionsPage({
         </Notice>
       ) : null}
 
-      {status.sessions.length > 0 ? (
-        <ul className="mt-8 grid gap-4 md:grid-cols-2 2xl:grid-cols-3" aria-label="Your sessions">
-          {status.sessions.map((session) => (
-            <SessionCard key={session.id} session={session} room={room} />
-          ))}
-        </ul>
-      ) : null}
-
       <SessionPlanner
+        key={query.v ?? ""}
         sessions={status.sessions}
         defaults={defaultsFor(null, room)}
         today={todayIso()}
-        title={status.sessions.length > 0 ? "Add another session" : "Add your first session"}
+        addTitle={status.sessions.length > 0 ? "Add another session" : "Add your first session"}
       />
     </div>
   );

@@ -207,7 +207,8 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     summary: `${session.label || "Session"} · ${session.mode} · ${session.startTime}–${session.endTime}`,
   });
   refresh();
-  redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}`);
+  // A unique stamp: the workspace form resets only on a save that actually landed.
+  redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}`);
 }
 
 export async function archiveSession(formData: FormData): Promise<void> {

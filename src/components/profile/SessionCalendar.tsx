@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { ConsultSession } from "@/lib/clinic-types";
 import { addDays, mondayOf } from "@/lib/clock";
 import {
@@ -20,7 +20,7 @@ const HEAD_PX = 56;
 const DRAFT_ID = "__draft__";
 
 function barLabel(session: ConsultSession, draft: boolean): string {
-  const name = draft ? `New ${session.mode === "wave" ? "Wave" : "Stream"}` : session.label || (session.mode === "wave" ? "Wave" : "Stream");
+  const name = draft ? session.label || `New ${session.mode === "wave" ? "Wave" : "Stream"}` : session.label || (session.mode === "wave" ? "Wave" : "Stream");
   const kind = session.onDate ? "One date" : "Weekly";
   return `${name} ${session.startTime}–${session.endTime} (${kind})`;
 }
@@ -38,19 +38,39 @@ function draftKey(draft: ConsultSession | null): string {
   });
 }
 
+/** Days and hours, ignoring the name: two sessions with this key draw the same bar. */
+function blockKey(session: ConsultSession): string {
+  const days = [...session.weekdays].sort((a, b) => a - b).join(",");
+  return [session.mode, session.startTime, session.endTime, session.onDate ?? "", session.startDate ?? "", session.endDate ?? "", days].join("|");
+}
+
+function sameHours(a: ConsultSession, b: ConsultSession): boolean {
+  return a.mode === b.mode && a.startTime === b.startTime && a.endTime === b.endTime;
+}
+
 /**
  * Compact week preview of when the doctor's sessions run. One-off sessions replace weekly ones
  * on their date (shown struck through). The session being added appears as a dashed draft bar.
+ * Saved sessions can be selected (click a bar to edit it); the selected one is ringed.
  */
-export function SessionCalendar({
+function SessionCalendarBase({
   sessions,
   draft = null,
+  draftOf = null,
   today,
+  selectedId = null,
+  onSelect,
 }: {
   sessions: readonly ConsultSession[];
-  /** The session being added, previewed live (dashed outline). */
+  /** The session being added or edited, previewed live (dashed outline). */
   draft?: ConsultSession | null;
+  /** The session the draft edits (edit mode): when the draft hasn't changed a day yet, that day keeps the saved bar only. */
+  draftOf?: string | null;
   today: string;
+  /** The session selected for editing: its bars are ringed. */
+  selectedId?: string | null;
+  /** Clicking a saved session's bar opens it for editing. */
+  onSelect?: (session: ConsultSession) => void;
 }) {
   const thisMonday = mondayOf(today);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -59,12 +79,36 @@ export function SessionCalendar({
 
   const valid = Boolean(draft && timesLookSet(draft.startTime, draft.endTime));
   const previewDraft = valid ? draft : null;
-  const all = useMemo(() => (previewDraft ? [...sessions, previewDraft] : [...sessions]), [sessions, previewDraft]);
-  const days = useMemo(() => sessionCalendar(all, monday, sunday), [all, monday, sunday]);
+  // The saved session the draft edits (edit mode), to know when the draft still matches it.
+  const original = useMemo(() => {
+    if (!previewDraft || !draftOf) return null;
+    return sessions.find((session) => session.id === draftOf) ?? null;
+  }, [sessions, draftOf, previewDraft]);
+  // An unchanged form copies a bar that is already saved (just added, or opened for editing).
+  // Drawing it again covers that bar and steals the click.
+  const shownDraft = useMemo(() => {
+    if (!previewDraft) return null;
+    const key = blockKey(previewDraft);
+    return sessions.some((session) => blockKey(session) === key) ? null : previewDraft;
+  }, [sessions, previewDraft]);
+  const all = useMemo(() => (shownDraft ? [...sessions, shownDraft] : [...sessions]), [sessions, shownDraft]);
+  const days = useMemo(() => {
+    const built = sessionCalendar(all, monday, sunday);
+    // Same hours, fewer or different days: keep the saved bar on days that have not moved.
+    if (!original || !shownDraft || !sameHours(original, shownDraft)) return built;
+    for (const [day, entries] of built) {
+      const liveOriginal = entries.some((entry) => entry.session.id === original.id && !entry.replaced);
+      if (!liveOriginal) continue;
+      const kept = entries.filter((entry) => entry.session.id !== DRAFT_ID);
+      if (kept.length === 0) built.delete(day);
+      else built.set(day, kept);
+    }
+    return built;
+  }, [all, monday, sunday, original, shownDraft]);
 
   const draftFirst = useMemo(() => (previewDraft ? firstRunDate(previewDraft, today) : null), [previewDraft, today]);
   const draftMonday = draftFirst ? mondayOf(draftFirst) : null;
-  const draftOnThisWeek = Boolean(previewDraft && Array.from({ length: 7 }, (_, i) => addDays(monday, i)).some((day) => sessionRunsOn(previewDraft, day)));
+  const draftOnThisWeek = Boolean(shownDraft && Array.from({ length: 7 }, (_, i) => addDays(monday, i)).some((day) => sessionRunsOn(shownDraft, day)));
   const draftKeyNow = draftKey(previewDraft);
   const lastFocusedKey = useRef("");
 
@@ -75,15 +119,30 @@ export function SessionCalendar({
     setWeekOffset(offset);
   }, [draftFirst, draftMonday, draftKeyNow, thisMonday]);
 
+  // Selecting a session for editing jumps to a week it runs, so its bars are in view.
+  const selectedSession = useMemo(() => {
+    if (!selectedId) return null;
+    return sessions.find((session) => session.id === selectedId) ?? null;
+  }, [sessions, selectedId]);
+  const lastJumped = useRef("");
+  useEffect(() => {
+    if (!selectedSession || lastJumped.current === selectedSession.id) return;
+    const run = firstRunDate(selectedSession, today);
+    lastJumped.current = selectedSession.id;
+    if (!run) return;
+    const monday = mondayOf(run);
+    setWeekOffset(Math.round((Date.parse(`${monday}T00:00:00Z`) - Date.parse(`${thisMonday}T00:00:00Z`)) / (7 * 86400000)));
+  }, [selectedSession, thisMonday, today]);
+
   const hours = useMemo(() => {
     const times: { startTime: string; endTime: string }[] = [];
     for (const entries of days.values()) {
       for (const { session } of entries) times.push(session);
     }
     // Include draft times even if they fall on another week, so the axis stays stable while jumping.
-    if (previewDraft) times.push(previewDraft);
+    if (shownDraft) times.push(shownDraft);
     return weekHourBounds(times);
-  }, [days, previewDraft]);
+  }, [days, shownDraft]);
 
   const hourList = useMemo(() => {
     const list: number[] = [];
@@ -99,11 +158,11 @@ export function SessionCalendar({
     let end = 4;
     for (let index = 0; index <= 6; index++) {
       const day = addDays(monday, index);
-      const has = (days.get(day) ?? []).length > 0 || (previewDraft ? sessionRunsOn(previewDraft, day) : false);
+      const has = (days.get(day) ?? []).length > 0 || (shownDraft ? sessionRunsOn(shownDraft, day) : false);
       if (has) end = Math.max(end, index);
     }
     return Array.from({ length: end + 1 }, (_, index) => index);
-  }, [monday, days, previewDraft]);
+  }, [monday, days, shownDraft]);
 
   const weekHasEntries = dayIndexes.some((index) => (days.get(addDays(monday, index)) ?? []).length > 0);
   const title = weekRangeTitle(monday);
@@ -130,7 +189,7 @@ export function SessionCalendar({
           <p className="mt-1 text-callout text-muted">
             Live week preview. A one-off session takes priority over weekly sessions on its date.
           </p>
-          {previewDraft && draftFirst && !draftOnThisWeek ? (
+          {shownDraft && draftFirst && !draftOnThisWeek ? (
             <p className="mt-2 text-callout text-ink-2">
               Draft starts on {shortDate(draftFirst)}.{" "}
               <button type="button" onClick={jumpToDraft} className="font-semibold text-accent underline-offset-2 hover:underline">
@@ -138,7 +197,7 @@ export function SessionCalendar({
               </button>
             </p>
           ) : null}
-          {previewDraft && !draftFirst ? (
+          {shownDraft && !draftFirst ? (
             <p className="mt-2 text-callout text-warn">No days in range for this draft — check the weekdays and from/until dates.</p>
           ) : null}
         </div>
@@ -216,35 +275,70 @@ export function SessionCalendar({
               >
                 {entries.map(({ session, replaced }) => {
                   const isDraft = session.id === DRAFT_ID;
-                  // When the draft lands on a day that already has a session, nudge it right so both stay readable.
-                  const shareDay = isDraft && entries.some((entry) => entry.session.id !== DRAFT_ID && !entry.replaced);
+                  // Saved sessions open for editing; a replaced bar is the old session stepping aside.
+                  const clickable = Boolean(onSelect) && !isDraft && !replaced;
+                  const selected = !isDraft && session.id === selectedId;
+                  // A draft beside a live session takes the right half. It never takes the click.
+                  const sharesDay =
+                    entries.some((entry) => entry.session.id === DRAFT_ID) &&
+                    entries.some((entry) => entry.session.id !== DRAFT_ID && !entry.replaced);
                   const wave = session.mode === "wave";
                   const label = barLabel(session, isDraft);
-                  return (
+                  const place = replaced
+                    ? "z-[1] left-[30%] right-1 opacity-50 line-through"
+                    : isDraft && sharesDay
+                      ? "left-[52%] right-1"
+                      : !isDraft && sharesDay
+                        ? "left-1 right-[52%]"
+                        : "left-1 right-1";
+                  const classes = `absolute overflow-hidden rounded-xl px-2.5 py-1.5 text-left text-[12px] leading-snug ${
+                    isDraft
+                      ? wave
+                        ? "pointer-events-none z-[3] border border-dashed border-amber-400 bg-amber-50/95 text-amber-900 shadow-sm"
+                        : "pointer-events-none z-[3] border border-dashed border-accent/60 bg-white/95 text-accent shadow-sm"
+                      : wave
+                        ? "z-[2] border-l-4 border-amber-500 bg-amber-100 text-amber-950 shadow-sm"
+                        : "z-[2] border-l-4 border-accent bg-accent-soft text-ink shadow-sm"
+                  } ${place} ${selected ? "ring-2 ring-accent" : ""} ${
+                    clickable ? "cursor-pointer focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-accent/55" : ""
+                  }`;
+                  const inner = (
+                    <>
+                      <span className="block truncate font-semibold">
+                        {isDraft ? session.label || `New ${wave ? "Wave" : "Stream"}` : session.label || (wave ? "Wave" : "Stream")}
+                      </span>
+                      <span className="block truncate tabular opacity-80">
+                        {session.startTime}–{session.endTime}
+                        {session.onDate ? " · One date" : ""}
+                      </span>
+                    </>
+                  );
+                  const selection = selected ? ", ringed, being edited" : "";
+                  return clickable ? (
+                    <button
+                      key={`${session.id}-${day}`}
+                      type="button"
+                      title={label}
+                      aria-label={`${label}${selection}`}
+                      aria-pressed={selected}
+                      data-session={session.id}
+                      onClick={() => onSelect?.(session)}
+                      className={classes}
+                      style={barStyle(session.startTime, session.endTime)}
+                    >
+                      {inner}
+                    </button>
+                  ) : (
                     <div
                       key={`${session.id}-${day}`}
                       title={replaced ? `${label} (replaced by a one-off session)` : label}
                       aria-label={replaced ? `${label}, replaced by a one-off session` : label}
                       data-draft={isDraft ? "true" : undefined}
                       data-replaced={replaced ? "true" : undefined}
-                      className={`absolute right-1 overflow-hidden rounded-xl px-2.5 py-1.5 text-[12px] leading-snug ${
-                        isDraft
-                          ? wave
-                            ? "z-[3] border border-dashed border-amber-400 bg-amber-50/95 text-amber-900 shadow-sm"
-                            : "z-[3] border border-dashed border-accent/60 bg-white/95 text-accent shadow-sm"
-                          : wave
-                            ? "z-[2] border-l-4 border-amber-500 bg-amber-100 text-amber-950 shadow-sm"
-                            : "z-[2] border-l-4 border-accent bg-accent-soft text-ink shadow-sm"
-                      } ${replaced ? "z-[1] left-[30%] opacity-50 line-through" : ""} ${shareDay ? "left-[40%]" : replaced ? "" : "left-1"}`}
+                      className={classes}
                       style={barStyle(session.startTime, session.endTime)}
                     >
-                      <span className="block truncate font-semibold">
-                        {isDraft ? `New ${wave ? "Wave" : "Stream"}` : session.label || (wave ? "Wave" : "Stream")}
-                      </span>
-                      <span className="block truncate tabular opacity-80">
-                        {session.startTime}–{session.endTime}
-                        {session.onDate ? " · One date" : ""}
-                      </span>
+                      {inner}
                     </div>
                   );
                 })}
@@ -266,8 +360,12 @@ export function SessionCalendar({
           <span className="h-3 w-3 rounded border border-dashed border-accent/60 bg-white" aria-hidden="true" /> Draft
         </li>
         <li className="line-through">Replaced by a one-off</li>
+        {onSelect ? <li>Click a bar to edit that session</li> : null}
       </ul>
     </section>
   );
 }
+
+/** Memoised: the form streams draft updates while typing, so the grid only redraws on settled drafts. */
+export const SessionCalendar = memo(SessionCalendarBase);
 
