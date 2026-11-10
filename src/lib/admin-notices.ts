@@ -7,6 +7,8 @@ export const NOTICES: Readonly<Record<string, string>> = {
   "role-changed": "Role changed. They’ve been signed out and see their new pages the next time they sign in.",
   disabled: "Account turned off. They’ve been signed out everywhere and can’t sign in.",
   enabled: "Account turned back on. They can sign in again.",
+  verified: "Doctor verified. Once their profile and sessions are set, patients can book them.",
+  unverified: "Verification removed. Patients can no longer find or book this doctor.",
   "sessions-ended": "Signed out everywhere.",
   "session-ended": "Session ended.",
   "code-cleared": "Code cleared. They can ask for a new one straight away.",

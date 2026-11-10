@@ -13,6 +13,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   "staff.created": "Staff member added",
   "role.changed": "Role changed",
   "account.disabled": "Account turned off",
+  "doctor.verified": "Doctor verified",
+  "doctor.unverified": "Doctor verification removed",
   "account.enabled": "Account turned back on",
   "sessions.revoked": "Signed out everywhere",
   "session.revoked": "One session ended",

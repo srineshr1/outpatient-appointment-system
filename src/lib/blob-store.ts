@@ -208,6 +208,8 @@ function normaliseUser(stored: StoredUser): StoredUser {
     createdAt: stored.createdAt ?? "",
     disabledAt: stored.disabledAt ?? null,
     sessionsRevokedAt: stored.sessionsRevokedAt ?? null,
+    // Doctors saved before verification existed count as verified, as the database backfill does.
+    verifiedAt: stored.verifiedAt === undefined ? (stored.role === "doctor" ? stored.createdAt || "legacy" : null) : stored.verifiedAt,
   };
 }
 
@@ -268,6 +270,7 @@ export class BlobClinicStore implements ClinicStore {
       createdAt: new Date().toISOString(),
       disabledAt: null,
       sessionsRevokedAt: null,
+      verifiedAt: null,
       ...(user.doctorRoom ? { doctorRoom: user.doctorRoom } : {}),
       ...(user.doctorInterest ? { doctorInterest: user.doctorInterest } : {}),
     };

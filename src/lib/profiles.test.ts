@@ -86,7 +86,11 @@ describe("who patients can see", () => {
 
     await store.putConsultSession(defaultSession(doctor.id, "Room 9", "2026-10-28T00:00:00.000Z"));
     await loadDoctors(true);
-    expect(allDoctors().find((item) => item.id === doctor.id)).toMatchObject({ interest: "Cardiology", room: "Room 9", feePence: 4550 });
+    expect(allDoctors().some((item) => item.id === doctor.id)).toBe(false); // still waits for an admin to verify
+
+    await store.updateUser(doctor.id, { verifiedAt: "2026-10-28T02:00:00.000Z" });
+    await loadDoctors(true);
+    expect(allDoctors().find((item) => item.id === doctor.id)).toMatchObject({ interest: "Cardiology", room: "Room 9", feePence: 4550, verified: true });
   });
 
   it("still lets an admin add a doctor who is ready straight away", async () => {

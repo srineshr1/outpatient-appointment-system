@@ -33,7 +33,7 @@ import { ROLE_LABELS } from "@/lib/audit-labels";
 import { ROLES } from "@/lib/clinic-types";
 import { practiceDoctors } from "@/lib/data";
 import { ageLabel, formatPhone } from "@/lib/format";
-import { changeRoleAction, revokeSessionAction, revokeSessionsAction, setDisabledAction } from "@/server/admin-actions";
+import { changeRoleAction, revokeSessionAction, revokeSessionsAction, setDisabledAction, setVerifiedAction } from "@/server/admin-actions";
 
 export const metadata: Metadata = { title: "Person" };
 
@@ -81,6 +81,9 @@ export default async function PersonPage({
           <span className="flex flex-wrap items-center gap-2">
             {person.role === "admin" ? <Badge tone="info">{roleText(person)}</Badge> : <Badge>{roleText(person)}</Badge>}
             <AccountBadge account={person} />
+            {person.role === "doctor" ? (
+              person.verifiedAt ? <Badge tone="success">✓ Verified</Badge> : <Badge tone="warn">Not verified</Badge>
+            ) : null}
             <span className="break-all">{person.email}</span>
           </span>
         }
@@ -252,6 +255,29 @@ export default async function PersonPage({
               </ActionForm>
             )}
           </Panel>
+
+          {person.role === "doctor" ? (
+            <Panel
+              id="verified"
+              title={person.verifiedAt ? "Verified doctor" : "Not verified"}
+              description={
+                person.verifiedAt
+                  ? `Verified ${instantLabel(person.verifiedAt, today)}. Patients can find and book them.`
+                  : "Patients can’t find or book this doctor until you verify them."
+              }
+            >
+              <ActionForm action={setVerifiedAction}>
+                <input type="hidden" name="userId" value={person.id} />
+                <input type="hidden" name="verify" value={person.verifiedAt ? "0" : "1"} />
+                <input type="hidden" name="return" value={path} />
+                {person.verifiedAt ? (
+                  <SubmitButton variant="secondary" pendingLabel="Removing…">Remove verification</SubmitButton>
+                ) : (
+                  <SubmitButton pendingLabel="Verifying…">Verify doctor</SubmitButton>
+                )}
+              </ActionForm>
+            </Panel>
+          ) : null}
 
           <Panel id="sign-out" title="Sign out everywhere" description={self ? "Ends your other sessions. This one stays." : "Ends every session they have open."}>
             <ActionForm action={revokeSessionsAction}>
