@@ -133,6 +133,8 @@ describe("checkSession", () => {
     room: "Room 2",
     mode: "stream",
     slotMinutes: 20,
+    startDate: "2026-01-05",
+    endDate: "2026-03-31",
   };
 
   it("accepts a stream and a wave and normalises the days", () => {
@@ -214,6 +216,8 @@ describe("recurring date ranges and one-off sessions (IST dates)", () => {
   });
 
   it("checks a recurring range", () => {
+    expect(checkSession({ ...input, weekdays: [1] }, [], "2026-11-04").ok).toBe(false);
+    expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10" }, [], "2026-11-04").ok).toBe(false);
     expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-20", endDate: "2026-11-10" }, [], "2026-11-04")).toMatchObject({ ok: false });
     expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10", endDate: "2026-11-15" }, [], "2026-11-04")).toMatchObject({ ok: false });
     expect(checkSession({ ...input, weekdays: [1, 2, 4], startDate: "2026-11-10", endDate: "2026-12-31" }, [], "2026-11-04")).toMatchObject({ ok: true });
@@ -223,12 +227,12 @@ describe("recurring date ranges and one-off sessions (IST dates)", () => {
     const saturday = { ...wave, weekdays: [6], startTime: "12:00", endTime: "15:00" };
     // A one-off session replaces the weekly ones on its date, so it never clashes with them.
     expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [saturday], "2026-11-04")).toMatchObject({ ok: true });
-    expect(checkSession({ ...input, weekdays: [6] }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04")).toMatchObject({ ok: true });
+    expect(checkSession({ ...input, weekdays: [6], startDate: "2026-11-07", endDate: "2026-11-28" }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04")).toMatchObject({ ok: true });
     expect(
       checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04"),
     ).toMatchObject({ ok: true });
     expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [{ ...saturday, endDate: "2026-11-01" }], "2026-11-04")).toMatchObject({ ok: true });
-    expect(checkSession({ ...input, weekdays: [6], startDate: "2026-12-01" }, [{ ...saturday, endDate: "2026-11-30" }], "2026-11-04")).toMatchObject({ ok: true });
+    expect(checkSession({ ...input, weekdays: [6], startDate: "2026-12-01", endDate: "2026-12-31" }, [{ ...saturday, endDate: "2026-11-30" }], "2026-11-04")).toMatchObject({ ok: true });
   });
 });
 

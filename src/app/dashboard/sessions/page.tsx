@@ -58,7 +58,7 @@ export default async function SessionsPage({
       <p className="mt-2 max-w-prose text-body text-ink-2">
         A session is a block of hours on the days you choose — in a <strong>stream</strong> each patient keeps their own slot,
         in a <strong>wave</strong> patients arrive within the wave and are seen in token order. A one-off session takes a
-        weekly session&rsquo;s place on its date. Edit a session by clicking it below.
+        weekly session&rsquo;s place on its date. The week comes first. Add a session, or choose Edit a session and pick a highlighted block.
       </p>
       {saved ? (
         <Notice tone="success" role="status" className="mt-6">

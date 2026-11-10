@@ -23,6 +23,7 @@ export function SessionList({
   selectedId = null,
   onEdit,
   trims = [],
+  picking = false,
 }: {
   sessions: readonly ConsultSession[];
   /** The session currently loaded in the planner form: its row is ringed. */
@@ -30,6 +31,8 @@ export function SessionList({
   onEdit: (session: ConsultSession) => void;
   /** Free-edge cuts already saved. */
   trims?: readonly SessionTrim[];
+  /** Edit mode: every saved session can be chosen, so each row is marked. */
+  picking?: boolean;
 }) {
   if (sessions.length === 0) return null;
   return (
@@ -49,7 +52,8 @@ export function SessionList({
           return (
             <li
               key={session.id}
-              className={`rounded-card bg-surface shadow-card ${selected ? "ring-2 ring-accent" : ""}`}
+              data-editable={picking ? "true" : undefined}
+              className={`rounded-card bg-surface shadow-card ${selected ? "ring-2 ring-accent" : picking ? "ring-2 ring-accent/70" : ""}`}
             >
               <div className="flex items-center gap-4 px-4 py-3.5 md:px-5">
                 <span
@@ -79,7 +83,7 @@ export function SessionList({
                   {borrows ? <p className="text-callout text-muted">Uses free time from the next session on some days. Nothing was cancelled.</p> : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button variant="plain" size="md" onClick={() => onEdit(session)} aria-pressed={selected}>
+                  <Button variant={picking ? "secondary" : "plain"} size="md" onClick={() => onEdit(session)} aria-pressed={selected}>
                     Edit
                   </Button>
                   <form action={archiveSession} className="group">

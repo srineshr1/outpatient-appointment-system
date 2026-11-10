@@ -420,7 +420,7 @@ export function describeSession(session: ConsultSession): string {
 
 export interface SessionInput {
   label: string;
-  /** "recurring" (weekly, optional date range) or "once" (one date). Missing means recurring. */
+  /** "recurring" (weekly, from a start date to an end date) or "once" (one date). Missing means recurring. */
   kind?: string;
   onDate?: string | null;
   startDate?: string | null;
@@ -682,15 +682,13 @@ export function checkSession(input: SessionInput, _others: readonly ConsultSessi
     if (weekdays.length === 0) return { ok: false, message: "Choose at least one weekday." };
     const start = input.startDate?.trim() || null;
     const end = input.endDate?.trim() || null;
-    if (start && !isIsoDate(start)) return { ok: false, message: "Enter the start date as a date." };
-    if (end && !isIsoDate(end)) return { ok: false, message: "Enter the end date as a date." };
-    if (start && end && end < start) return { ok: false, message: "The end date must be on or after the start date." };
-    if (end && today && end < today) return { ok: false, message: "The end date has passed. Choose a later end date." };
-    if (start && end) {
-      let any = false;
-      for (let date = start; date <= end && !any; date = addDays(date, 1)) any = weekdays.includes(weekdayIndex(date));
-      if (!any) return { ok: false, message: "None of the chosen weekdays fall between those dates." };
-    }
+    if (!isIsoDate(start)) return { ok: false, message: "Choose the date this session starts." };
+    if (!isIsoDate(end)) return { ok: false, message: "Choose the date this session ends." };
+    if (end < start) return { ok: false, message: "The end date must be on or after the start date." };
+    if (today && end < today) return { ok: false, message: "The end date has passed. Choose a later end date." };
+    let any = false;
+    for (let date = start; date <= end && !any; date = addDays(date, 1)) any = weekdays.includes(weekdayIndex(date));
+    if (!any) return { ok: false, message: "None of the chosen weekdays fall between those dates." };
     startDate = start;
     endDate = end;
   }
