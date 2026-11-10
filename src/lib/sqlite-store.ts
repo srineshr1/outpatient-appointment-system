@@ -24,6 +24,7 @@ import {
   type RescheduleRecord,
   type SessionMode,
   type SessionRecord,
+  type SessionTrim,
   type StoredUser,
   type UserAccount,
   type UserPatch,
@@ -101,6 +102,15 @@ interface ConsultSessionRow {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface TrimRow {
+  doctor_id: string;
+  session_id: string;
+  on_date: string;
+  start_time: string;
+  end_time: string;
+  absorbed_by: string;
 }
 
 interface RescheduleRow {
@@ -233,6 +243,10 @@ function toProfile(row: ProfileRow): ProfileRecord {
     // A damaged profile reads as empty, so the person is asked to fill it in again.
   }
   return { userId: row.user_id, kind: row.kind === "doctor" ? "doctor" : "patient", data, updatedAt: row.updated_at };
+}
+
+function toTrim(row: TrimRow): SessionTrim {
+  return { sessionId: row.session_id, date: row.on_date, startTime: row.start_time, endTime: row.end_time, absorbedBy: row.absorbed_by };
 }
 
 function toConsultSession(row: ConsultSessionRow): ConsultSession {
@@ -485,6 +499,19 @@ export class SqliteClinicStore implements ClinicStore {
       );
       CREATE INDEX IF NOT EXISTS consult_sessions_by_doctor ON consult_sessions(doctor_id);
 
+      CREATE TABLE IF NOT EXISTS consult_session_trims (
+        doctor_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        on_date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        absorbed_by TEXT NOT NULL,
+        PRIMARY KEY (session_id, on_date, start_time, absorbed_by),
+        CHECK (start_time < end_time)
+      );
+      CREATE INDEX IF NOT EXISTS consult_session_trims_by_doctor ON consult_session_trims(doctor_id);
+      CREATE INDEX IF NOT EXISTS consult_session_trims_by_absorbed ON consult_session_trims(absorbed_by);
+
       CREATE TABLE IF NOT EXISTS reschedules (
         id TEXT PRIMARY KEY,
         appointment_id TEXT NOT NULL,
@@ -663,7 +690,8 @@ export class SqliteClinicStore implements ClinicStore {
   private safePlacement(doctorId: string, place: Placement, excludeId?: string): boolean {
     const sessions = (this.db.prepare("SELECT * FROM consult_sessions WHERE doctor_id = ?").all(doctorId) as unknown as ConsultSessionRow[]).map(toConsultSession);
     const visits = (this.db.prepare("SELECT * FROM appointments WHERE doctor_id = ?").all(doctorId) as unknown as AppointmentRow[]).map(toAppointment);
-    return placementIsCurrent(doctorId, place, sessions) && !placementConflicts(doctorId, place, visits, excludeId, sessions);
+    const trims = (this.db.prepare("SELECT * FROM consult_session_trims WHERE doctor_id = ?").all(doctorId) as unknown as TrimRow[]).map(toTrim);
+    return placementIsCurrent(doctorId, place, sessions, trims) && !placementConflicts(doctorId, place, visits, excludeId, sessions);
   }
 
   async createAppointment(appointment: AppointmentRecord): Promise<"ok" | "taken"> {
@@ -998,7 +1026,7 @@ export class SqliteClinicStore implements ClinicStore {
       );
   }
 
-  async putConsultSession(session: ConsultSession): Promise<void> {
+  private persistConsultSession(session: ConsultSession, trims: readonly SessionTrim[] | null): void {
     // No await between the read and write: SQLite's synchronous connection serializes this edit.
     this.db.exec("BEGIN IMMEDIATE");
     try {
@@ -1012,11 +1040,36 @@ export class SqliteClinicStore implements ClinicStore {
         }
       }
       this.writeConsultSession(session, true);
+      if (trims) {
+        this.db.prepare("DELETE FROM consult_session_trims WHERE absorbed_by = ?").run(session.id);
+        const insert = this.db.prepare(
+          `INSERT INTO consult_session_trims (doctor_id, session_id, on_date, start_time, end_time, absorbed_by)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        );
+        for (const trim of trims) insert.run(session.doctorId, trim.sessionId, trim.date, trim.startTime, trim.endTime, session.id);
+      }
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  async putConsultSession(session: ConsultSession): Promise<void> {
+    this.persistConsultSession(session, null);
+  }
+
+  async saveConsultSession(session: ConsultSession, trims: readonly SessionTrim[]): Promise<void> {
+    this.persistConsultSession(session, trims);
+  }
+
+  async listSessionTrims(doctorId?: string): Promise<SessionTrim[]> {
+    const rows = (
+      doctorId
+        ? this.db.prepare("SELECT * FROM consult_session_trims WHERE doctor_id = ? ORDER BY on_date, session_id").all(doctorId)
+        : this.db.prepare("SELECT * FROM consult_session_trims ORDER BY on_date, session_id").all()
+    ) as unknown as TrimRow[];
+    return rows.map(toTrim);
   }
 
   async createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists"> {

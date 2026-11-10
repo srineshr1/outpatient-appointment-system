@@ -19,7 +19,7 @@ import {
 } from "@/lib/profiles";
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
 import { findOrphanedVisits } from "@/lib/elastic";
-import { checkSession, type SessionInput } from "@/lib/sessions";
+import { checkSession, planAbsorption, type SessionInput } from "@/lib/sessions";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
 
@@ -197,16 +197,18 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     input.waveMinutes = existing.waveMinutes;
   }
 
-  const checked = checkSession(input, mine.filter((session) => session.id !== id), todayIso(now()));
+  const today = todayIso(now());
+  const checked = checkSession(input, mine.filter((session) => session.id !== id), today);
   if (!checked.ok) return fail(checked.message);
 
-  const candidateSession: ConsultSession | null = existing
-    ? { ...existing, ...checked.value, updatedAt: now().toISOString() }
-    : null;
+  const at = now().toISOString();
+  const session: ConsultSession = existing
+    ? { ...existing, ...checked.value, updatedAt: at }
+    : { id: `s${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`, doctorId: user.id, ...checked.value, archivedAt: null, createdAt: at, updatedAt: at };
 
   // Recurrence, mode, step and capacity stay protected while reservations exist; hours, name and
   // room may change (the store keeps reserved visits and holds at their original times).
-  if (existing && candidateSession && sessionStructureChanged(existing, candidateSession)) {
+  if (existing && sessionStructureChanged(existing, session)) {
     const upcoming = await upcomingIn(user.id, existing.id);
     if (upcoming > 0) {
       return fail(
@@ -218,8 +220,8 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   // Elastic scheduling: hour changes must not orphan booked visits. Expansion is always safe;
   // a shrink that would strand a booking outside the new hours is rejected up front instead of
   // leaving the visit outside its session's availability.
-  if (existing && candidateSession) {
-    const { total, orphaned, orphanedTimes } = await orphanedVisits(user.id, existing, candidateSession);
+  if (existing) {
+    const { total, orphaned, orphanedTimes } = await orphanedVisits(user.id, existing, session);
     if (orphaned > 0) {
       const times = orphanedTimes.slice(0, 3).join(", ");
       const more = orphaned > 3 ? ` and ${orphaned - 3} more` : "";
@@ -229,17 +231,23 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     }
   }
 
-  if (existing && (existing.startTime !== checked.value.startTime || existing.endTime !== checked.value.endTime) &&
-    process.env.DATA_STORE !== "supabase" && process.env.BLOB_READ_WRITE_TOKEN) {
+  const [appointments, storedTrims] = await Promise.all([
+    store.listAppointments({ doctorId: user.id }),
+    store.listSessionTrims(user.id),
+  ]);
+  const occupying = appointments
+    .filter((visit) => occupiesTime(visit) && visit.date >= today)
+    .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime ?? null, sessionId: visit.sessionId ?? null }));
+  const plan = planAbsorption(session, mine.filter((item) => item.id !== session.id), occupying, today, storedTrims);
+  if (!plan.ok) return fail(plan.message);
+
+  const hoursChanged = Boolean(existing && (existing.startTime !== session.startTime || existing.endTime !== session.endTime));
+  if ((hoursChanged || plan.trims.length > 0) && process.env.DATA_STORE !== "supabase" && process.env.BLOB_READ_WRITE_TOKEN) {
     return fail("Resizing availability requires the Supabase or SQLite store. The legacy Blob store cannot safely coordinate this change.");
   }
 
-  const at = now().toISOString();
-  const session: ConsultSession = existing
-    ? { ...existing, ...checked.value, updatedAt: at }
-    : { id: `s${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`, doctorId: user.id, ...checked.value, archivedAt: null, createdAt: at, updatedAt: at };
   try {
-    await store.putConsultSession(session);
+    await store.saveConsultSession(session, plan.trims);
   } catch (error) {
     if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
       return fail("A visit was reserved while you edited. Reload the session; you can still change its hours, name or room.");
@@ -257,7 +265,8 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   });
   refresh();
   // A unique stamp: the workspace form resets only on a save that actually landed.
-  redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}`);
+  const lent = plan.notice ? `&lent=${encodeURIComponent(plan.notice)}` : "";
+  redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${lent}`);
 }
 
 export async function archiveSession(formData: FormData): Promise<void> {
@@ -268,7 +277,7 @@ export async function archiveSession(formData: FormData): Promise<void> {
   const upcoming = await upcomingIn(user.id, session.id);
   if (upcoming > 0) redirect(`/dashboard/sessions?notice=busy&n=${upcoming}`);
   try {
-    await store.putConsultSession({ ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() });
+    await store.saveConsultSession({ ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() }, []);
   } catch (error) {
     if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
       redirect("/dashboard/sessions?notice=busy&n=1");

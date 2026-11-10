@@ -1,5 +1,5 @@
 /** Booking snapshots are immutable when a session's availability is resized. */
-import type { AppointmentRecord, ConsultSession, Placement } from "./clinic-types";
+import type { AppointmentRecord, ConsultSession, Placement, SessionTrim } from "./clinic-types";
 import type { Slot } from "./data";
 import { applyHeld, baseSlotId, fromMinutes, heldId, overriddenDates, slotsForSession, toMinutes } from "./sessions";
 
@@ -51,14 +51,15 @@ export function applyReservations(slots: readonly Slot[], visits: readonly Reser
 
 /** Validate a placement against current sessions, not the client's stale calendar/cache. */
 export function placementIsCurrent(
-  doctorId: string, place: Placement, sessions: readonly ConsultSession[],
+  doctorId: string, place: Placement, sessions: readonly ConsultSession[], trims: readonly SessionTrim[] = [],
 ): boolean {
   // Legacy appointments without session IDs predate session-driven availability.
   if (!place.sessionId) return true;
   const session = sessions.find((item) => item.id === place.sessionId && item.doctorId === doctorId);
   if (!session) return false;
-  const overridden = overriddenDates(sessions.filter((item) => item.doctorId === doctorId));
-  const slot = slotsForSession(session, doctorId, place.date, place.date, overridden)
+  const own = sessions.filter((item) => item.doctorId === doctorId);
+  const overridden = overriddenDates(own);
+  const slot = slotsForSession(session, doctorId, place.date, place.date, overridden, trims, own)
     .find((item) => item.id === baseSlotId(place.slotId));
   return Boolean(slot && slot.time === place.time && slot.endTime === place.endTime &&
     (slot.mode === "wave" ? place.token !== null && place.token >= 1 && place.token <= (slot.capacity ?? 1) && place.waveCapacity === slot.capacity && place.slotId === heldId(slot.id, place.token) : place.token === null && place.slotId === slot.id));

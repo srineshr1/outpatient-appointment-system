@@ -69,19 +69,57 @@ describe("doctor elastic scheduling action", () => {
     expect((await state.store!.getConsultSession(session.id))?.slotMinutes).toBe(30);
   });
   it("returns a form error if a reservation wins the edit race", async () => {
-    const spy = vi.spyOn(state.store!, "putConsultSession").mockRejectedValueOnce(new Error("Reserved sessions may change hours, name and room only"));
+    const spy = vi.spyOn(state.store!, "saveConsultSession").mockRejectedValueOnce(new Error("Reserved sessions may change hours, name and room only"));
     expect(await saveSession(null, form({ slotMinutes: "15" }))).toMatchObject({ ok: false, message: expect.stringContaining("reserved while you edited") });
     spy.mockRestore();
   });
   it("shows a busy notice if a reservation wins the archive race", async () => {
-    const spy = vi.spyOn(state.store!, "putConsultSession").mockRejectedValueOnce(new Error("Reserved sessions may change hours, name and room only"));
+    const spy = vi.spyOn(state.store!, "saveConsultSession").mockRejectedValueOnce(new Error("Reserved sessions may change hours, name and room only"));
     await expect(archiveSession(form())).rejects.toThrow("notice=busy");
     spy.mockRestore();
   });
-  it("rejects invalid ranges and overlapping sessions", async () => {
+  it("rejects an invalid range and absorbs an empty neighbour without moving its row", async () => {
     expect(await saveSession(null, form({ endTime: "09:00" }))).toMatchObject({ ok: false });
     await state.store!.putConsultSession({ ...session, id: "other", startTime: "09:00", endTime: "10:00" });
-    expect(await saveSession(null, form({ startTime: "09:00" }))).toMatchObject({ ok: false });
+    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    const trims = await state.store!.listSessionTrims("doctor");
+    expect(trims.some((trim) => trim.sessionId === "other" && trim.date === "2099-01-05" && trim.startTime === "09:00" && trim.endTime === "10:00")).toBe(true);
+    expect(await state.store!.getConsultSession("other")).toMatchObject({ startTime: "09:00", endTime: "10:00" });
+    expect(await state.store!.listAppointments()).toEqual([]);
+  });
+  it("refuses a booked edge and does not cancel the visit", async () => {
+    await state.store!.putConsultSession({ ...session, id: "other", startTime: "09:00", endTime: "10:00" });
+    const booked = visit({ id: "edge", reference: "HSP-200010", sessionId: "other", slotId: "doctor-2099-01-05-0900", time: "09:00", endTime: "09:30" });
+    expect(await state.store!.createAppointment(booked)).toBe("ok");
+    const saved = await saveSession(null, form({ startTime: "09:00" }));
+    expect(saved).toMatchObject({ ok: false, message: expect.stringContaining("09:00") });
+    expect((await state.store!.getConsultSession(session.id))?.startTime).toBe("10:00");
+    expect(await state.store!.getAppointment(booked.id)).toEqual(booked);
+    expect(await state.store!.listSessionTrims("doctor")).toEqual([]);
+  });
+  it("books the lent slot on the extended session only", async () => {
+    await state.store!.putConsultSession({ ...session, id: "other", startTime: "09:00", endTime: "10:00" });
+    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    expect(await state.store!.createAppointment(visit({
+      id: "neighbour-slot", reference: "HSP-200011", sessionId: "other", slotId: "doctor-2099-01-05-0900", time: "09:00", endTime: "09:30",
+    }))).toBe("taken");
+    expect(await state.store!.createAppointment(visit({
+      id: "absorbed-slot", reference: "HSP-200012", sessionId: session.id, slotId: "doctor-2099-01-05-0900", time: "09:00", endTime: "09:30",
+    }))).toBe("ok");
+    expect(await state.store!.getAppointment("absorbed-slot")).toMatchObject({ time: "09:00", sessionId: session.id });
+  });
+  it("gives the free edge back when the session shrinks or is removed", async () => {
+    await state.store!.putConsultSession({ ...session, id: "other", startTime: "09:00", endTime: "10:00" });
+    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    await expect(saveSession(null, form({ startTime: "10:00" }))).rejects.toThrow("REDIRECT:");
+    expect(await state.store!.listSessionTrims("doctor")).toEqual([]);
+    expect(await state.store!.createAppointment(visit({
+      id: "returned", reference: "HSP-200013", sessionId: "other", slotId: "doctor-2099-01-05-0900", time: "09:00", endTime: "09:30",
+    }))).toBe("ok");
+    await state.store!.updateStatus("returned", "cancelled");
+    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    await expect(archiveSession(form())).rejects.toThrow("saved=removed");
+    expect(await state.store!.listSessionTrims("doctor")).toEqual([]);
   });
   it("enforces doctor ownership and refuses patient access", async () => {
     state.user = { ...state.user!, id: "other", doctorId: "other" };

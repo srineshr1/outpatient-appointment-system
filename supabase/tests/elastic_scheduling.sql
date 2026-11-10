@@ -89,4 +89,17 @@ alter table public.clinic_appointments enable trigger clinic_placement_guard;
 insert into public.clinic_appointments
 (id, reference, slot_id, doctor_id, date, time, end_time, reason_id, patient_name, status, created_at, session_id)
 values ('elastic-after-legacy', 'ELASTIC-10', 'elastic-doctor-2099-01-06-1030', 'elastic-doctor', '2099-01-06', '10:30', '11:00', 'new', 'Example', 'booked', '', 'elastic-sql');
+
+-- A lent edge cannot be booked on the session that gave it up. The session that took it still can.
+insert into public.clinic_consult_sessions
+(id, doctor_id, label, weekdays, start_time, end_time, room, mode, slot_minutes, created_at, updated_at)
+values ('elastic-next', 'elastic-doctor', 'Next', '1,2,3,4,5,6', '10:00', '12:00', 'Test', 'stream', 30, '', '');
+insert into public.clinic_session_trims (doctor_id, session_id, on_date, start_time, end_time, absorbed_by)
+values ('elastic-doctor', 'elastic-next', '2099-01-05', '10:00', '11:00', 'elastic-sql');
+select pg_temp.expect_unavailable($q$insert into public.clinic_appointments
+(id, reference, slot_id, doctor_id, date, time, end_time, reason_id, patient_name, status, created_at, session_id)
+values ('elastic-lent', 'ELASTIC-11', 'elastic-doctor-2099-01-05-1000', 'elastic-doctor', '2099-01-05', '10:00', '10:30', 'new', 'Example', 'booked', '', 'elastic-next')$q$);
+insert into public.clinic_appointments
+(id, reference, slot_id, doctor_id, date, time, end_time, reason_id, patient_name, status, created_at, session_id)
+values ('elastic-kept', 'ELASTIC-12', 'elastic-doctor-2099-01-05-1000', 'elastic-doctor', '2099-01-05', '10:00', '10:30', 'new', 'Example', 'booked', '', 'elastic-sql');
 rollback;

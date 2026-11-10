@@ -1,10 +1,11 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { ConsultSession } from "@/lib/clinic-types";
+import type { ConsultSession, SessionTrim } from "@/lib/clinic-types";
 import { addDays, mondayOf } from "@/lib/clock";
 import {
   firstRunDate,
+  hoursOnDate,
   sessionCalendar,
   sessionRunsOn,
   shortDate,
@@ -19,10 +20,10 @@ const HOUR_PX = 60;
 const HEAD_PX = 56;
 const DRAFT_ID = "__draft__";
 
-function barLabel(session: ConsultSession, draft: boolean): string {
+function barLabel(session: ConsultSession, draft: boolean, startTime: string, endTime: string): string {
   const name = draft ? session.label || `New ${session.mode === "wave" ? "Wave" : "Stream"}` : session.label || (session.mode === "wave" ? "Wave" : "Stream");
   const kind = session.onDate ? "One date" : "Weekly";
-  return `${name} ${session.startTime}–${session.endTime} (${kind})`;
+  return `${name} ${startTime}–${endTime} (${kind})`;
 }
 
 function draftKey(draft: ConsultSession | null): string {
@@ -60,6 +61,8 @@ function SessionCalendarBase({
   today,
   selectedId = null,
   onSelect,
+  trims = [],
+  roster,
 }: {
   sessions: readonly ConsultSession[];
   /** The session being added or edited, previewed live (dashed outline). */
@@ -71,7 +74,12 @@ function SessionCalendarBase({
   selectedId?: string | null;
   /** Clicking a saved session's bar opens it for editing. */
   onSelect?: (session: ConsultSession) => void;
+  /** Free-edge cuts, including a live preview of a save that has not landed yet. */
+  trims?: readonly SessionTrim[];
+  /** Sessions used to decide which cuts still apply. Defaults to `sessions`. */
+  roster?: readonly ConsultSession[];
 }) {
+  const boundsRoster = roster ?? sessions;
   const thisMonday = mondayOf(today);
   const [weekOffset, setWeekOffset] = useState(0);
   const monday = addDays(thisMonday, weekOffset * 7);
@@ -253,6 +261,23 @@ function SessionCalendarBase({
         {dayIndexes.map((index) => {
           const day = addDays(monday, index);
           const entries = days.get(day) ?? [];
+          const drawn = entries.flatMap(({ session, replaced }) => {
+            const bounds = replaced
+              ? { startTime: session.startTime, endTime: session.endTime }
+              : hoursOnDate(session, day, trims, boundsRoster);
+            return bounds ? [{ session, replaced, bounds }] : [];
+          });
+          const draftBounds = drawn.find((entry) => entry.session.id === DRAFT_ID)?.bounds;
+          const sharesDay = Boolean(
+            draftBounds &&
+              drawn.some(
+                (entry) =>
+                  entry.session.id !== DRAFT_ID &&
+                  !entry.replaced &&
+                  toMinutes(draftBounds.startTime) < toMinutes(entry.bounds.endTime) &&
+                  toMinutes(entry.bounds.startTime) < toMinutes(draftBounds.endTime),
+              ),
+          );
           const isToday = day === today;
           return (
             <div key={day} data-date={day} className="min-w-0">
@@ -267,23 +292,19 @@ function SessionCalendarBase({
                 </span>
               </div>
               <div
-                className={`relative rounded-xl border border-hairline/50 ${isToday ? "bg-accent-soft/30" : entries.length === 0 ? "bg-fill/40" : "bg-white"}`}
+                className={`relative rounded-xl border border-hairline/50 ${isToday ? "bg-accent-soft/30" : drawn.length === 0 ? "bg-fill/40" : "bg-white"}`}
                 style={{
                   height: trackHeight,
                   backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, rgba(148,163,184,0.18) ${HOUR_PX - 1}px, rgba(148,163,184,0.18) ${HOUR_PX}px)`,
                 }}
               >
-                {entries.map(({ session, replaced }) => {
+                {drawn.map(({ session, replaced, bounds }) => {
                   const isDraft = session.id === DRAFT_ID;
                   // Saved sessions open for editing; a replaced bar is the old session stepping aside.
                   const clickable = Boolean(onSelect) && !isDraft && !replaced;
                   const selected = !isDraft && session.id === selectedId;
-                  // A draft beside a live session takes the right half. It never takes the click.
-                  const sharesDay =
-                    entries.some((entry) => entry.session.id === DRAFT_ID) &&
-                    entries.some((entry) => entry.session.id !== DRAFT_ID && !entry.replaced);
                   const wave = session.mode === "wave";
-                  const label = barLabel(session, isDraft);
+                  const label = barLabel(session, isDraft, bounds.startTime, bounds.endTime);
                   const place = replaced
                     ? "z-[1] left-[30%] right-1 opacity-50 line-through"
                     : isDraft && sharesDay
@@ -308,7 +329,7 @@ function SessionCalendarBase({
                         {isDraft ? session.label || `New ${wave ? "Wave" : "Stream"}` : session.label || (wave ? "Wave" : "Stream")}
                       </span>
                       <span className="block truncate tabular opacity-80">
-                        {session.startTime}–{session.endTime}
+                        {bounds.startTime}–{bounds.endTime}
                         {session.onDate ? " · One date" : ""}
                       </span>
                     </>
@@ -324,7 +345,7 @@ function SessionCalendarBase({
                       data-session={session.id}
                       onClick={() => onSelect?.(session)}
                       className={classes}
-                      style={barStyle(session.startTime, session.endTime)}
+                      style={barStyle(bounds.startTime, bounds.endTime)}
                     >
                       {inner}
                     </button>
@@ -336,7 +357,7 @@ function SessionCalendarBase({
                       data-draft={isDraft ? "true" : undefined}
                       data-replaced={replaced ? "true" : undefined}
                       className={classes}
-                      style={barStyle(session.startTime, session.endTime)}
+                      style={barStyle(bounds.startTime, bounds.endTime)}
                     >
                       {inner}
                     </div>

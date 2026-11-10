@@ -1,11 +1,17 @@
 "use client";
 
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
-import type { ConsultSession } from "@/lib/clinic-types";
+import type { ConsultSession, SessionTrim } from "@/lib/clinic-types";
 import { defaultsFor, type SessionDefaults } from "@/lib/session-defaults";
+import { planAbsorption, timesLookSet, type OccupyingVisit } from "@/lib/sessions";
 import { SessionCalendar } from "./SessionCalendar";
 import { SessionForm } from "./SessionForm";
 import { SessionList } from "./SessionList";
+
+function shapeKey(session: ConsultSession): string {
+  const days = [...session.weekdays].sort((a, b) => a - b).join(",");
+  return [session.mode, session.slotMinutes ?? "", session.waveMinutes ?? "", session.startTime, session.endTime, session.onDate ?? "", session.startDate ?? "", session.endDate ?? "", days].join("|");
+}
 
 /**
  * The session workspace: the form on the left (add, or edit the picked session), the week
@@ -17,6 +23,8 @@ export function SessionPlanner({
   defaults,
   today,
   addTitle,
+  visits = [],
+  trims = [],
 }: {
   sessions: readonly ConsultSession[];
   /** Defaults for a brand-new session (carries the doctor's default room). */
@@ -24,6 +32,10 @@ export function SessionPlanner({
   today: string;
   /** Heading for the form: "Add your first session" until there is one. */
   addTitle: string;
+  /** Future visits that still occupy time. No patient names. */
+  visits?: readonly OccupyingVisit[];
+  /** Free-edge minutes already lent between this doctor's sessions. */
+  trims?: readonly SessionTrim[];
 }) {
   const [target, setTarget] = useState<ConsultSession | null>(null);
   const [draft, setDraft] = useState<ConsultSession | null>(null);
@@ -46,6 +58,26 @@ export function SessionPlanner({
 
   // Typing updates the form straight away; the calendar redraws on a settled draft.
   const deferredDraft = useDeferredValue(draft);
+  const candidate = useMemo(() => {
+    if (!deferredDraft || !timesLookSet(deferredDraft.startTime, deferredDraft.endTime)) return null;
+    return { ...deferredDraft, id: editing?.id ?? deferredDraft.id, doctorId: editing?.doctorId || deferredDraft.doctorId };
+  }, [deferredDraft, editing]);
+  const shapeChanged = Boolean(candidate && (!editing || shapeKey(editing) !== shapeKey(candidate)));
+  const plan = useMemo(() => {
+    if (!candidate || !shapeChanged) return null;
+    return planAbsorption(candidate, sessions.filter((session) => session.id !== candidate.id), visits, today, trims);
+  }, [candidate, shapeChanged, sessions, visits, today, trims]);
+  const guidance = !plan ? null : plan.ok
+    ? (plan.notice ? { tone: "info" as const, message: plan.notice } : null)
+    : { tone: "danger" as const, message: plan.message };
+  const previewTrims = useMemo(() => {
+    if (!candidate || !shapeChanged || !plan?.ok) return trims;
+    return [...trims.filter((trim) => trim.absorbedBy !== candidate.id), ...plan.trims];
+  }, [trims, candidate, shapeChanged, plan]);
+  const roster = useMemo(() => {
+    if (!candidate || !shapeChanged || !plan?.ok) return sessions;
+    return [...sessions.filter((session) => session.id !== candidate.id), candidate];
+  }, [sessions, candidate, shapeChanged, plan]);
 
   return (
     <div
@@ -67,6 +99,7 @@ export function SessionPlanner({
             fallbackLabel={editing?.label}
             onDraft={setDraft}
             onCancel={editing ? () => setTarget(null) : undefined}
+            guidance={guidance}
           />
         </div>
       </section>
@@ -78,10 +111,12 @@ export function SessionPlanner({
           today={today}
           selectedId={editing?.id ?? null}
           onSelect={beginEdit}
+          trims={previewTrims}
+          roster={roster}
         />
       </div>
       <div className="min-w-0 [grid-area:list]">
-        <SessionList sessions={sessions} selectedId={editing?.id ?? null} onEdit={beginEdit} />
+        <SessionList sessions={sessions} selectedId={editing?.id ?? null} onEdit={beginEdit} trims={trims} />
       </div>
     </div>
   );

@@ -10,6 +10,12 @@ reschedule, notification of a moved visit, refund, or appointment rewrite is per
 
 - A booked session may change its hours, name and room, but not recurrence, mode, duration step,
   capacity or archive state while current/future reservations use it.
+- Growing into another session is not a merge. The other session keeps its row and every booked
+  visit. It lends only the empty slots that touch the shared edge, and only as whole slots.
+  A later free slot is not used to jump over a booked one. A wave with places left still owns its
+  whole block; it lends a date only when nobody is booked or held in it. One booked date refuses
+  the save. Nothing is cancelled. The cut is stored per date and applied again on later dates
+  while both sessions still run. Shrinking or removing the session that took the time gives it back.
 - Reservations are matched by doctor/date and original interval, not just slot ID. Shifted grids
   cannot reopen overlapping minutes. Adjacent nonoverlapping slots remain available.
 - Unchanged waves retain normal token capacity. A resized wave overlapping an old reservation is

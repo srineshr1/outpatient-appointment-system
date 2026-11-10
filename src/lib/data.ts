@@ -1,4 +1,4 @@
-import type { ConsultSession } from "./clinic-types";
+import type { ConsultSession, SessionTrim } from "./clinic-types";
 import { addDays, mondayOf, todayIso, weekdayIndex } from "./clock";
 import { demoSessions, overriddenDates, slotId as streamSlotId, slotsForSession, weekdaysLabel } from "./sessions";
 
@@ -198,6 +198,7 @@ export function practiceDoctors(): Doctor[] {
 }
 
 let consultSessions: ConsultSession[] = demoSessions(practiceDoctors());
+let sessionTrims: SessionTrim[] = [];
 let sessionsVersion = 0;
 
 export function setStaffDoctors(list: Doctor[], unlisted: Doctor[] = []): void {
@@ -222,6 +223,18 @@ export function setConsultSessions(list: readonly ConsultSession[]): void {
 /** Changes whenever the doctors or sessions change, so caches built from them can be dropped. */
 export function scheduleVersion(): number {
   return sessionsVersion;
+}
+
+/** Free-edge cuts recorded for the loaded sessions. Replaces the previous list. */
+export function setSessionTrims(list: readonly SessionTrim[]): void {
+  if (JSON.stringify(list) === JSON.stringify(sessionTrims)) return;
+  sessionTrims = [...list];
+  sessionsVersion += 1;
+}
+
+export function trimsFor(sessions: readonly ConsultSession[]): SessionTrim[] {
+  const ids = new Set(sessions.map((session) => session.id));
+  return sessionTrims.filter((trim) => ids.has(trim.sessionId) || ids.has(trim.absorbedBy));
 }
 
 export function sessionsOf(doctorId: string): ConsultSession[] {
@@ -380,8 +393,9 @@ export function generateSlots(window: BookWindow): Slot[] {
     // On a date with a one-off session, the doctor's weekly sessions are not offered. Visits already
     // booked into them stay as they are (they live in the appointments, not in these slots).
     const overridden = overriddenDates(sessions);
+    const trims = trimsFor(sessions);
     for (const session of sessions) {
-      for (const slot of slotsForSession(session, doctor.id, window.firstWeek, lastDate, overridden)) {
+      for (const slot of slotsForSession(session, doctor.id, window.firstWeek, lastDate, overridden, trims, sessions)) {
         if (teaching && slot.mode === "stream" && unitHash(`${slot.id}#teach`) < teaching) slot.teaching = true;
         slots.push(slot);
       }

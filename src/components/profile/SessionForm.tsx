@@ -48,6 +48,7 @@ export function SessionForm({
   onDraft,
   onCancel,
   fallbackLabel = "",
+  guidance = null,
 }: {
   defaults: SessionDefaults;
   submitLabel: string;
@@ -57,6 +58,8 @@ export function SessionForm({
   onCancel?: () => void;
   /** Preview-bar name while the name field is empty (edit mode keeps the session's name). */
   fallbackLabel?: string;
+  /** Live result of growing into the next session's free edge. */
+  guidance?: { tone: "info" | "danger"; message: string } | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, action] = useActionState(saveSession, null);
@@ -88,6 +91,10 @@ export function SessionForm({
       {state && !state.ok ? (
         <Notice tone="danger" role="alert" className="md:col-span-2">
           {state.message}
+        </Notice>
+      ) : guidance ? (
+        <Notice tone={guidance.tone} role={guidance.tone === "danger" ? "alert" : "status"} className="md:col-span-2">
+          {guidance.message}
         </Notice>
       ) : null}
       <Field id={`${idPrefix}-label`} label="Name of the session" optional hint="For example Morning surgery." className="md:col-span-2">
