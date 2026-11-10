@@ -16,6 +16,10 @@ import {
   modeSummary,
   overriddenDates,
   sessionCalendar,
+  weekHourBounds,
+  weekRangeTitle,
+  firstRunDate,
+  timesLookSet,
   tokenOfHeld,
   waveSlotId,
 } from "./sessions";
@@ -254,6 +258,31 @@ describe("whole-session waves and one-off overrides", () => {
     ]);
   });
 
+
+
+  it("formats a same-month week title as 2–8 Nov 2026", () => {
+    expect(weekRangeTitle("2026-11-02")).toBe("2–8 Nov 2026");
+  });
+
+  it("finds the first draft day and rejects unset midnight times", () => {
+    expect(timesLookSet("09:00", "12:00")).toBe(true);
+    expect(timesLookSet("00:00", "00:00")).toBe(false);
+    expect(timesLookSet("", "12:00")).toBe(false);
+    expect(timesLookSet("00:00", "12:00")).toBe(false);
+    const draft = {
+      weekdays: [1, 2, 3, 4, 5],
+      startDate: "2026-11-07",
+      endDate: "2026-11-09",
+      onDate: null as string | null,
+    };
+    expect(firstRunDate(draft, "2026-11-06")).toBe("2026-11-09");
+  });
+
+  it("widens the week hour window to cover session times", () => {
+    expect(weekHourBounds([])).toEqual({ startHour: 8, endHour: 17 });
+    expect(weekHourBounds([{ startTime: "07:30", endTime: "18:15" }])).toEqual({ startHour: 7, endHour: 19 });
+    expect(weekHourBounds([{ startTime: "09:00", endTime: "12:00" }])).toEqual({ startHour: 8, endHour: 17 });
+  });
   it("shows every slot as a start–end range", () => {
     expect(slotTimeLabel({ time: "09:00", endTime: "09:30", mode: "stream" })).toBe("09:00–09:30");
   });
