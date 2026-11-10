@@ -6,6 +6,7 @@ import { dispatchDue, queueDailySummaries } from "./notifications/service";
 import { releaseExpiredHolds } from "./payments/holds";
 import { retryRefunds } from "./payments/service";
 import { forgetBlockedSlots } from "./blocked-slots";
+import { expireOffers } from "./rebooking";
 
 function same(a: string, b: string): boolean {
   const left = Buffer.from(a);
@@ -35,18 +36,21 @@ export async function cronAuthorised(authorization: string | null): Promise<bool
 export interface CronSummary {
   at: string;
   holdsReleased: number;
+  /** Displaced patients' offers that lapsed: cancelled, refunded and told. */
+  offersExpired: number;
   refundsRetried: number;
   summariesQueued: number;
   notifications: { sent: number; skipped: number; failed: number; cancelled: number };
   errors: string[];
 }
 
-/** One scheduler tick: release expired holds, retry stuck refunds, queue the doctors' daily schedules, send what is due (reminders included). */
+/** One scheduler tick: release expired holds, expire displaced patients' offers, retry stuck refunds, queue the doctors' daily schedules, send what is due (reminders included). */
 export async function runCron(): Promise<CronSummary> {
   const errors: string[] = [];
   const summary: CronSummary = {
     at: now().toISOString(),
     holdsReleased: 0,
+    offersExpired: 0,
     refundsRetried: 0,
     summariesQueued: 0,
     notifications: { sent: 0, skipped: 0, failed: 0, cancelled: 0 },
@@ -62,6 +66,10 @@ export async function runCron(): Promise<CronSummary> {
   await step("holds", async () => {
     summary.holdsReleased = (await releaseExpiredHolds()).length;
     if (summary.holdsReleased > 0) forgetBlockedSlots();
+  });
+  await step("rebooking", async () => {
+    // Runs before the refund retry and the send, so a lapsed offer's refund and final email go out this tick.
+    summary.offersExpired = (await expireOffers()).length;
   });
   await step("refunds", async () => {
     summary.refundsRetried = await retryRefunds();
