@@ -6,6 +6,7 @@ import { SessionPlanner } from "@/components/profile/SessionPlanner";
 import { todayIso } from "@/lib/clock";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { Notice } from "@/components/ui/Card";
+import { occupiesTime } from "@/lib/elastic-scheduling";
 import { doctorStatus } from "@/lib/doctor-status";
 import { readDoctorProfile } from "@/lib/profiles";
 import { getCurrentUser } from "@/lib/session";
@@ -22,16 +23,25 @@ const SAVED: Record<string, string> = {
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ welcome?: string; saved?: string; notice?: string; n?: string; v?: string }>;
+  searchParams: Promise<{ welcome?: string; saved?: string; notice?: string; n?: string; v?: string; lent?: string }>;
 }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!user) redirect("/sign-in?as=staff&next=/dashboard/sessions");
   if (user.role !== "doctor" || user.doctorId !== user.id) redirect("/dashboard");
   const store = await getStore();
-  const [status, record] = await Promise.all([doctorStatus(store, user), store.getProfile(user.id)]);
+  const today = todayIso();
+  const [status, record, appointments, trims] = await Promise.all([
+    doctorStatus(store, user),
+    store.getProfile(user.id),
+    store.listAppointments({ doctorId: user.id }),
+    store.listSessionTrims(user.id),
+  ]);
   const room = readDoctorProfile(record).room || user.doctorRoom || "Room 6";
   const welcome = query.welcome === "1";
   const saved = SAVED[query.saved ?? ""];
+  const occupying = appointments
+    .filter((visit) => occupiesTime(visit) && visit.date >= today)
+    .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime ?? null, sessionId: visit.sessionId ?? null }));
   const busy = query.notice === "busy";
 
   return (
@@ -48,11 +58,11 @@ export default async function SessionsPage({
       <p className="mt-2 max-w-prose text-body text-ink-2">
         A session is a block of hours on the days you choose — in a <strong>stream</strong> each patient keeps their own slot,
         in a <strong>wave</strong> patients arrive within the wave and are seen in token order. A one-off session takes a
-        weekly session&rsquo;s place on its date. Edit a session by clicking it below.
+        weekly session&rsquo;s place on its date. The week comes first. Add a session, or choose Edit a session and pick a highlighted block.
       </p>
       {saved ? (
         <Notice tone="success" role="status" className="mt-6">
-          {saved} {status.visible ? "Patients can book you." : ""}
+          {saved} {query.lent ?? ""} {status.visible ? "Patients can book you." : ""}
         </Notice>
       ) : null}
       {busy ? (
@@ -78,7 +88,9 @@ export default async function SessionsPage({
         key={query.v ?? ""}
         sessions={status.sessions}
         defaults={defaultsFor(null, room)}
-        today={todayIso()}
+        today={today}
+        visits={occupying}
+        trims={trims}
         addTitle={status.sessions.length > 0 ? "Add another session" : "Add your first session"}
       />
     </div>

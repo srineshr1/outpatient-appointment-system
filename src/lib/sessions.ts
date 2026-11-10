@@ -1,4 +1,4 @@
-import type { ConsultSession, SessionMode } from "./clinic-types";
+import type { ConsultSession, SessionMode, SessionTrim } from "./clinic-types";
 import { addDays, weekdayIndex } from "./clock";
 import type { Slot } from "./data";
 
@@ -232,6 +232,70 @@ export function sessionBlocks(
   return blocks;
 }
 
+/** How far ahead a save records an explicit free-edge cut. Later dates follow the same cut. */
+export const ABSORPTION_HORIZON_DAYS = 400;
+
+/** A visit that still occupies the doctor's time. Patient names stay out of this. */
+export interface OccupyingVisit {
+  date: string;
+  time: string;
+  endTime?: string | null;
+  sessionId?: string | null;
+}
+
+export type AbsorptionPlan =
+  | { ok: true; trims: SessionTrim[]; notice: string | null }
+  | { ok: false; message: string };
+
+function minutesOverlap(start: number, end: number, otherStart: number, otherEnd: number): boolean {
+  return start < otherEnd && otherStart < end;
+}
+
+function blockCovered(block: Block, trims: readonly SessionTrim[]): boolean {
+  return trims.some((trim) => minutesOverlap(toMinutes(block.time), toMinutes(block.endTime), toMinutes(trim.startTime), toMinutes(trim.endTime)));
+}
+
+/**
+ * Cuts that apply to `sessionId` on `date`. With a roster, one saved cut stands for every later
+ * date on which the absorbing session still runs and still covers that clock interval.
+ */
+export function trimsCovering(sessionId: string, date: string, trims: readonly SessionTrim[], roster: readonly ConsultSession[] = []): SessionTrim[] {
+  if (roster.length === 0) return trims.filter((trim) => trim.sessionId === sessionId && trim.date === date);
+  const overridden = overriddenDates(roster);
+  const neighbour = roster.find((session) => session.id === sessionId);
+  if (neighbour && !sessionShownOn(neighbour, date, overridden)) return [];
+  const applied: SessionTrim[] = [];
+  const seen = new Set<string>();
+  for (const trim of trims) {
+    if (trim.sessionId !== sessionId) continue;
+    const key = `${trim.absorbedBy}|${trim.startTime}|${trim.endTime}`;
+    if (seen.has(key)) continue;
+    const absorber = roster.find((session) => session.id === trim.absorbedBy);
+    if (!absorber || absorber.archivedAt) continue;
+    if (!sessionShownOn(absorber, date, overridden)) continue;
+    if (toMinutes(absorber.startTime) > toMinutes(trim.startTime) || toMinutes(absorber.endTime) < toMinutes(trim.endTime)) continue;
+    seen.add(key);
+    applied.push({ ...trim, date });
+  }
+  return applied;
+}
+
+/** Hours a session still offers on one date after free-edge cuts. Null when it offers nothing that day. */
+export function hoursOnDate(
+  session: ConsultSession,
+  date: string,
+  trims: readonly SessionTrim[],
+  roster: readonly ConsultSession[] = [],
+): { startTime: string; endTime: string } | null {
+  const overridden = overriddenDates(roster.length ? roster : [session]);
+  if (!sessionShownOn(session, date, overridden)) return null;
+  const blocks = sessionBlocks(session).filter((block) => !blockCovered(block, trimsCovering(session.id, date, trims, roster)));
+  const first = blocks[0];
+  const last = blocks[blocks.length - 1];
+  if (!first || !last) return null;
+  return { startTime: first.time, endTime: last.endTime };
+}
+
 /** Every slot or wave of one session from `firstDate` up to and including `lastDate`. */
 export function slotsForSession(
   session: ConsultSession,
@@ -239,13 +303,17 @@ export function slotsForSession(
   firstDate: string,
   lastDate: string,
   overridden: ReadonlySet<string> = new Set(),
+  trims: readonly SessionTrim[] = [],
+  roster: readonly ConsultSession[] = [],
 ): Slot[] {
   if (session.archivedAt) return [];
   const blocks = sessionBlocks(session);
   const slots: Slot[] = [];
   for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
     if (!sessionShownOn(session, date, overridden)) continue;
+    const covered = trimsCovering(session.id, date, trims, roster);
     for (const block of blocks) {
+      if (blockCovered(block, covered)) continue;
       if (session.mode === "wave") {
         slots.push({
           id: waveSlotId(session.id, date, block.time),
@@ -352,7 +420,7 @@ export function describeSession(session: ConsultSession): string {
 
 export interface SessionInput {
   label: string;
-  /** "recurring" (weekly, optional date range) or "once" (one date). Missing means recurring. */
+  /** "recurring" (weekly, from a start date to an end date) or "once" (one date). Missing means recurring. */
   kind?: string;
   onDate?: string | null;
   startDate?: string | null;
@@ -400,11 +468,204 @@ export function sessionsOverlap(a: Overlapping, b: Overlapping): boolean {
   return toMinutes(a.startTime) < toMinutes(b.endTime) && toMinutes(b.startTime) < toMinutes(a.endTime);
 }
 
+interface ClockRun {
+  start: number;
+  end: number;
+  blocks: Block[];
+}
+
+function contiguousRuns(blocks: readonly Block[]): ClockRun[] {
+  const runs: ClockRun[] = [];
+  for (const block of blocks) {
+    const start = toMinutes(block.time);
+    const end = toMinutes(block.endTime);
+    const last = runs[runs.length - 1];
+    if (last && last.end === start) {
+      last.end = end;
+      last.blocks.push(block);
+    } else runs.push({ start, end, blocks: [block] });
+  }
+  return runs;
+}
+
+function visitEnd(visit: OccupyingVisit): number {
+  return visit.endTime && isTime(visit.endTime) ? toMinutes(visit.endTime) : 23 * 60 + 59;
+}
+
+function visitBlocks(visit: OccupyingVisit, date: string, start: number, end: number, candidateId: string): boolean {
+  if (visit.sessionId === candidateId) return false;
+  if (visit.date !== date || !isTime(visit.time)) return false;
+  return minutesOverlap(start, end, toMinutes(visit.time), visitEnd(visit));
+}
+
+function neighbourTitle(session: ConsultSession): string {
+  const when = session.onDate
+    ? `${shortDate(session.onDate)} ${session.startTime}–${session.endTime}`
+    : `${weekdaysLabel(session.weekdays)} ${session.startTime}–${session.endTime}`;
+  return session.label ? `${session.label} (${when})` : when;
+}
+
+function datesPhrase(dates: readonly string[], openEnded: boolean): string {
+  if (dates.length === 0) return "those days";
+  if (dates.length === 1) return shortDate(dates[0]!);
+  if (dates.length <= 4) {
+    const labels = dates.map((date) => shortDate(date));
+    return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+  }
+  if (openEnded) return "the days both sessions run";
+  return `the days both sessions run, through ${shortDate(dates[dates.length - 1]!)}`;
+}
+
+function absorptionNotice(candidate: ConsultSession, others: readonly ConsultSession[], trims: readonly SessionTrim[]): string | null {
+  if (trims.length === 0) return null;
+  const groups = new Map<string, SessionTrim[]>();
+  for (const trim of trims) {
+    const key = `${trim.sessionId}|${trim.startTime}|${trim.endTime}`;
+    const list = groups.get(key) ?? [];
+    list.push(trim);
+    groups.set(key, list);
+  }
+  const openEnded = !candidate.onDate && !candidate.endDate;
+  const parts: string[] = [];
+  for (const rows of groups.values()) {
+    const sample = rows[0]!;
+    const neighbour = others.find((session) => session.id === sample.sessionId);
+    const name = neighbour ? neighbourTitle(neighbour) : "other";
+    const when = datesPhrase([...new Set(rows.map((row) => row.date))].sort(), openEnded);
+    const whole = Boolean(neighbour && sample.startTime === neighbour.startTime && sample.endTime === neighbour.endTime);
+    if (whole || !neighbour) {
+      parts.push(`This takes the free ${sample.startTime}–${sample.endTime} of your ${name} session on ${when}. That session keeps its patients. Nothing is cancelled.`);
+    } else if (neighbour && sample.startTime === neighbour.startTime) {
+      parts.push(`This takes the free start of your ${name} session on ${when}. That session keeps its patients and starts at ${sample.endTime} on those days. Nothing is cancelled.`);
+    } else {
+      parts.push(`This takes the free end of your ${name} session on ${when}. That session keeps its patients and ends at ${sample.startTime} on those days. Nothing is cancelled.`);
+    }
+  }
+  return parts.join(" ");
+}
+
+interface EdgeLimit {
+  edge: "end" | "start";
+  safe: string;
+  date: string;
+  time: string;
+}
+
+function stricterLimit(current: EdgeLimit | null, next: EdgeLimit): EdgeLimit {
+  if (!current || current.edge !== next.edge) return next;
+  if (next.edge === "end") return next.safe < current.safe ? next : current;
+  return next.safe > current.safe ? next : current;
+}
+
 /**
- * Check what a doctor typed for a session. `others` are the doctor's other live sessions (not the
- * one being edited): two sessions on the same day may not overlap, which also keeps every slot id unique.
+ * Let one session grow into the free edge of another. Booked patients stay where they are.
+ * A free wave place is not spare clock time: a wave yields a date only when nobody is in it,
+ * and only as a whole block. Stream slots are taken in order from the shared edge.
  */
-export function checkSession(input: SessionInput, others: readonly ConsultSession[], today?: string): SessionCheck {
+export function planAbsorption(
+  candidate: ConsultSession,
+  others: readonly ConsultSession[],
+  visits: readonly OccupyingVisit[],
+  today: string,
+  existing: readonly SessionTrim[] = [],
+  horizonDays = ABSORPTION_HORIZON_DAYS,
+): AbsorptionPlan {
+  if (!isTime(candidate.startTime) || !isTime(candidate.endTime) || candidate.startTime >= candidate.endTime) {
+    return { ok: false, message: "Enter the start and end time as HH:MM." };
+  }
+  const roster = [candidate, ...others];
+  const overridden = overriddenDates(roster);
+  const foreign = existing.filter((trim) => trim.absorbedBy !== candidate.id);
+  const trims: SessionTrim[] = [];
+  const cap = addDays(today, horizonDays);
+
+  for (const neighbour of others) {
+    if (neighbour.archivedAt || neighbour.id === candidate.id) continue;
+    let first = today;
+    for (const start of [candidate.startDate, neighbour.startDate, candidate.onDate, neighbour.onDate]) {
+      if (start && start > first) first = start;
+    }
+    let last = cap;
+    for (const end of [candidate.endDate, neighbour.endDate, candidate.onDate, neighbour.onDate]) {
+      if (end && end < last) last = end;
+    }
+    if (first > last) continue;
+    let limit: EdgeLimit | null = null;
+    const wholeWave = neighbour.mode === "wave" && !neighbour.waveMinutes;
+
+    for (let date = first; date <= last; date = addDays(date, 1)) {
+      if (!sessionShownOn(candidate, date, overridden) || !sessionShownOn(neighbour, date, overridden)) continue;
+      const covered = trimsCovering(neighbour.id, date, foreign, roster);
+      const remaining = sessionBlocks(neighbour).filter((block) => !blockCovered(block, covered));
+      for (const run of contiguousRuns(remaining)) {
+        const start = Math.max(toMinutes(candidate.startTime), run.start);
+        const end = Math.min(toMinutes(candidate.endTime), run.end);
+        if (start >= end) continue;
+        const touchesStart = start === run.start;
+        const touchesEnd = end === run.end;
+        if (!touchesStart && !touchesEnd) {
+          return { ok: false, message: `That sits in the middle of your ${neighbourTitle(neighbour)} session. Shorten one side so they meet at an edge.` };
+        }
+        const involved = run.blocks.filter((block) => minutesOverlap(start, end, toMinutes(block.time), toMinutes(block.endTime)));
+        for (const block of involved) {
+          const blockStart = toMinutes(block.time);
+          const blockEnd = toMinutes(block.endTime);
+          if (blockStart < start) {
+            return { ok: false, message: `Start this session at ${block.endTime} so you don't cut a slot of the other session (${block.time}–${block.endTime}).` };
+          }
+          if (blockEnd > end) {
+            return { ok: false, message: `End this session at ${block.time} so you don't cut a slot of the other session (${block.time}–${block.endTime}).` };
+          }
+        }
+        const busy = (block: Block) => visits.some((visit) => visitBlocks(visit, date, toMinutes(block.time), toMinutes(block.endTime), candidate.id));
+        if (wholeWave && involved.some(busy)) {
+          const count = visits.filter((visit) => (!visit.sessionId || visit.sessionId === neighbour.id) && visitBlocks(visit, date, run.start, run.end, candidate.id)).length;
+          if (count > 0) {
+            const patients = `${count} patient${count === 1 ? "" : "s"}`;
+            return {
+              ok: false,
+              message: `The ${neighbour.startTime}–${neighbour.endTime} wave on ${shortDate(date)} still has ${patients}. Free places are extra patients in that wave, not spare time. Move or cancel those visits to use this time.`,
+            };
+          }
+        }
+        const ordered = touchesStart ? involved : [...involved].reverse();
+        let blocked = false;
+        for (const block of ordered) {
+          if (!busy(block)) continue;
+          blocked = true;
+          limit = stricterLimit(limit, touchesStart
+            ? { edge: "end", safe: block.time, date, time: block.time }
+            : { edge: "start", safe: block.endTime, date, time: block.time });
+          break;
+        }
+        if (!blocked) {
+          trims.push({
+            sessionId: neighbour.id,
+            date,
+            startTime: fromMinutes(start),
+            endTime: fromMinutes(end),
+            absorbedBy: candidate.id,
+          });
+        }
+      }
+    }
+    if (limit) {
+      const when = `${shortDate(limit.date)} at ${limit.time}`;
+      const reach = limit.edge === "end" ? `You can extend to ${limit.safe}.` : `You can start at ${limit.safe}.`;
+      return { ok: false, message: `${reach} ${when} is already booked in the other session. That visit stays. Move or cancel it if you need to go further.` };
+    }
+  }
+  const unique = new Map<string, SessionTrim>();
+  for (const trim of trims) unique.set(`${trim.sessionId}|${trim.date}|${trim.startTime}|${trim.absorbedBy}`, trim);
+  const saved = [...unique.values()];
+  return { ok: true, trims: saved, notice: absorptionNotice(candidate, others, saved) };
+}
+
+/**
+ * Check what a doctor typed for a session. Overlap with another session is decided by
+ * `planAbsorption`: a free edge can be lent, and a booked patient is never cancelled here.
+ */
+export function checkSession(input: SessionInput, _others: readonly ConsultSession[], today?: string): SessionCheck {
   const once = input.kind === "once";
   let weekdays = [...new Set(input.weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 6).sort((a, b) => a - b);
   let onDate: string | null = null;
@@ -421,15 +682,13 @@ export function checkSession(input: SessionInput, others: readonly ConsultSessio
     if (weekdays.length === 0) return { ok: false, message: "Choose at least one weekday." };
     const start = input.startDate?.trim() || null;
     const end = input.endDate?.trim() || null;
-    if (start && !isIsoDate(start)) return { ok: false, message: "Enter the start date as a date." };
-    if (end && !isIsoDate(end)) return { ok: false, message: "Enter the end date as a date." };
-    if (start && end && end < start) return { ok: false, message: "The end date must be on or after the start date." };
-    if (end && today && end < today) return { ok: false, message: "The end date has passed. Choose a later end date." };
-    if (start && end) {
-      let any = false;
-      for (let date = start; date <= end && !any; date = addDays(date, 1)) any = weekdays.includes(weekdayIndex(date));
-      if (!any) return { ok: false, message: "None of the chosen weekdays fall between those dates." };
-    }
+    if (!isIsoDate(start)) return { ok: false, message: "Choose the date this session starts." };
+    if (!isIsoDate(end)) return { ok: false, message: "Choose the date this session ends." };
+    if (end < start) return { ok: false, message: "The end date must be on or after the start date." };
+    if (today && end < today) return { ok: false, message: "The end date has passed. Choose a later end date." };
+    let any = false;
+    for (let date = start; date <= end && !any; date = addDays(date, 1)) any = weekdays.includes(weekdayIndex(date));
+    if (!any) return { ok: false, message: "None of the chosen weekdays fall between those dates." };
     startDate = start;
     endDate = end;
   }
@@ -466,13 +725,6 @@ export function checkSession(input: SessionInput, others: readonly ConsultSessio
     return {
       ok: false,
       message: `The session is ${length} minutes, which is not a whole number of ${step}-minute ${mode === "stream" ? "slots" : "waves"}. Adjust the end time.`,
-    };
-  }
-  const clash = others.find((other) => !other.archivedAt && sessionsOverlap(value, other));
-  if (clash) {
-    return {
-      ok: false,
-      message: `That overlaps your ${clash.label || "other"} session (${daysLabel(clash)}, ${clash.startTime}–${clash.endTime}).`,
     };
   }
   return { ok: true, value };

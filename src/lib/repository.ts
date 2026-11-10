@@ -6,7 +6,7 @@
  * API calls; every caller already treats them as asynchronous.
  */
 import { openCharge } from "./billing";
-import { blockedSlotIds, forgetBlockedSlots } from "./blocked-slots";
+import { forgetBlockedSlots } from "./blocked-slots";
 import type { AppointmentRecord } from "./clinic-types";
 import { now } from "./clock";
 import {
@@ -16,6 +16,7 @@ import {
   isListed,
   reasons,
   scheduleVersion,
+  sessionsOf,
   type BookWindow,
   type Doctor,
   type Slot,
@@ -24,7 +25,8 @@ import { loadDoctors } from "./doctors";
 import { totals } from "./payments";
 import { releaseExpiredHolds } from "./payments/holds";
 import { slotStatus } from "./schedule";
-import { applyHeld, freeToken, heldId } from "./sessions";
+import { freeToken, heldId } from "./sessions";
+import { applyReservations } from "./elastic-scheduling";
 import { getStore } from "./store";
 
 export class SlotUnavailableError extends Error {
@@ -63,18 +65,20 @@ export async function getDoctor(id: string): Promise<Doctor | null> {
 
 export async function getSlots(doctorId?: string): Promise<Slot[]> {
   // The doctor list and the booked-slot list are separate reads: fetch them together.
-  const [list, taken] = await Promise.all([loadDoctors(), blockedSlotIds()]);
+  const store = await getStore();
+  await releaseExpiredHolds();
+  const [list, visits] = await Promise.all([loadDoctors(true), store.listAppointments(doctorId ? { doctorId } : {})]);
   const all = slotsForWindow(bookWindow(now()), list);
-  const merged = applyHeld(all, taken);
+  const merged = applyReservations(all, visits, list.flatMap(doctor => sessionsOf(doctor.id)));
   return doctorId ? merged.filter((slot) => slot.doctorId === doctorId) : merged;
 }
 
 /** One slot or wave by id, as it stands now (bookings applied), or null when no such time exists. */
 export async function getSlot(id: string): Promise<Slot | null> {
   const store = await getStore();
-  const [doctors, held] = await Promise.all([loadDoctors(), store.listBlockedSlotIds()]);
+  const [doctors, visits] = await Promise.all([loadDoctors(true), store.listAppointments()]);
   const found = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === id);
-  return found ? (applyHeld([found], held)[0] ?? null) : null;
+  return found ? (applyReservations([found], visits, sessionsOf(found.doctorId))[0] ?? null) : null;
 }
 
 /** For each doctor, the next few bookable-looking slots. Used by the directory. */
@@ -141,10 +145,14 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
   reference$.catch(() => undefined); // surfaced below, only if the booking gets that far
   // A payment hold that ran out still sits in the booked list until released, so release it first.
   await releaseExpiredHolds();
-  const [doctors, blocked] = await Promise.all([loadDoctors(), store.listBlockedSlotIds()]);
+  const [doctors, blocked, visits] = await Promise.all([loadDoctors(true), store.listBlockedSlotIds(), store.listAppointments({ doctorId: input.slot.doctorId })]);
   const found = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === input.slot.id);
   if (!found || !isListed(found.doctorId)) throw new SlotUnavailableError(input.slot.id, "missing");
-  const current = applyHeld([found], blocked)[0]!;
+  const current = applyReservations([found], visits, sessionsOf(found.doctorId))[0]!;
+  // A wave can keep its ID while its end changes: never silently accept a different time range.
+  if (input.slot.time !== current.time || (input.slot.endTime !== undefined && input.slot.endTime !== current.endTime)) {
+    throw new SlotUnavailableError(current.id, "missing");
+  }
   const status = slotStatus(current, blocked, now());
   if (status !== "open") throw new SlotUnavailableError(current.id, status);
 

@@ -15,6 +15,7 @@ import {
   type ProfileRecord,
   type RescheduleRecord,
   type SessionRecord,
+  type SessionTrim,
   type StoredUser,
   type UserAccount,
   type UserPatch,
@@ -467,6 +468,17 @@ export class BlobClinicStore implements ClinicStore {
 
   async putConsultSession(session: ConsultSession): Promise<void> {
     await writeOver(consultSessionPath(session.id), session);
+  }
+
+  async saveConsultSession(session: ConsultSession, trims: readonly SessionTrim[]): Promise<void> {
+    if (trims.length > 0) {
+      throw new Error("Resizing availability requires the Supabase or SQLite store. The legacy Blob store cannot safely coordinate this change.");
+    }
+    await this.putConsultSession(session);
+  }
+
+  async listSessionTrims(): Promise<SessionTrim[]> {
+    return [];
   }
 
   async createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists"> {

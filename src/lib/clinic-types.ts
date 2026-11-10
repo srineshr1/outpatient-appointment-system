@@ -181,6 +181,21 @@ export interface ConsultSession {
   updatedAt: string;
 }
 
+/**
+ * Minutes a session does not offer on one date, because another session absorbed that free edge.
+ * Booked visits are never moved to create one of these.
+ */
+export interface SessionTrim {
+  /** The session that gives the minutes up. */
+  sessionId: string;
+  /** Clinic date (YYYY-MM-DD) this row was written for. Later dates follow the same cut while both sessions still run. */
+  date: string;
+  startTime: string;
+  endTime: string;
+  /** The session that took the minutes. */
+  absorbedBy: string;
+}
+
 export type ProfileKind = "patient" | "doctor";
 
 /** A stored profile: the fields depend on `kind` (see profiles.ts). */
@@ -336,6 +351,10 @@ export interface ClinicStore {
   getConsultSession(id: string): Promise<ConsultSession | null>;
   /** Create or replace one session. */
   putConsultSession(session: ConsultSession): Promise<void>;
+  /** Replace one session and the free-edge minutes it has absorbed, in one write. An empty list gives those minutes back. */
+  saveConsultSession(session: ConsultSession, trims: readonly SessionTrim[]): Promise<void>;
+  /** Free-edge cuts for every session, or one doctor's. */
+  listSessionTrims(doctorId?: string): Promise<SessionTrim[]>;
   /** Create a session only when its id is new: seeding must never undo a doctor's removal. */
   createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists">;
   /**

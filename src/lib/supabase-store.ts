@@ -19,6 +19,7 @@ import {
   type ProfileRecord,
   type RescheduleRecord,
   type SessionRecord,
+  type SessionTrim,
   type StoredUser,
   type UserAccount,
   type UserPatch,
@@ -106,6 +107,14 @@ interface ConsultSessionRow {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface TrimRow {
+  session_id: string;
+  on_date: string;
+  start_time: string;
+  end_time: string;
+  absorbed_by: string;
 }
 
 interface RescheduleRow {
@@ -840,6 +849,34 @@ export class SupabaseClinicStore implements ClinicStore {
   async putConsultSession(session: ConsultSession): Promise<void> {
     const { error } = await this.db.from("clinic_consult_sessions").upsert(sessionPayload(session));
     fail(error);
+  }
+
+  async saveConsultSession(session: ConsultSession, trims: readonly SessionTrim[]): Promise<void> {
+    const { error } = await this.db.rpc("clinic_save_session", {
+      p_session: sessionPayload(session),
+      p_trims: trims.map((trim) => ({
+        session_id: trim.sessionId,
+        on_date: trim.date,
+        start_time: trim.startTime,
+        end_time: trim.endTime,
+      })),
+    });
+    fail(error);
+  }
+
+  async listSessionTrims(doctorId?: string): Promise<SessionTrim[]> {
+    const rows = await this.readAll<TrimRow>((from, to) => {
+      let query = this.db.from("clinic_session_trims").select("*");
+      if (doctorId !== undefined) query = query.eq("doctor_id", doctorId);
+      return query.order("on_date").order("session_id").range(from, to);
+    });
+    return rows.map((row) => ({
+      sessionId: row.session_id,
+      date: row.on_date,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      absorbedBy: row.absorbed_by,
+    }));
   }
 
   async createConsultSessionIfAbsent(session: ConsultSession): Promise<"ok" | "exists"> {

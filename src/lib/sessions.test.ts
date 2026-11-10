@@ -5,6 +5,9 @@ import {
   applyHeld,
   baseSlotId,
   checkSession,
+  hoursOnDate,
+  planAbsorption,
+  trimsCovering,
   freeToken,
   heldId,
   placesLabel,
@@ -130,6 +133,8 @@ describe("checkSession", () => {
     room: "Room 2",
     mode: "stream",
     slotMinutes: 20,
+    startDate: "2026-01-05",
+    endDate: "2026-03-31",
   };
 
   it("accepts a stream and a wave and normalises the days", () => {
@@ -151,9 +156,9 @@ describe("checkSession", () => {
     expect(checkSession({ ...input, mode: "other" }, []).ok).toBe(false);
   });
 
-  it("refuses a session that overlaps another on a shared day", () => {
+  it("accepts a shape that meets another session; the free edge is decided later", () => {
     const clash = checkSession({ ...input, startTime: "11:00", endTime: "13:00" }, [session({ weekdays: [3], startTime: "10:00", endTime: "12:00" })]);
-    expect(clash.ok).toBe(false);
+    expect(clash.ok).toBe(true);
     const fine = checkSession({ ...input, startTime: "12:00", endTime: "13:00" }, [session({ weekdays: [3], startTime: "10:00", endTime: "12:00" })]);
     expect(fine.ok).toBe(true);
     const otherDay = checkSession({ ...input, startTime: "11:00", endTime: "13:00" }, [session({ weekdays: [2], startTime: "10:00", endTime: "12:00" })]);
@@ -211,6 +216,8 @@ describe("recurring date ranges and one-off sessions (IST dates)", () => {
   });
 
   it("checks a recurring range", () => {
+    expect(checkSession({ ...input, weekdays: [1] }, [], "2026-11-04").ok).toBe(false);
+    expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10" }, [], "2026-11-04").ok).toBe(false);
     expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-20", endDate: "2026-11-10" }, [], "2026-11-04")).toMatchObject({ ok: false });
     expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10", endDate: "2026-11-15" }, [], "2026-11-04")).toMatchObject({ ok: false });
     expect(checkSession({ ...input, weekdays: [1, 2, 4], startDate: "2026-11-10", endDate: "2026-12-31" }, [], "2026-11-04")).toMatchObject({ ok: true });
@@ -220,12 +227,12 @@ describe("recurring date ranges and one-off sessions (IST dates)", () => {
     const saturday = { ...wave, weekdays: [6], startTime: "12:00", endTime: "15:00" };
     // A one-off session replaces the weekly ones on its date, so it never clashes with them.
     expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [saturday], "2026-11-04")).toMatchObject({ ok: true });
-    expect(checkSession({ ...input, weekdays: [6] }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04")).toMatchObject({ ok: true });
+    expect(checkSession({ ...input, weekdays: [6], startDate: "2026-11-07", endDate: "2026-11-28" }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04")).toMatchObject({ ok: true });
     expect(
       checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04"),
-    ).toMatchObject({ ok: false });
+    ).toMatchObject({ ok: true });
     expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [{ ...saturday, endDate: "2026-11-01" }], "2026-11-04")).toMatchObject({ ok: true });
-    expect(checkSession({ ...input, weekdays: [6], startDate: "2026-12-01" }, [{ ...saturday, endDate: "2026-11-30" }], "2026-11-04")).toMatchObject({ ok: true });
+    expect(checkSession({ ...input, weekdays: [6], startDate: "2026-12-01", endDate: "2026-12-31" }, [{ ...saturday, endDate: "2026-11-30" }], "2026-11-04")).toMatchObject({ ok: true });
   });
 });
 
@@ -285,5 +292,113 @@ describe("whole-session waves and one-off overrides", () => {
   });
   it("shows every slot as a start–end range", () => {
     expect(slotTimeLabel({ time: "09:00", endTime: "09:30", mode: "stream" })).toBe("09:00–09:30");
+  });
+});
+
+describe("absorbing a free edge", () => {
+  const today = "2026-10-26";
+  const neighbour = session({ id: "next", label: "", weekdays: [1], startTime: "10:00", endTime: "11:40", slotMinutes: 20 });
+  const early = session({ id: "early", label: "", weekdays: [1], startTime: "09:00", endTime: "11:00", slotMinutes: 20 });
+  const booked = (time: string, endTime: string, sessionId = "next", date = today) => ({ date, time, endTime, sessionId });
+
+  it("takes the free slots against the shared edge and leaves later bookings", () => {
+    const plan = planAbsorption(early, [neighbour], [booked("11:00", "11:20"), booked("11:20", "11:40")], today, [], 21);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.trims.map((trim) => `${trim.date} ${trim.startTime}-${trim.endTime}`)).toContain("2026-10-26 10:00-11:00");
+    expect(plan.notice).toContain("starts at 11:00");
+    expect(plan.notice).toContain("Nothing is cancelled");
+  });
+
+  it("stops at the first booked slot and does not jump to a later free one", () => {
+    const plan = planAbsorption({ ...early, endTime: "11:20" }, [neighbour], [booked("11:00", "11:20")], today, [], 21);
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.message).toContain("You can extend to 11:00");
+    expect(plan.message).toContain("11:00 is already booked");
+  });
+
+  it("treats a payment hold on the edge as occupied", () => {
+    const plan = planAbsorption(early, [neighbour], [booked("10:00", "10:20")], today, [], 21);
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.message).toContain("You can extend to 10:00");
+    expect(plan.message).toContain("That visit stays");
+  });
+
+  it("does not turn free wave places into spare minutes", () => {
+    const waveSession = session({
+      id: "wave", mode: "wave", slotMinutes: null, waveMinutes: null, waveCapacity: 5, weekdays: [1], startTime: "10:00", endTime: "11:00",
+    });
+    const held = [1, 2, 3].map(() => booked("10:00", "11:00", "wave"));
+    const blocked = planAbsorption({ ...early, endTime: "11:00" }, [waveSession], held, today, [], 21);
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) return;
+    expect(blocked.message).toContain("3 patients");
+    expect(blocked.message).toContain("not spare time");
+    const slice = planAbsorption({ ...early, endTime: "10:30" }, [waveSession], [], today, [], 21);
+    expect(slice.ok).toBe(false);
+    if (slice.ok) return;
+    expect(slice.message).toContain("don't cut a slot");
+    const empty = planAbsorption({ ...early, endTime: "11:00" }, [waveSession], [], today, [], 21);
+    expect(empty.ok).toBe(true);
+  });
+
+  it("trims only the shared dates, so Monday and Tuesday stay as they are", () => {
+    const wide = session({ id: "wide", label: "", weekdays: [1, 2, 3, 4, 5], startTime: "10:00", endTime: "16:00", slotMinutes: 60 });
+    const short = session({
+      id: "short", label: "", weekdays: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "11:00", slotMinutes: 60,
+      startDate: "2026-11-11", endDate: "2026-11-13",
+    });
+    const plan = planAbsorption(short, [wide], [], "2026-11-09", [], 21);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.trims.map((trim) => trim.date)).toEqual(["2026-11-11", "2026-11-12", "2026-11-13"]);
+    expect(plan.notice).toContain("Wed 11 Nov 2026");
+    expect(plan.notice).toContain("starts at 11:00");
+    expect(plan.notice).not.toContain("Mon 9");
+  });
+
+  it("refuses a session that lands in the middle of another", () => {
+    const day = session({ id: "day", weekdays: [1], startTime: "09:00", endTime: "17:00", slotMinutes: 60 });
+    const middle = session({ id: "mid", weekdays: [1], startTime: "11:00", endTime: "12:00", slotMinutes: 60 });
+    const plan = planAbsorption(middle, [day], [], today, [], 7);
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.message).toContain("middle");
+  });
+
+  it("names the end time that does not cut the next slot", () => {
+    const plan = planAbsorption({ ...early, endTime: "10:10", slotMinutes: 10 }, [neighbour], [], today, [], 7);
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.message).toContain("End this session at 10:00");
+    expect(plan.message).toContain("10:00–10:20");
+  });
+
+  it("refuses every date when one shared day is already booked", () => {
+    const wide = session({ id: "wide", weekdays: [3, 4, 5], startTime: "10:00", endTime: "12:00", slotMinutes: 60 });
+    const short = session({
+      id: "short", weekdays: [3, 4, 5], startTime: "09:00", endTime: "11:00", slotMinutes: 60,
+      startDate: "2026-11-11", endDate: "2026-11-13",
+    });
+    const plan = planAbsorption(short, [wide], [booked("10:00", "11:00", "wide", "2026-11-11")], "2026-11-09", [], 21);
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.message).toContain("Wed 11 Nov 2026");
+    expect(plan.message).toContain("already booked");
+  });
+
+  it("keeps the extended session's own patients and offers the lent minutes only there", () => {
+    const plan = planAbsorption(early, [neighbour], [booked("10:00", "10:20", "early")], today, [], 21);
+    expect(plan.ok).toBe(true);
+    const roster = [early, neighbour];
+    const trims = plan.ok ? plan.trims : [];
+    expect(slotsForSession(neighbour, "doc", today, today, new Set(), trims, roster).map((slot) => slot.time)).toEqual(["11:00", "11:20"]);
+    expect(slotsForSession(early, "doc", today, today, new Set(), trims, roster).map((slot) => slot.time)).toContain("10:00");
+    expect(hoursOnDate(neighbour, today, trims, roster)).toEqual({ startTime: "11:00", endTime: "11:40" });
+    const later = "2026-11-02";
+    expect(trimsCovering(neighbour.id, later, trims, roster)).toHaveLength(1);
+    expect(slotsForSession(neighbour, "doc", later, later, new Set(), trims, roster).some((slot) => slot.time === "10:00")).toBe(false);
   });
 });

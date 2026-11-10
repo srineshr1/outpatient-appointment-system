@@ -1,5 +1,5 @@
 import type { ConsultSession, ProfileRecord, UserAccount } from "./clinic-types";
-import { allDoctors, setConsultSessions, setDoctorFees, setStaffDoctors, staffDoctorProfile, type Doctor } from "./data";
+import { allDoctors, setConsultSessions, setDoctorFees, setSessionTrims, setStaffDoctors, staffDoctorProfile, type Doctor } from "./data";
 import { isDoctorProfileComplete, readDoctorProfile } from "./profiles";
 import { getOps } from "./ops";
 import { getStore } from "./store";
@@ -38,10 +38,11 @@ export function splitDoctors(
 async function refresh(): Promise<void> {
   try {
     const store = await getStore();
-    const [users, profiles, sessions] = await Promise.all([
+    const [users, profiles, sessions, trims] = await Promise.all([
       store.listUsers(),
       store.listProfiles("doctor"),
       store.listConsultSessions(),
+      store.listSessionTrims(),
     ]);
     const { listed, unlisted } = splitDoctors(users, profiles, sessions);
     // Fees live in their own table. If it cannot be read, keep the last known fees rather than guess.
@@ -52,6 +53,7 @@ async function refresh(): Promise<void> {
       console.error(`[doctors] Could not load fees: ${error instanceof Error ? error.message : "unknown error"}`);
     }
     setConsultSessions(sessions);
+    setSessionTrims(trims);
     setStaffDoctors(listed, unlisted);
     loadedAt = Date.now();
   } catch (error) {

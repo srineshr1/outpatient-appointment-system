@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
@@ -48,6 +48,7 @@ export function SessionForm({
   onDraft,
   onCancel,
   fallbackLabel = "",
+  guidance = null,
 }: {
   defaults: SessionDefaults;
   submitLabel: string;
@@ -57,6 +58,8 @@ export function SessionForm({
   onCancel?: () => void;
   /** Preview-bar name while the name field is empty (edit mode keeps the session's name). */
   fallbackLabel?: string;
+  /** Live result of growing into the next session's free edge. */
+  guidance?: { tone: "info" | "danger"; message: string } | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, action] = useActionState(saveSession, null);
@@ -67,24 +70,40 @@ export function SessionForm({
   const shown = state?.values?.mode === "wave" || state?.values?.mode === "stream" ? state.values.mode : mode;
   const v = (key: string, fallback: string | number) => state?.values?.[key] ?? String(fallback);
   const idPrefix = `session-${defaults.id || "new"}`;
-  // Report after every render too: switching kind or mode swaps fields without a change event.
+  // The week stays clear until the doctor actually picks days or hours. Pre-filled defaults are not a selection.
+  const scheduleTouched = useRef(false);
   const lastDraft = useRef("");
   const report = (form: HTMLFormElement | null) => {
-    if (!onDraft || !form) return;
+    if (!onDraft || !form || !scheduleTouched.current) return;
     const draft = draftFrom(form, fallbackLabel);
     const key = JSON.stringify(draft);
     if (key === lastDraft.current) return;
     lastDraft.current = key;
     onDraft(draft);
   };
+  const onFormEdit = (event: FormEvent<HTMLFormElement>) => {
+    const name = (event.target as HTMLInputElement).name;
+    if (name === "kind" || name === "weekdays" || name === "onDate" || name === "startDate" || name === "endDate" || name === "startTime" || name === "endTime") {
+      scheduleTouched.current = true;
+    }
+    report(event.currentTarget);
+  };
+  // Switching kind swaps fields after the change event, so read the form again once they exist.
   useEffect(() => report(formRef.current));
 
   return (
-    <form ref={formRef} action={action} onInput={(event) => report(event.currentTarget)} onChange={(event) => report(event.currentTarget)} className="group grid gap-4 md:grid-cols-2">
+    <form ref={formRef} action={action} onInput={onFormEdit} onChange={onFormEdit} className="group grid gap-4 md:grid-cols-2">
       <input type="hidden" name="id" value={defaults.id} />
+      {defaults.id ? <Notice className="md:col-span-2">
+        Extend or reduce these hours to update new availability. Existing appointments and payment holds keep their original times, including visits outside reduced hours. Resized waves stay closed where they overlap existing reservations.
+      </Notice> : null}
       {state && !state.ok ? (
         <Notice tone="danger" role="alert" className="md:col-span-2">
           {state.message}
+        </Notice>
+      ) : guidance ? (
+        <Notice tone={guidance.tone} role={guidance.tone === "danger" ? "alert" : "status"} className="md:col-span-2">
+          {guidance.message}
         </Notice>
       ) : null}
       <Field id={`${idPrefix}-label`} label="Name of the session" optional hint="For example Morning surgery." className="md:col-span-2">
@@ -95,7 +114,7 @@ export function SessionForm({
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ["recurring", "Weekly", "Every week on chosen days, optionally between two dates."],
+              ["recurring", "Weekly", "Every week on the chosen days, from the start date to the end date."],
               ["once", "One date", "A single date, for example an extra Saturday clinic."],
             ] as const
           ).map(([value, title, text]) => (
@@ -127,11 +146,11 @@ export function SessionForm({
           ))}
         </div>
       </fieldset>
-      <Field id={`${idPrefix}-from`} label="From date" optional hint="Leave empty to start now.">
-        {({ id, describedBy }) => <input id={id} name="startDate" type="date" defaultValue={v("startDate", defaults.startDate)} aria-describedby={describedBy} className="field tabular" />}
+      <Field id={`${idPrefix}-from`} label="From date" hint="The first day this session runs.">
+        {({ id, describedBy }) => <input id={id} name="startDate" type="date" required defaultValue={v("startDate", defaults.startDate)} aria-describedby={describedBy} className="field tabular" />}
       </Field>
-      <Field id={`${idPrefix}-until`} label="Until date" optional hint="Leave empty to repeat every week.">
-        {({ id, describedBy }) => <input id={id} name="endDate" type="date" defaultValue={v("endDate", defaults.endDate)} aria-describedby={describedBy} className="field tabular" />}
+      <Field id={`${idPrefix}-until`} label="Until date" hint="The last day this session runs.">
+        {({ id, describedBy }) => <input id={id} name="endDate" type="date" required defaultValue={v("endDate", defaults.endDate)} aria-describedby={describedBy} className="field tabular" />}
       </Field>
         </>
       )}
