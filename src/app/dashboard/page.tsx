@@ -1,15 +1,18 @@
-import { PRACTICE_TZ } from "@/lib/clock";
+import { PRACTICE_TZ, practiceWallClock } from "@/lib/clock";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { VisitList } from "@/components/clinic/VisitList";
+import { DoctorSchedule } from "@/components/doctors/DoctorSchedule";
+import { toScheduleVisit } from "@/components/doctors/schedule-model";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { buttonClass } from "@/components/ui/button-styles";
 import { Notice } from "@/components/ui/Card";
 import { todayIso, now } from "@/lib/clock";
-import { findDoctor, allDoctors } from "@/lib/data";
+import { findDoctor, allDoctors, reasons } from "@/lib/data";
 import { doctorStatus, type DoctorStatus } from "@/lib/doctor-status";
 import { loadDoctors } from "@/lib/doctors";
+import { readDoctorProfile } from "@/lib/profiles";
 import { getCurrentUser } from "@/lib/session";
 import { getStore } from "@/lib/store";
 import { paymentLabels } from "@/lib/billing";
@@ -49,10 +52,34 @@ export default async function DashboardPage({
   const today = todayIso(now());
   const returnTo = filter ? `/dashboard?doctor=${filter}` : "/dashboard";
   const doctor = user.doctorId ? findDoctor(user.doctorId) : null;
+  const ownBook = user.role === "doctor" && user.doctorId === user.id;
+  const showSchedule = user.role === "doctor" && Boolean(user.doctorId);
+  const schedule = showSchedule && user.doctorId ? await loadSchedule(user.doctorId, user.id) : null;
+  const wall = practiceWallClock(now());
 
   return (
-    <div className={`mx-auto px-5 pt-8 pb-20 md:px-8 md:pt-12 ${user.role === "doctor" ? "max-w-[92rem] xl:px-10" : "max-w-page"}`}>
-      <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Clinic book</PageHeading>
+    <div className={showSchedule ? "pb-20" : `mx-auto px-5 pt-8 pb-20 md:px-8 md:pt-12 ${user.role === "doctor" ? "max-w-[92rem] xl:px-10" : "max-w-page"}`}>
+      {schedule ? (
+        <DoctorSchedule
+          doctorName={user.name}
+          doctorId={user.doctorId!}
+          today={today}
+          nowMinutes={wall.hour * 60 + wall.minute}
+          sessions={schedule.sessions}
+          visits={everyVisit.map((visit) => toScheduleVisit(visit, reasons.find((reason) => reason.id === visit.reasonId)?.label ?? "Appointment"))}
+          trims={schedule.trims}
+          room={schedule.room}
+          editable={false}
+          returnTo={returnTo}
+          editHref={ownBook ? "/dashboard/sessions" : null}
+        />
+      ) : null}
+      <div className={showSchedule ? "mx-auto max-w-[92rem] px-5 pt-8 md:px-8 xl:px-10" : undefined}>
+      {showSchedule ? (
+        <h2 className="text-title2 font-semibold text-ink md:text-title1">Clinic book</h2>
+      ) : (
+        <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Clinic book</PageHeading>
+      )}
       <p className="mt-2 max-w-prose text-body text-ink-2">
         Signed in as {user.name}
         {doctor ? `, ${doctor.room}` : ""}. Visits patients book show up here. This session runs until{" "}
@@ -98,8 +125,23 @@ export default async function DashboardPage({
         </Notice>
       ) : null}
       <VisitList visits={visits} today={today} mode="clinic" returnTo={returnTo} payments={payments} moves={moves} />
+      </div>
     </div>
   );
+}
+
+async function loadSchedule(doctorId: string, accountId: string) {
+  const store = await getStore();
+  const [sessions, trims, record] = await Promise.all([
+    store.listConsultSessions(doctorId),
+    store.listSessionTrims(doctorId),
+    store.getProfile(accountId),
+  ]);
+  return {
+    sessions: sessions.filter((session) => !session.archivedAt),
+    trims,
+    room: readDoctorProfile(record).room || findDoctor(doctorId)?.room || "Clinic",
+  };
 }
 
 function SetupChecklist({ status }: { status: DoctorStatus }) {
