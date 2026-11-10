@@ -37,16 +37,23 @@ beforeEach(async () => {
 });
 
 describe("doctor elastic scheduling action", () => {
-  it.each(["booked", "pending_payment"] as const)("allows shrinking with a %s visit and preserves every field", async status => {
-    const booked = visit({ status }); expect(await state.store!.createAppointment(booked)).toBe("ok");
-    await expect(saveSession(null, form({ endTime: "11:00" }))).rejects.toThrow("REDIRECT:/dashboard/sessions?saved=updated");
+  it("blocks shrinking that would strand a booked visit outside the new hours", async () => {
+    const booked = visit({ status: "booked" }); expect(await state.store!.createAppointment(booked)).toBe("ok");
+    expect(await saveSession(null, form({ endTime: "11:00" }))).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("1 of 1 booked visit falls outside the new hours (2099-01-05 11:30)"),
+    });
+    expect((await state.store!.getConsultSession(session.id))?.endTime).toBe("12:00");
     expect(await state.store!.getAppointment(booked.id)).toEqual(booked);
+  });
+  it("allows shrinking with a pending_payment hold and preserves every field", async () => {
+    const hold = visit({ status: "pending_payment" }); expect(await state.store!.createAppointment(hold)).toBe("ok");
+    await expect(saveSession(null, form({ endTime: "11:00" }))).rejects.toThrow("REDIRECT:/dashboard/sessions?saved=updated");
+    expect(await state.store!.getAppointment(hold.id)).toEqual(hold);
     const resized = (await state.store!.getConsultSession(session.id))!;
-    expect(slotsForSession(resized, "doctor", booked.date, booked.date).map(slot => slot.time)).toEqual(["10:00", "10:30"]);
-    if (status === "pending_payment") {
-      expect(await state.store!.transitionStatus(booked.id, "pending_payment", "booked")).toBe("ok");
-      expect((await state.store!.getAppointment(booked.id))?.time).toBe("11:30");
-    }
+    expect(slotsForSession(resized, "doctor", hold.date, hold.date).map(slot => slot.time)).toEqual(["10:00", "10:30"]);
+    expect(await state.store!.transitionStatus(hold.id, "pending_payment", "booked")).toBe("ok");
+    expect((await state.store!.getAppointment(hold.id))?.time).toBe("11:30");
   });
   it("expands availability and retains a booked late visit", async () => {
     const booked = visit(); await state.store!.createAppointment(booked);

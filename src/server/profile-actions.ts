@@ -18,6 +18,7 @@ import {
   type PatientProfileField,
 } from "@/lib/profiles";
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
+import { findOrphanedVisits } from "@/lib/elastic";
 import { checkSession, type SessionInput } from "@/lib/sessions";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
@@ -157,6 +158,28 @@ async function upcomingIn(doctorId: string, sessionId: string): Promise<number> 
   return visits.filter((visit) => occupiesTime(visit) && visit.sessionId === sessionId && visit.date >= today).length;
 }
 
+/**
+ * Elastic scheduling: find booked visits that would be orphaned if the session changes shape.
+ *
+ * Instead of blocking every shape change, we generate the slot ids the new session would produce
+ * over the dates that have bookings, and check whether each booking's slot still exists. Only
+ * bookings whose slot id disappears are orphaned. This lets schedule expansion (9 AM–12 PM →
+ * 8 AM–12 PM) and safe shrinks (10 AM–12 PM → 10 AM–11 AM when all bookings are before 11 AM)
+ * go through, while still blocking changes that would strand a booked patient.
+ */
+async function orphanedVisits(
+  doctorId: string,
+  existing: ConsultSession,
+  newSession: ConsultSession,
+): Promise<{ total: number; orphaned: number; orphanedTimes: string[] }> {
+  const today = todayIso(now());
+  const visits = await (await getStore()).listAppointments({ doctorId });
+  const upcoming = visits.filter(
+    (visit) => visit.status === "booked" && visit.sessionId === existing.id && visit.date >= today,
+  );
+  return findOrphanedVisits(upcoming, newSession, doctorId);
+}
+
 export async function saveSession(_previous: FormState, formData: FormData): Promise<FormState> {
   const user = await ownDoctor("/dashboard/sessions");
   const store = await getStore();
@@ -177,11 +200,31 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   const checked = checkSession(input, mine.filter((session) => session.id !== id), todayIso(now()));
   if (!checked.ok) return fail(checked.message);
 
-  if (existing && sessionStructureChanged(existing, { ...existing, ...checked.value })) {
+  const candidateSession: ConsultSession | null = existing
+    ? { ...existing, ...checked.value, updatedAt: now().toISOString() }
+    : null;
+
+  // Recurrence, mode, step and capacity stay protected while reservations exist; hours, name and
+  // room may change (the store keeps reserved visits and holds at their original times).
+  if (existing && candidateSession && sessionStructureChanged(existing, candidateSession)) {
     const upcoming = await upcomingIn(user.id, existing.id);
     if (upcoming > 0) {
       return fail(
         `${upcoming} reserved ${upcoming === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${upcoming === 1 ? "it" : "them"} first, or add a new session instead. You can still change its hours, name or room. Existing visits and payment holds keep their original times.`,
+      );
+    }
+  }
+
+  // Elastic scheduling: hour changes must not orphan booked visits. Expansion is always safe;
+  // a shrink that would strand a booking outside the new hours is rejected up front instead of
+  // leaving the visit outside its session's availability.
+  if (existing && candidateSession) {
+    const { total, orphaned, orphanedTimes } = await orphanedVisits(user.id, existing, candidateSession);
+    if (orphaned > 0) {
+      const times = orphanedTimes.slice(0, 3).join(", ");
+      const more = orphaned > 3 ? ` and ${orphaned - 3} more` : "";
+      return fail(
+        `${orphaned} of ${total} booked ${orphaned === 1 ? "visit falls" : "visits fall"} outside the new hours (${times}${more}). Move or cancel ${orphaned === 1 ? "it" : "them"} first, or add a new session instead.`,
       );
     }
   }
