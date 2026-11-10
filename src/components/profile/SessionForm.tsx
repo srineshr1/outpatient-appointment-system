@@ -66,6 +66,8 @@ export function SessionForm({
   const typedDays = state?.values?.weekdays ? state.values.weekdays.split(",").filter(Boolean).map(Number) : defaults.weekdays;
   const [mode, setMode] = useState<"stream" | "wave">(defaults.mode);
   const [kind, setKind] = useState<"recurring" | "once">(defaults.kind);
+  // "Keep the hours": hides the displacement prompt for this answer; nothing was changed.
+  const [dismissed, setDismissed] = useState<typeof state>(null);
   const shownKind = state?.values?.kind === "once" || state?.values?.kind === "recurring" ? state.values.kind : kind;
   const shown = state?.values?.mode === "wave" || state?.values?.mode === "stream" ? state.values.mode : mode;
   const v = (key: string, fallback: string | number) => state?.values?.[key] ?? String(fallback);
@@ -97,7 +99,15 @@ export function SessionForm({
       {defaults.id ? <Notice className="md:col-span-2">
         Extend or reduce these hours to update new availability. Existing appointments and payment holds keep their original times, including visits outside reduced hours. Resized waves stay closed where they overlap existing reservations.
       </Notice> : null}
-      {state && !state.ok ? (
+      {state && !state.ok && state.displace && dismissed !== state ? (
+        <DisplacePrompt
+          idPrefix={idPrefix}
+          message={state.message}
+          count={state.displace.count}
+          times={state.displace.times}
+          onBackOut={() => setDismissed(state)}
+        />
+      ) : state && !state.ok && !state.displace ? (
         <Notice tone="danger" role="alert" className="md:col-span-2">
           {state.message}
         </Notice>
@@ -247,5 +257,57 @@ export function SessionForm({
         </div>
       </div>
     </form>
+  );
+}
+
+/**
+ * The doctor's change would remove booked visits. Nothing has changed yet: they either back out, or
+ * confirm that those patients are moved off, told, and offered the nearest free times (held for a day).
+ * The confirm button submits the same form with displace=confirm and the count they saw.
+ */
+function DisplacePrompt({
+  idPrefix,
+  message,
+  count,
+  times,
+  onBackOut,
+}: {
+  idPrefix: string;
+  message: string;
+  count: number;
+  times: string[];
+  onBackOut: () => void;
+}) {
+  const patients = count === 1 ? "1 patient is" : `${count} patients are`;
+  return (
+    <section aria-labelledby={`${idPrefix}-displace`} role="alert" className="rounded-card bg-danger-soft px-5 py-4 text-callout text-ink md:col-span-2">
+      <h3 id={`${idPrefix}-displace`} className="text-body font-semibold">
+        {patients} booked in the hours you are removing
+      </h3>
+      <p className="mt-1">{message}</p>
+      <ul className="mt-2 list-disc pl-5 tabular">
+        {times.slice(0, 5).map((time) => (
+          <li key={time}>{time}</li>
+        ))}
+        {times.length > 5 ? <li>and {times.length - 5} more</li> : null}
+      </ul>
+      <p className="mt-2">
+        If you go ahead, {count === 1 ? "their visit is" : "their visits are"} not deleted: each patient is told, offered the
+        nearest free times with you (held for 24 hours), and can pick one or cancel for a full refund.
+      </p>
+      <label htmlFor={`${idPrefix}-displace-reason`} className="mt-3 block font-semibold">
+        Message for the patients <span className="font-normal text-ink-2">(optional)</span>
+      </label>
+      <input id={`${idPrefix}-displace-reason`} name="displaceReason" maxLength={200} className="field mt-1" placeholder="For example: I am needed in theatre that morning." />
+      <input type="hidden" name="displaceCount" value={count} />
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <PendingButton name="displace" value="confirm" pendingLabel="Notifying…" className={buttonClass("primary", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}>
+          Notify them and offer new times
+        </PendingButton>
+        <Button variant="plain" size="md" onClick={onBackOut}>
+          Keep their times
+        </Button>
+      </div>
+    </section>
   );
 }
