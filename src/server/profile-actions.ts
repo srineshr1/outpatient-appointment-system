@@ -193,7 +193,9 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   }
 
   const today = todayIso(now());
-  const checked = checkSession(input, mine.filter((session) => session.id !== id), today);
+  // A weekly session saved before dates were required may stay open-ended, so it can still be resized.
+  const keepOpenRange = Boolean(existing && !existing.onDate && !existing.startDate && !existing.endDate);
+  const checked = checkSession(input, mine.filter((session) => session.id !== id), today, { keepOpenRange });
   if (!checked.ok) return fail(checked.message);
 
   const at = now().toISOString();
