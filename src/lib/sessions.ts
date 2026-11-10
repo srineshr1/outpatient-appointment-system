@@ -665,7 +665,15 @@ export function planAbsorption(
  * Check what a doctor typed for a session. Overlap with another session is decided by
  * `planAbsorption`: a free edge can be lent, and a booked patient is never cancelled here.
  */
-export function checkSession(input: SessionInput, _others: readonly ConsultSession[], today?: string): SessionCheck {
+export interface CheckSessionOptions {
+  /**
+   * The session being edited is a weekly one saved before dates were required (no start or end
+   * date). It may stay open-ended when both dates are left blank, so its hours can still be resized.
+   */
+  keepOpenRange?: boolean;
+}
+
+export function checkSession(input: SessionInput, _others: readonly ConsultSession[], today?: string, options: CheckSessionOptions = {}): SessionCheck {
   const once = input.kind === "once";
   let weekdays = [...new Set(input.weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 6).sort((a, b) => a - b);
   let onDate: string | null = null;
@@ -682,15 +690,17 @@ export function checkSession(input: SessionInput, _others: readonly ConsultSessi
     if (weekdays.length === 0) return { ok: false, message: "Choose at least one weekday." };
     const start = input.startDate?.trim() || null;
     const end = input.endDate?.trim() || null;
-    if (!isIsoDate(start)) return { ok: false, message: "Choose the date this session starts." };
-    if (!isIsoDate(end)) return { ok: false, message: "Choose the date this session ends." };
-    if (end < start) return { ok: false, message: "The end date must be on or after the start date." };
-    if (today && end < today) return { ok: false, message: "The end date has passed. Choose a later end date." };
-    let any = false;
-    for (let date = start; date <= end && !any; date = addDays(date, 1)) any = weekdays.includes(weekdayIndex(date));
-    if (!any) return { ok: false, message: "None of the chosen weekdays fall between those dates." };
-    startDate = start;
-    endDate = end;
+    if (!(options.keepOpenRange && !start && !end)) {
+      if (!isIsoDate(start)) return { ok: false, message: "Choose the date this session starts." };
+      if (!isIsoDate(end)) return { ok: false, message: "Choose the date this session ends." };
+      if (end < start) return { ok: false, message: "The end date must be on or after the start date." };
+      if (today && end < today) return { ok: false, message: "The end date has passed. Choose a later end date." };
+      let any = false;
+      for (let date = start; date <= end && !any; date = addDays(date, 1)) any = weekdays.includes(weekdayIndex(date));
+      if (!any) return { ok: false, message: "None of the chosen weekdays fall between those dates." };
+      startDate = start;
+      endDate = end;
+    }
   }
   if (!isTime(input.startTime) || !isTime(input.endTime)) return { ok: false, message: "Enter the start and end time as HH:MM." };
   if (toMinutes(input.startTime) >= toMinutes(input.endTime)) return { ok: false, message: "The session must end after it starts." };
