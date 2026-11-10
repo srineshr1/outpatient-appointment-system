@@ -62,6 +62,44 @@ async function contactFor(visit: AppointmentRecord): Promise<Contact | null> {
   return { firstName: salutation(user.name), email: user.email, mobile: user.mobile || null };
 }
 
+// --- In-app inbox ----------------------------------------------------------------------------
+
+/** What lands in the bell, and the words for it. Only visit changes for now. */
+function inboxText(kind: NotificationKind, visit: AppointmentRecord, extra: Partial<NoticeData> = {}): { title: string; body: string } | null {
+  const doctor = findDoctor(visit.doctorId)?.name ?? "your doctor";
+  const when = whenLabel(visit);
+  switch (kind) {
+    case "booking_confirmed":
+      return { title: "Appointment confirmed", body: `${doctor}, ${when}. Reference ${visit.reference}.` };
+    case "appointment_cancelled":
+      return { title: "Appointment cancelled", body: `Your visit with ${doctor} on ${when} was cancelled.` };
+    case "appointment_rescheduled":
+      return { title: "Appointment moved", body: `Your visit with ${doctor} is now ${when}.` };
+    case "doctor_booking":
+      return { title: "New booking", body: `${visit.patientName}, ${when}. Reference ${visit.reference}.` };
+    case "doctor_cancelled":
+      return {
+        title: "Visit cancelled",
+        body: `${visit.patientName}, ${when}${extra.cancelledBy === "patient" ? ", cancelled by the patient" : ""}.`,
+      };
+    case "doctor_rescheduled":
+      return { title: "Visit moved", body: `${visit.patientName} is now ${when}.` };
+    default:
+      return null;
+  }
+}
+
+/** Add a visit change to someone's inbox. The dedupe key keeps a retry from adding it twice. Never throws. */
+async function addToInbox(userId: string, kind: NotificationKind, visit: AppointmentRecord, dedupe: string, href: string, extra?: Partial<NoticeData>): Promise<void> {
+  const text = inboxText(kind, visit, extra);
+  if (!text) return;
+  try {
+    await (await getOps()).createInboxItem({ id: `${dedupe}:${userId}`, userId, kind, ...text, href, appointmentId: visit.id });
+  } catch (error) {
+    console.error(`[inbox] Could not add ${kind} for ${visit.reference}: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+}
+
 export interface NoticeOptions {
   /** Unique per message: queueing the same key twice sends once. */
   dedupe: string;
@@ -79,6 +117,7 @@ async function smsWanted(kind: NotificationKind, options: NoticeOptions): Promis
 
 /** Queue a notice to the visit's patient on every active channel. Returns whether anything was queued. */
 export async function queueNotice(kind: NotificationKind, visit: AppointmentRecord, options: NoticeOptions): Promise<boolean> {
+  if (visit.patientUserId) await addToInbox(visit.patientUserId, kind, visit, options.dedupe, "/appointments", options.extra);
   try {
     const contact = await contactFor(visit);
     if (!contact) return false;
@@ -142,6 +181,8 @@ export async function queueDoctorNotice(kind: NotificationKind, visit: Appointme
     let queued = 0;
     for (const doctor of await doctorContacts(visit.doctorId)) {
       if (options.actorUserId && options.actorUserId === doctor.userId) continue;
+      // The bell gets every visit change, even when the doctor has switched that email off.
+      await addToInbox(doctor.userId, kind, visit, options.dedupe, "/dashboard", options.extra);
       const pref = prefForKind(kind);
       if (pref && !(await getDoctorPrefs(doctor.userId))[pref]) continue;
       const data = noticeData(visit, salutation(doctor.name), {
