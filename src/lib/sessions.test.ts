@@ -12,6 +12,10 @@ import {
   sessionBlocks,
   slotsForSession,
   slotTimeLabel,
+  stepMinutes,
+  modeSummary,
+  overriddenDates,
+  sessionCalendar,
   tokenOfHeld,
   waveSlotId,
 } from "./sessions";
@@ -138,7 +142,8 @@ describe("checkSession", () => {
     expect(checkSession({ ...input, weekdays: [] }, []).ok).toBe(false);
     expect(checkSession({ ...input, mode: "wave", waveMinutes: 60, waveCapacity: 0 }, []).ok).toBe(false);
     expect(checkSession({ ...input, mode: "wave", waveMinutes: 60, waveCapacity: 99 }, []).ok).toBe(false);
-    expect(checkSession({ ...input, mode: "wave", waveMinutes: 25, waveCapacity: 4 }, []).ok).toBe(false);
+    // Wave length is no longer chosen: an unknown length just means one wave for the whole session.
+    expect(checkSession({ ...input, mode: "wave", waveMinutes: 25, waveCapacity: 4 }, [])).toMatchObject({ ok: true, value: { waveMinutes: null } });
     expect(checkSession({ ...input, mode: "other" }, []).ok).toBe(false);
   });
 
@@ -209,8 +214,47 @@ describe("recurring date ranges and one-off sessions (IST dates)", () => {
 
   it("only reports overlaps when the sessions can share a date", () => {
     const saturday = { ...wave, weekdays: [6], startTime: "12:00", endTime: "15:00" };
-    expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [saturday], "2026-11-04")).toMatchObject({ ok: false });
+    // A one-off session replaces the weekly ones on its date, so it never clashes with them.
+    expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [saturday], "2026-11-04")).toMatchObject({ ok: true });
+    expect(checkSession({ ...input, weekdays: [6] }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04")).toMatchObject({ ok: true });
+    expect(
+      checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [{ ...saturday, weekdays: [], onDate: "2026-11-07" }], "2026-11-04"),
+    ).toMatchObject({ ok: false });
     expect(checkSession({ ...input, kind: "once", onDate: "2026-11-07" }, [{ ...saturday, endDate: "2026-11-01" }], "2026-11-04")).toMatchObject({ ok: true });
     expect(checkSession({ ...input, weekdays: [6], startDate: "2026-12-01" }, [{ ...saturday, endDate: "2026-11-30" }], "2026-11-04")).toMatchObject({ ok: true });
+  });
+});
+
+describe("whole-session waves and one-off overrides", () => {
+  const base = wave();
+  it("makes a wave without a length into one wave for the whole session", () => {
+    const whole = { ...base, waveMinutes: null };
+    const slots = slotsForSession(whole, "doc", "2026-10-26", "2026-10-26");
+    expect(slots.map((slot) => [slot.time, slot.endTime, slot.capacity])).toEqual([["09:00", "11:00", 3]]);
+    expect(stepMinutes(whole)).toBe(120);
+    expect(modeSummary(whole)).toBe("one wave, up to 3 patients, seen in token order");
+  });
+
+  it("keeps a legacy wave length as sub-waves", () => {
+    expect(slotsForSession(base, "doc", "2026-10-26", "2026-10-26")).toHaveLength(2);
+    expect(modeSummary(base)).toBe("60-minute waves, up to 3 patients each");
+  });
+
+  it("drops weekly sessions on a date that has a one-off session", () => {
+    const once = { ...base, id: "once", weekdays: [], onDate: "2026-10-26", startTime: "15:00", endTime: "16:00", waveMinutes: null };
+    const overridden = overriddenDates([base, once]);
+    expect([...overridden]).toEqual(["2026-10-26"]);
+    expect(slotsForSession(base, "doc", "2026-10-26", "2026-10-27", overridden).map((slot) => slot.date)).not.toContain("2026-10-26");
+    expect(slotsForSession(once, "doc", "2026-10-26", "2026-10-27", overridden)).toHaveLength(1);
+    expect(overriddenDates([{ ...once, archivedAt: "2026-10-20T00:00:00Z" }]).size).toBe(0);
+    const days = sessionCalendar([base, once], "2026-10-26", "2026-10-26").get("2026-10-26")!;
+    expect(days.map((entry) => [entry.session.id, entry.replaced])).toEqual([
+      [base.id, true],
+      ["once", false],
+    ]);
+  });
+
+  it("shows every slot as a start–end range", () => {
+    expect(slotTimeLabel({ time: "09:00", endTime: "09:30", mode: "stream" })).toBe("09:00–09:30");
   });
 });
