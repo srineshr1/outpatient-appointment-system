@@ -10,11 +10,10 @@
  * refunds). When a whole session is removed, its unpaid payment holds are displaced without an offer:
  * no money was taken, and a payment that still arrives is refunded by the existing late-payment path.
  *
- * Only the SHA-256 of a patient's link token is stored. The token is an HMAC of the offer id with a
- * server secret (REBOOK_TOKEN_SECRET, or AUTH_SECRET), so the outbox can rebuild the link when it sends
- * without the raw token ever being written to the database.
+ * Only the SHA-256 of a patient's link token is stored (see rebook-links.ts). Every change is told
+ * to the patient through the outbox after it is committed (see rebooking-notices.ts).
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { SYSTEM_ACTOR, actorOf, recordEvent, visitSummary } from "./audit";
 import { settleCancelledVisit } from "./billing";
 import { forgetBlockedSlots } from "./blocked-slots";
@@ -33,8 +32,10 @@ import { addDays, now, todayIso } from "./clock";
 import type { Slot } from "./data";
 import { applyReservations, holdReservations, occupiesTime, type Reservation } from "./elastic-scheduling";
 import { hashToken } from "./passwords";
+import { rebookPath, rebookToken, rebookTokenHash } from "./rebook-links";
 import { cancelReminders, rescheduleReminders } from "./notifications/service";
 import { releaseExpiredHolds } from "./payments/holds";
+import { notifyDisplaced, notifyOfferClosed, notifyRebooked } from "./rebooking-notices";
 import { refundForCancellation, type CancellationRefund } from "./payments/service";
 import { getSlot } from "./repository";
 import { slotStart, slotStatus } from "./schedule";
@@ -52,34 +53,12 @@ export const DEFAULT_DISPLACED_REASON = "The doctor changed their consulting hou
 
 /* ---------- Tokens ---------- */
 
-function tokenSecret(): string {
-  const secret = process.env.REBOOK_TOKEN_SECRET?.trim() || process.env.AUTH_SECRET?.trim();
-  if (secret && secret.length >= 16) return secret;
-  if (process.env.NODE_ENV === "production" && !process.env.VITEST) {
-    throw new Error("Rebooking links need REBOOK_TOKEN_SECRET (or AUTH_SECRET) of at least 16 characters.");
-  }
-  return "development-only-rebooking-key";
-}
-
-/** The patient's link token for an offer. Never stored; rebuilt from the offer id when needed. */
-export function rebookToken(offerId: string): string {
-  return createHmac("sha256", tokenSecret()).update(`rebook:${offerId}`).digest("base64url");
-}
-
-/** What the store keeps: the SHA-256 of the token. */
-export function rebookTokenHash(offerId: string): string {
-  return hashToken(rebookToken(offerId));
-}
+export { rebookPath, rebookToken, rebookTokenHash };
 
 function sameText(a: string, b: string): boolean {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
-}
-
-/** The path a patient opens: /rebook/<token>, optionally with one offered slot preselected. */
-export function rebookPath(offerId: string, slotId?: string): string {
-  return `/rebook/${rebookToken(offerId)}${slotId ? `?slot=${encodeURIComponent(slotId)}` : ""}`;
 }
 
 /* ---------- Which visits a change displaces ---------- */
@@ -266,6 +245,7 @@ export async function displaceAndSave(
       reason,
     });
   }
+  await notifyDisplaced(moved, offers);
   return { ok: true, displaced: moved, offers };
 }
 
@@ -379,6 +359,7 @@ export async function acceptOffer(token: string, slotId: string): Promise<Accept
     summary: `${visitSummary(moved)} · was ${visit.date} ${visit.time}`,
   });
   await rescheduleReminders(moved);
+  await notifyRebooked(moved, visit, history);
   return { ok: true, visit: moved, previous: visit, history };
 }
 
@@ -413,7 +394,9 @@ export async function closeOffer(offer: RebookingOffer, status: "cancelled" | "e
     summary: visitSummary(visit),
     reason: status === "cancelled" ? "Displaced by a schedule change; the patient chose a refund" : "Displaced by a schedule change; no new time chosen within the offer",
   });
-  return { offer: { ...offer, status, slots: [], closedAt: now().toISOString() }, visit, ...result };
+  const closed: ClosedOffer = { offer: { ...offer, status, slots: [], closedAt: now().toISOString() }, visit, ...result };
+  await notifyOfferClosed(closed, status);
+  return closed;
 }
 
 async function refundDisplaced(visit: AppointmentRecord): Promise<Pick<ClosedOffer, "refund" | "ledgerRefundMinor">> {

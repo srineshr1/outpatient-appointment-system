@@ -1,4 +1,6 @@
 /** Notification kinds, the data each one carries, and the channel abstraction. */
+import type { RebookLinks } from "../rebook-links";
+
 export type NotificationKind =
   | "booking_confirmed"
   | "appointment_cancelled"
@@ -10,6 +12,9 @@ export type NotificationKind =
   | "refund_failed"
   | "reminder"
   | "appointment_rescheduled"
+  | "rebooking_offer"
+  | "rebooking_confirmed"
+  | "rebooking_closed"
   | "doctor_booking"
   | "doctor_cancelled"
   | "doctor_rescheduled"
@@ -57,6 +62,16 @@ export interface NoticeData {
   /** Daily summary: the calendar date ("Mon 2 Nov") and the day's visits. */
   dateLabel?: string;
   items?: Array<{ time: string; patientName: string; reasonLabel: string; reference: string; token?: number | null }>;
+  /** Displaced visits: the offer the links point at. The link token is rebuilt from it when sending. */
+  offerId?: string;
+  /** The held times, labelled like `when`. */
+  offerSlots?: Array<{ slotId: string; when: string }>;
+  /** When the held times are released ("Tue 10 Nov, 14:30"). */
+  expiresWhen?: string;
+  /** Why the offer closed: the patient cancelled, or nobody chose in time. */
+  offerOutcome?: "cancelled" | "expired";
+  /** Added at send time only (never stored): the patient's links for this offer. */
+  rebookLinks?: RebookLinks;
 }
 
 export interface RenderedMessage {

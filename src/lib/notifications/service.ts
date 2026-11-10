@@ -12,12 +12,13 @@ import { salutation } from "../names";
 import { getOps } from "../ops";
 import type { NotificationRecord, OpsStore } from "../ops/types";
 import { slotStart } from "../schedule";
+import { rebookLinks } from "../rebook-links";
 import { getStore } from "../store";
 import { channelFor } from "./channels";
 import { getDoctorPrefs, prefForKind } from "./doctor-prefs";
 import { reminderSchedule, resolveOffsets } from "./reminders";
-import { SMS_KINDS, renderSms, smsMode } from "./sms";
-import { renderNotice } from "./templates";
+import { SMS_KINDS, indianMobile, renderSms, smsMode } from "./sms";
+import { renderNotice, siteUrl } from "./templates";
 import type { ChannelName, NoticeData, NotificationKind } from "./types";
 
 export const REMINDER_KIND: NotificationKind = "reminder";
@@ -75,6 +76,12 @@ function inboxText(kind: NotificationKind, visit: AppointmentRecord, extra: Part
       return { title: "Appointment cancelled", body: `Your visit with ${doctor} on ${when} was cancelled.` };
     case "appointment_rescheduled":
       return { title: "Appointment moved", body: `Your visit with ${doctor} is now ${when}.` };
+    case "rebooking_offer":
+      return { title: "Please pick a new time", body: `${doctor} changed their hours, so your visit on ${when} needs a new time. Check your email or texts for the times held for you.` };
+    case "rebooking_confirmed":
+      return { title: "New time booked", body: `Your visit with ${doctor} is now ${when}. Reference ${visit.reference}.` };
+    case "rebooking_closed":
+      return { title: "Appointment cancelled", body: `Your visit with ${doctor} on ${extra.previousWhen ?? when} was cancelled. Anything you paid is refunded in full.` };
     case "doctor_booking":
       return { title: "New booking", body: `${visit.patientName}, ${when}. Reference ${visit.reference}.` };
     case "doctor_cancelled":
@@ -127,6 +134,8 @@ export async function queueNotice(kind: NotificationKind, visit: AppointmentReco
       if (channel === "sms" && !(await smsWanted(kind, options))) continue;
       const recipient = channel === "email" ? contact.email : visit.patientMobile || contact.mobile;
       if (!recipient) continue;
+      // Fast2SMS reaches Indian mobiles only; everyone else gets the email alone.
+      if (channel === "sms" && !indianMobile(recipient)) continue;
       const result = await ops.enqueueNotification({
         dedupeKey: `${options.dedupe}:${channel}`,
         kind,
@@ -320,7 +329,16 @@ export async function dispatchDue(limit = 25): Promise<DispatchSummary> {
 }
 
 async function deliver(row: NotificationRecord, ops: OpsStore, store: Awaited<ReturnType<typeof getStore>>): Promise<keyof DispatchSummary> {
-  const data = row.payload as unknown as NoticeData;
+  let data = row.payload as unknown as NoticeData;
+  if (row.kind === "rebooking_offer") {
+    // The offer must still be open, and the link is rebuilt here so the token itself is never stored.
+    const visit = row.appointmentId ? await store.getAppointment(row.appointmentId) : null;
+    if (!visit || visit.status !== "displaced" || !data.offerId) {
+      await ops.finishNotification(row.id, "cancelled", "The patient already answered this offer.");
+      return "cancelled";
+    }
+    data = { ...data, rebookLinks: rebookLinks(siteUrl(), data.offerId, data.offerSlots ?? []) };
+  }
   if (row.kind === REMINDER_KIND) {
     const visit = row.appointmentId ? await store.getAppointment(row.appointmentId) : null;
     const stillValid = visit && visit.status === "booked" && slotStart(visit).getTime() > now().getTime() && slotStart(visit).toISOString() === data.startsAt;
