@@ -17,6 +17,7 @@ import {
   type PatientProfileField,
 } from "@/lib/profiles";
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
+import { findOrphanedVisits } from "@/lib/elastic";
 import { checkSession, type SessionInput } from "@/lib/sessions";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
@@ -168,6 +169,28 @@ function shapeChanged(a: ConsultSession, b: Omit<SessionInput, "label" | "room">
   );
 }
 
+/**
+ * Elastic scheduling: find booked visits that would be orphaned if the session changes shape.
+ *
+ * Instead of blocking every shape change, we generate the slot ids the new session would produce
+ * over the dates that have bookings, and check whether each booking's slot still exists. Only
+ * bookings whose slot id disappears are orphaned. This lets schedule expansion (9 AM–12 PM →
+ * 8 AM–12 PM) and safe shrinks (10 AM–12 PM → 10 AM–11 AM when all bookings are before 11 AM)
+ * go through, while still blocking changes that would strand a booked patient.
+ */
+async function orphanedVisits(
+  doctorId: string,
+  existing: ConsultSession,
+  newSession: ConsultSession,
+): Promise<{ total: number; orphaned: number; orphanedTimes: string[] }> {
+  const today = todayIso(now());
+  const visits = await (await getStore()).listAppointments({ doctorId });
+  const upcoming = visits.filter(
+    (visit) => visit.status === "booked" && visit.sessionId === existing.id && visit.date >= today,
+  );
+  return findOrphanedVisits(upcoming, newSession, doctorId);
+}
+
 export async function saveSession(_previous: FormState, formData: FormData): Promise<FormState> {
   const user = await ownDoctor("/dashboard/sessions");
   const store = await getStore();
@@ -184,10 +207,14 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   if (!checked.ok) return fail(checked.message);
 
   if (existing && shapeChanged(existing, input)) {
-    const upcoming = await upcomingIn(user.id, existing.id);
-    if (upcoming > 0) {
+    // Build the session as it would look after saving, so we can generate its new slots.
+    const candidateSession: ConsultSession = { ...existing, ...checked.value, updatedAt: now().toISOString() };
+    const { total, orphaned, orphanedTimes } = await orphanedVisits(user.id, existing, candidateSession);
+    if (orphaned > 0) {
+      const times = orphanedTimes.slice(0, 3).join(", ");
+      const more = orphaned > 3 ? ` and ${orphaned - 3} more` : "";
       return fail(
-        `${upcoming} booked ${upcoming === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${upcoming === 1 ? "it" : "them"} first, or add a new session instead. You can still rename it or change its room.`,
+        `${orphaned} of ${total} booked ${orphaned === 1 ? "visit falls" : "visits fall"} outside the new hours (${times}${more}). Move or cancel ${orphaned === 1 ? "it" : "them"} first, or add a new session instead.`,
       );
     }
   }
