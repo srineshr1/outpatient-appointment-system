@@ -11,7 +11,8 @@ import { ChipGroup } from "@/components/ui/ChipGroup";
 import { practice, type Doctor, type Slot } from "@/lib/data";
 import { formatWhen, pluralise, yearsLabel } from "@/lib/format";
 import { spring } from "@/lib/motion";
-import { slotStatus } from "@/lib/schedule";
+import { clampWeek, slotStatus } from "@/lib/schedule";
+import { WeekPicker } from "@/components/schedule/WeekPicker";
 
 interface Props {
   doctors: Doctor[];
@@ -26,6 +27,10 @@ interface Props {
   labelledBy?: string;
   /** Under the pinned bar and above the cards. Scrolls with the cards. */
   lead?: ReactNode;
+  /** Every doctor's times. When given, cards open in place to show the week instead of linking away. */
+  slots?: Record<string, Slot[]>;
+  /** Signed in as a patient (Continue skips sign-in). */
+  signedIn?: boolean;
 }
 
 export function filterDoctors(doctors: Doctor[], query: string, specialty: string): Doctor[] {
@@ -40,7 +45,17 @@ export function filterDoctors(doctors: Doctor[], query: string, specialty: strin
   });
 }
 
-export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead }: Props) {
+export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, slots, signedIn = false }: Props) {
+  // Independent: several doctors can be open at once to compare times.
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
+  function toggle(id: string) {
+    setOpenIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const { now, window } = useClock();
   const reduceMotion = useReducedMotion();
   const [query, setQuery] = useState("");
@@ -198,9 +213,22 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead }
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                transition={spring.layout}
+                transition={reduceMotion ? { duration: 0 } : spring.layout}
+                className={openIds.has(doctor.id) ? "md:col-span-2" : undefined}
               >
-                <DoctorCard doctor={doctor} next={nextFor(doctor.id)} today={window.today} />
+                {slots ? (
+                  <ExpandableDoctorCard
+                    doctor={doctor}
+                    next={nextFor(doctor.id)}
+                    today={window.today}
+                    slots={slots[doctor.id] ?? []}
+                    open={openIds.has(doctor.id)}
+                    onToggle={() => toggle(doctor.id)}
+                    signedIn={signedIn}
+                  />
+                ) : (
+                  <DoctorCard doctor={doctor} next={nextFor(doctor.id)} today={window.today} />
+                )}
               </motion.li>
             ))}
           </AnimatePresence>
@@ -283,14 +311,9 @@ export function emptyCopy(query: string, specialty: string): string {
   return "Nobody is listed under that specialty.";
 }
 
-function DoctorCard({ doctor, next, today }: { doctor: Doctor; next: Slot | null; today: string }) {
+function CardBody({ doctor, next, today, action }: { doctor: Doctor; next: Slot | null; today: string; action: ReactNode }) {
   return (
-    <Link
-      href={`/doctors/${doctor.id}`}
-      aria-label={`${doctor.name}, ${doctor.interest}. See times`}
-      aria-describedby={`next-${doctor.id}`}
-      className="group flex h-full flex-col rounded-sheet bg-surface p-5 no-underline shadow-card transition-[box-shadow,transform] duration-300 ease-out-quint hover:-translate-y-0.5 hover:shadow-raised active:scale-[0.99] md:p-6"
-    >
+    <>
       <span className="flex items-start gap-4">
         <DoctorPortrait
           doctor={doctor}
@@ -334,11 +357,123 @@ function DoctorCard({ doctor, next, today }: { doctor: Doctor; next: Slot | null
             No times online. Call the desk.
           </span>
         )}
-        <span className="inline-flex items-center gap-0.5 text-callout font-bold text-accent">
-          See times
-          <ChevronRight size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
-        </span>
+        {action}
       </span>
+    </>
+  );
+}
+
+const CARD = "group flex h-full w-full flex-col rounded-sheet bg-surface p-5 text-left no-underline shadow-card md:p-6";
+
+function DoctorCard({ doctor, next, today }: { doctor: Doctor; next: Slot | null; today: string }) {
+  return (
+    <Link
+      href={`/doctors/${doctor.id}`}
+      aria-label={`${doctor.name}, ${doctor.interest}. See times`}
+      aria-describedby={`next-${doctor.id}`}
+      className={`${CARD} transition-[box-shadow,transform] duration-300 ease-out-quint hover:-translate-y-0.5 hover:shadow-raised active:scale-[0.99]`}
+    >
+      <CardBody
+        doctor={doctor}
+        next={next}
+        today={today}
+        action={
+          <span className="inline-flex items-center gap-0.5 text-callout font-bold text-accent">
+            See times
+            <ChevronRight size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+          </span>
+        }
+      />
     </Link>
+  );
+}
+
+/** A doctor card that opens in place to show the week of times (the booking page). */
+function ExpandableDoctorCard({
+  doctor,
+  next,
+  today,
+  slots,
+  open,
+  onToggle,
+  signedIn,
+}: {
+  doctor: Doctor;
+  next: Slot | null;
+  today: string;
+  slots: Slot[];
+  open: boolean;
+  onToggle: () => void;
+  signedIn: boolean;
+}) {
+  const reduce = useReducedMotion();
+  const { now, window } = useClock();
+  const panelId = `times-${doctor.id}`;
+  const buttonId = `doctor-${doctor.id}`;
+  const firstOpen = slots.find((slot) => slotStatus(slot, [], now) === "open");
+  const initialWeek = clampWeek(null, window, firstOpen?.date);
+  return (
+    <div
+      className={`rounded-sheet bg-surface shadow-card transition-shadow duration-300 ${open ? "shadow-raised ring-1 ring-accent/25" : "hover:shadow-raised"}`}
+      data-expanded={open ? "true" : undefined}
+    >
+      <button
+        id={buttonId}
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-describedby={`next-${doctor.id}`}
+        onClick={onToggle}
+        className={`${CARD} shadow-none! focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-accent/55 ${open ? "" : "active:scale-[0.995]"}`}
+      >
+        <CardBody
+          doctor={doctor}
+          next={next}
+          today={today}
+          action={
+            <span className="inline-flex items-center gap-1 text-callout font-bold text-accent">
+              {open ? "Hide times" : "See times"}
+              <motion.span
+                aria-hidden="true"
+                animate={{ rotate: open ? -90 : 90 }}
+                transition={reduce ? { duration: 0 } : spring.press}
+                className="inline-flex"
+              >
+                <ChevronRight size={18} />
+              </motion.span>
+            </span>
+          }
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.section
+            key="times"
+            id={panelId}
+            aria-labelledby={buttonId}
+            initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0, overflow: "hidden" }}
+            animate={
+              reduce
+                ? { opacity: 1 }
+                : { height: "auto", opacity: 1, overflow: "hidden", transitionEnd: { overflow: "visible" } }
+            }
+            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0, overflow: "hidden" }}
+            transition={
+              reduce
+                ? { duration: 0 }
+                : { height: { type: "spring", stiffness: 260, damping: 32 }, opacity: { duration: 0.25 } }
+            }
+          >
+            <div className="border-t border-hairline px-5 pt-5 pb-5 md:px-6 md:pb-6">
+              <WeekPicker doctor={doctor} slots={slots} initialWeek={initialWeek} signedIn={signedIn} headingLevel={3} />
+              <Link href={`/doctors/${doctor.id}`} className="mt-4 inline-flex min-h-11 items-center gap-0.5 text-callout text-accent">
+                Open {doctor.short}’s full page
+                <ChevronRight size={18} />
+              </Link>
+            </div>
+          </motion.section>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
