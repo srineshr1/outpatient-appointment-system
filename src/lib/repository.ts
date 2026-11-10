@@ -26,7 +26,7 @@ import { totals } from "./payments";
 import { releaseExpiredHolds } from "./payments/holds";
 import { slotStatus } from "./schedule";
 import { freeToken, heldId } from "./sessions";
-import { applyReservations } from "./elastic-scheduling";
+import { applyReservations, holdReservations, type Reservation } from "./elastic-scheduling";
 import { getStore } from "./store";
 
 export class SlotUnavailableError extends Error {
@@ -42,6 +42,13 @@ export class SlotUnavailableError extends Error {
 }
 
 let cache: { key: string; slots: Slot[] } | null = null;
+
+/** Visits plus the places held for displaced patients: both count as reserved time. */
+async function reservations(store: Awaited<ReturnType<typeof getStore>>, doctorId?: string): Promise<Reservation[]> {
+  const filter = doctorId ? { doctorId } : {};
+  const [visits, offers] = await Promise.all([store.listAppointments(filter), store.listRebookingOffers({ ...filter, status: "pending" })]);
+  return [...visits, ...holdReservations(offers)];
+}
 
 /** Call after `loadDoctors`: the cache is keyed by the week and the doctors listed. */
 function slotsForWindow(window: BookWindow, list: readonly Doctor[]): Slot[] {
@@ -67,7 +74,7 @@ export async function getSlots(doctorId?: string): Promise<Slot[]> {
   // The doctor list and the booked-slot list are separate reads: fetch them together.
   const store = await getStore();
   await releaseExpiredHolds();
-  const [list, visits] = await Promise.all([loadDoctors(true), store.listAppointments(doctorId ? { doctorId } : {})]);
+  const [list, visits] = await Promise.all([loadDoctors(true), reservations(store, doctorId)]);
   const all = slotsForWindow(bookWindow(now()), list);
   const merged = applyReservations(all, visits, list.flatMap(doctor => sessionsOf(doctor.id)));
   return doctorId ? merged.filter((slot) => slot.doctorId === doctorId) : merged;
@@ -76,7 +83,7 @@ export async function getSlots(doctorId?: string): Promise<Slot[]> {
 /** One slot or wave by id, as it stands now (bookings applied), or null when no such time exists. */
 export async function getSlot(id: string): Promise<Slot | null> {
   const store = await getStore();
-  const [doctors, visits] = await Promise.all([loadDoctors(true), store.listAppointments()]);
+  const [doctors, visits] = await Promise.all([loadDoctors(true), reservations(store)]);
   const found = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === id);
   return found ? (applyReservations([found], visits, sessionsOf(found.doctorId))[0] ?? null) : null;
 }
@@ -145,7 +152,7 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
   reference$.catch(() => undefined); // surfaced below, only if the booking gets that far
   // A payment hold that ran out still sits in the booked list until released, so release it first.
   await releaseExpiredHolds();
-  const [doctors, blocked, visits] = await Promise.all([loadDoctors(true), store.listBlockedSlotIds(), store.listAppointments({ doctorId: input.slot.doctorId })]);
+  const [doctors, blocked, visits] = await Promise.all([loadDoctors(true), store.listBlockedSlotIds(), reservations(store, input.slot.doctorId)]);
   const found = slotsForWindow(bookWindow(now()), doctors).find((slot) => slot.id === input.slot.id);
   if (!found || !isListed(found.doctorId)) throw new SlotUnavailableError(input.slot.id, "missing");
   const current = applyReservations([found], visits, sessionsOf(found.doctorId))[0]!;

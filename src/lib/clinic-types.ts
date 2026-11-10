@@ -9,15 +9,17 @@ export function isRole(value: unknown): value is Role {
 /**
  * "pending_payment": a place held while the patient pays online. It counts towards capacity like a
  * booking. "expired": the hold ran out unpaid. Neither one is an appointment the patient has yet.
+ * "displaced": the doctor removed the hours this visit was in and confirmed it. The row keeps its
+ * original time; the patient is offered other times (see rebooking.ts). It holds no place.
  */
-export type AppointmentStatus = "booked" | "completed" | "cancelled" | "pending_payment" | "expired";
+export type AppointmentStatus = "booked" | "completed" | "cancelled" | "pending_payment" | "expired" | "displaced";
 
-/** A visit that is over without being attended: cancelled, or a payment hold that ran out. */
+/** A visit that is not going ahead at its time: cancelled, a payment hold that ran out, or displaced. */
 export function isClosedStatus(status: AppointmentStatus): boolean {
-  return status === "cancelled" || status === "expired";
+  return status === "cancelled" || status === "expired" || status === "displaced";
 }
 
-export const APPOINTMENT_STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired"];
+export const APPOINTMENT_STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired", "displaced"];
 
 export interface PublicUser {
   id: string;
@@ -115,6 +117,10 @@ export interface AppointmentRecord {
   waveCapacity?: number | null;
   /** Wave visits only: when the wave ends (HH:MM). `time` is when it starts. */
   endTime?: string | null;
+  /** Set when the doctor removed this visit's hours (ISO). Kept after the patient rebooks. */
+  displacedAt?: string | null;
+  /** Why the visit was displaced, in the doctor's words or the app's default. */
+  displacedReason?: string | null;
 }
 
 /** What changes when a booked visit moves. The reference, patient, doctor and fee stay as they are. */
@@ -194,6 +200,42 @@ export interface SessionTrim {
   endTime: string;
   /** The session that took the minutes. */
   absorbedBy: string;
+}
+
+/* ---------- Displaced patient rebooking ---------- */
+
+export type RebookingOfferStatus = "pending" | "accepted" | "expired" | "cancelled";
+
+/**
+ * Times offered to a displaced patient. Each slot is held (counts as reserved) while the offer is
+ * pending. Only the SHA-256 of the patient's link token is stored.
+ */
+export interface RebookingOffer {
+  id: string;
+  appointmentId: string;
+  doctorId: string;
+  tokenHash: string;
+  status: RebookingOfferStatus;
+  /** Held places, nearest to the original time first. Empty once the offer is closed. */
+  slots: Placement[];
+  reason: string;
+  /** ISO timestamps. */
+  createdAt: string;
+  expiresAt: string;
+  closedAt: string | null;
+  /** The slot the patient picked, once accepted. */
+  chosenSlotId: string | null;
+}
+
+/** One visit the doctor confirmed to displace, with the offer made to its patient (none for an unpaid hold). */
+export interface Displacement {
+  appointmentId: string;
+  /** The status and slot the caller read: the write is refused ("stale") if either has changed. */
+  fromStatus: Extract<AppointmentStatus, "booked" | "pending_payment">;
+  fromSlotId: string;
+  reason: string;
+  at: string;
+  offer: RebookingOffer | null;
 }
 
 export type ProfileKind = "patient" | "doctor";
@@ -370,4 +412,22 @@ export interface ClinicStore {
   ): Promise<"ok" | "taken" | "stale">;
   /** Oldest first. */
   listReschedules(filter?: { appointmentId?: string; doctorId?: string; patientUserId?: string }): Promise<RescheduleRecord[]>;
+  /**
+   * Save a session change that removes reserved hours, in one transaction: the listed visits become
+   * "displaced" (never deleted), the session and its trims are saved, and each offer is stored with
+   * its held slots. "stale" when a listed visit changed since it was read; "taken" when an offered
+   * slot was reserved meanwhile. Nothing is written unless everything is.
+   */
+  saveSessionDisplacing(session: ConsultSession, trims: readonly SessionTrim[], displaced: readonly Displacement[]): Promise<"ok" | "stale" | "taken">;
+  /** Offers, newest first. */
+  listRebookingOffers(filter?: { doctorId?: string; appointmentId?: string; status?: RebookingOfferStatus }): Promise<RebookingOffer[]>;
+  getRebookingOfferByTokenHash(tokenHash: string): Promise<RebookingOffer | null>;
+  /**
+   * Accept a pending, unexpired offer: release its holds, move the displaced visit to `to` and book it,
+   * write the history line and close the offer, all at once. "expired" past `expiresAt`; "stale" when
+   * the offer or visit has moved on; "taken" when `to` is no longer free.
+   */
+  acceptRebookingOffer(offerId: string, to: Placement, history: RescheduleRecord, at: string): Promise<"ok" | "stale" | "taken" | "expired">;
+  /** Close a pending offer: release its holds and cancel the displaced visit. "stale" when it is no longer pending. */
+  closeRebookingOffer(offerId: string, status: Extract<RebookingOfferStatus, "cancelled" | "expired">, at: string): Promise<"ok" | "stale">;
 }
