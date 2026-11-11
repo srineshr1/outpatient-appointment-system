@@ -16,8 +16,16 @@ import type { NoticeData, NotificationKind, SendResult } from "./types";
 
 export const FAST2SMS_URL = "https://www.fast2sms.com/dev/bulkV2";
 
-/** The patient notices that also go by text: booking, move, cancellation and the last reminder. */
-export const SMS_KINDS: readonly NotificationKind[] = ["booking_confirmed", "appointment_rescheduled", "appointment_cancelled", "reminder"];
+/** The patient notices that also go by text: booking, move, cancellation, the last reminder, and a displaced visit's offer and outcome. */
+export const SMS_KINDS: readonly NotificationKind[] = [
+  "booking_confirmed",
+  "appointment_rescheduled",
+  "appointment_cancelled",
+  "reminder",
+  "rebooking_offer",
+  "rebooking_confirmed",
+  "rebooking_closed",
+];
 
 export type SmsMode = "live" | "mock" | "off";
 
@@ -47,6 +55,12 @@ export function renderSms(kind: NotificationKind, data: NoticeData): string {
       return `${CLINIC}: your visit ${data.reference} with ${data.doctorName} moved to ${when}.`;
     case "appointment_cancelled":
       return `${CLINIC}: your visit ${data.reference} with ${data.doctorName} on ${data.when} is cancelled.${data.refundMinor ? ` Refund ${formatMoney(data.refundMinor)}.` : ""}`;
+    case "rebooking_offer":
+      return `${CLINIC}: ${data.doctorName} can no longer see you on ${data.when}. Pick a new time (held ${data.expiresWhen ? `until ${data.expiresWhen}` : "24h"}) or get a full refund: ${data.rebookLinks?.page ?? "see your email"}`;
+    case "rebooking_confirmed":
+      return `${CLINIC}: your visit ${data.reference} with ${data.doctorName} is now ${when}. Same reference; no new payment needed.`;
+    case "rebooking_closed":
+      return `${CLINIC}: your visit ${data.reference} with ${data.doctorName} on ${data.previousWhen ?? data.when} is cancelled.${data.refundMinor ? ` Full refund ${formatMoney(data.refundMinor)}.` : ""}`;
     case "reminder":
       return `${CLINIC} reminder: ${data.doctorName} on ${when}. Ref ${data.reference}. Please arrive 10 min early.`;
     default:
