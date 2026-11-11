@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { VisitList } from "@/components/clinic/VisitList";
 import { DoctorSchedule } from "@/components/doctors/DoctorSchedule";
 import { toScheduleVisit } from "@/components/doctors/schedule-model";
+import { DisplacedPatients } from "@/components/profile/DisplacedPatients";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { buttonClass } from "@/components/ui/button-styles";
 import { Notice } from "@/components/ui/Card";
@@ -16,6 +17,7 @@ import { readDoctorProfile } from "@/lib/profiles";
 import { getCurrentUser } from "@/lib/session";
 import { getStore } from "@/lib/store";
 import { paymentLabels } from "@/lib/billing";
+import { displacedFor } from "@/lib/rebooking";
 import { reschedulesFor, seesWholeBook, visitsFor } from "@/lib/visits";
 
 export const metadata: Metadata = {
@@ -47,12 +49,17 @@ export default async function DashboardPage({
   const noticeKey = typeof query.notice === "string" ? query.notice : "";
   const notice = notices[noticeKey];
   const all = visitsFor(user);
-  const [everyVisit, payments, moves] = await Promise.all([all, paymentLabels(all), reschedulesFor(user)]);
+  const ownBook = user.role === "doctor" && user.doctorId === user.id;
+  const [everyVisit, payments, moves, displaced] = await Promise.all([
+    all,
+    paymentLabels(all),
+    reschedulesFor(user),
+    ownBook ? displacedFor(user.id) : Promise.resolve([]),
+  ]);
   const visits = everyVisit.filter((visit) => (filter ? visit.doctorId === filter : true));
   const today = todayIso(now());
   const returnTo = filter ? `/dashboard?doctor=${filter}` : "/dashboard";
   const doctor = user.doctorId ? findDoctor(user.doctorId) : null;
-  const ownBook = user.role === "doctor" && user.doctorId === user.id;
   const showSchedule = user.role === "doctor" && Boolean(user.doctorId);
   const schedule = showSchedule && user.doctorId ? await loadSchedule(user.doctorId, user.id) : null;
   const wall = practiceWallClock(now());
@@ -124,6 +131,7 @@ export default async function DashboardPage({
           {notice}
         </Notice>
       ) : null}
+      <DisplacedPatients entries={displaced.filter((entry) => entry.status === "pending")} />
       <VisitList visits={visits} today={today} mode="clinic" returnTo={returnTo} payments={payments} moves={moves} />
       </div>
     </div>

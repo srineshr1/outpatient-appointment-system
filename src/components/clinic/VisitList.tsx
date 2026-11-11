@@ -23,6 +23,7 @@ function statusLabel(status: AppointmentRecord["status"]): string {
   if (status === "cancelled") return "Cancelled";
   if (status === "pending_payment") return "Awaiting payment";
   if (status === "expired") return "Hold expired";
+  if (status === "displaced") return "Hours removed, new time pending";
   return "Booked";
 }
 
@@ -51,7 +52,7 @@ export function groupVisits(visits: readonly AppointmentRecord[], today: string)
   const ordered = [...visits].sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)));
   for (const visit of ordered) {
     if (visit.status === "pending_payment") awaiting.push(visit);
-    else if (visit.status === "cancelled" || visit.status === "expired") cancelled.push(visit);
+    else if (visit.status === "cancelled" || visit.status === "expired" || visit.status === "displaced") cancelled.push(visit);
     else if (visit.date === today) todayVisits.push(visit);
     else if (visit.date > today) upcoming.push(visit);
     else earlier.push(visit);
@@ -82,7 +83,7 @@ export function VisitList({
     ["Today", groups.todayVisits],
     ["Upcoming", groups.upcoming],
     ["Earlier", groups.earlier],
-    ["Cancelled or expired", groups.cancelled],
+    ["Cancelled, expired or displaced", groups.cancelled],
   ] as const;
   const any = sections.some(([, items]) => items.length > 0);
 
