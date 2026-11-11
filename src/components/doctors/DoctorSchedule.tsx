@@ -8,7 +8,7 @@ import type { ConsultSession, SessionTrim } from "@/lib/clinic-types";
 import { sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
 import type { FormState } from "@/lib/form-state";
 import { formatShortDate } from "@/lib/format";
-import { weekdayIndex } from "@/lib/clock";
+import { addDays, isIsoDate, mondayOf, weekdayIndex } from "@/lib/clock";
 import {
   checkSession,
   fromMinutes,
@@ -105,7 +105,20 @@ export function DoctorSchedule({
   const week = useMemo(() => buildWeek(previewSessions, visits, trims, monday, today), [previewSessions, visits, trims, monday, today]);
   const selected = week.days.flatMap((day) => day.sessions).find((item) => item.key === edit?.key) ?? null;
   const base = edit?.sessionId ? (sessions.find((session) => session.id === edit.sessionId) ?? null) : null;
-  const past = base ? sessionIsPast(base, today) : edit ? edit.date < today : false;
+  const past = base ? sessionIsPast(base, today) : edit ? Boolean(edit.date) && edit.date < today : false;
+
+  /**
+   * Every editor change goes through here. A draft whose dates or days change may no longer run on
+   * the day it was opened on (a weekly session steps aside on a day with a one-off, or now starts
+   * later), so follow it to its first day on the calendar instead of losing the editor.
+   */
+  function updateEdit(next: EditorState) {
+    const found = locateDraft(sessions, visits, trims, next, doctorId, room, today);
+    if (found) {
+      setEdit({ ...next, key: found.key, date: found.date });
+      setWeekOffset(found.offset);
+    } else setEdit(next);
+  }
 
   function choose(item: DaySession) {
     setEdit(editorFrom(item.session, item.key));
@@ -224,7 +237,7 @@ export function DoctorSchedule({
           <Editor
             editable={editable}
             edit={edit}
-            setEdit={setEdit}
+            setEdit={updateEdit}
             selected={selected}
             base={base}
             sessions={sessions}
@@ -432,7 +445,7 @@ function Editor(props: {
   saveState: FormState;
 }) {
   const { edit, selected, base, editable, past, saveState } = props;
-  if (!edit || !selected) {
+  if (!edit) {
     return (
       <aside aria-label="Session editor" className="min-w-0 flex-[1_1_380px] overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
         <div className="flex flex-col gap-2 p-6">
@@ -484,6 +497,8 @@ function Editor(props: {
   const displaceCount = saveState?.displace?.count ?? affected.length;
   const canApply = editable && dirty && !blocked && !displacing;
 
+  const shownBooked = selected ? selected.booked : 0;
+  const shownCapacity = selected ? selected.capacity : checked.ok ? blockPlaces(proposed) : 0;
   const oldPlaces = base ? blockPlaces(base) : 0;
   const newPlaces = checked.ok ? blockPlaces(proposed) : oldPlaces;
   const delta = newPlaces - oldPlaces;
@@ -580,9 +595,15 @@ function Editor(props: {
           ) : null}
         </div>
         <div className="mt-2 text-[13px] text-[#4F605C] tabular-nums">
-          {occurrenceLabel(selected.session, selected.date)} · {minutesLabel(edit.startMin)}–{minutesLabel(edit.endMin)}
+          {selected ? occurrenceLabel(selected.session, selected.date) : edit.date ? occurrenceLabel(proposed, edit.date) : "Choose a date"} ·{" "}
+          {minutesLabel(edit.startMin)}–{minutesLabel(edit.endMin)}
         </div>
-        {editable ? <RepeatFields edit={edit} setEdit={props.setEdit} disabled={past} undated={keepOpenRange} /> : null}
+        {!selected ? (
+          <p className="mt-2 rounded-[10px] border border-[#9CC9DE] bg-[#E3F0F8] px-3 py-2 text-[13px] leading-snug text-[#083F59]">
+            {checked.ok ? "This session isn’t on the calendar for these dates yet. Check its days and dates." : checked.message}
+          </p>
+        ) : null}
+        {editable ? <RepeatFields edit={edit} setEdit={props.setEdit} disabled={past} undated={keepOpenRange} today={props.today} /> : null}
         <fieldset className="mt-3 border-0 p-0">
           <legend className="sr-only">Scheduling type</legend>
           <div className="flex gap-2">
@@ -617,14 +638,14 @@ function Editor(props: {
         <SessionFields edit={edit} base={base} room={props.room} />
         <div className="border-b border-[#E3E8E6] p-4">
           <div className="flex items-end gap-6">
-            <Stat label="Booked" value={selected.booked} />
-            <Stat label="Capacity" value={selected.capacity} />
-            <Stat label="Open" value={Math.max(0, selected.capacity - selected.booked)} />
+            <Stat label="Booked" value={shownBooked} />
+            <Stat label="Capacity" value={shownCapacity} />
+            <Stat label="Open" value={Math.max(0, shownCapacity - shownBooked)} />
           </div>
           <div className="mt-3 h-2 rounded bg-[#E3E8E6]">
             <div
               className="h-2 rounded"
-              style={{ width: `${selected.capacity ? Math.round((100 * selected.booked) / selected.capacity) : 0}%`, background: palette.dot }}
+              style={{ width: `${shownCapacity ? Math.round((100 * shownBooked) / shownCapacity) : 0}%`, background: palette.dot }}
             />
           </div>
 
@@ -1013,10 +1034,13 @@ function RepeatFields({
   setEdit,
   disabled,
   undated,
+  today,
 }: {
   edit: EditorState;
   setEdit: (edit: EditorState) => void;
   disabled: boolean;
+  /** The earliest date a one-off session can be put on. */
+  today: string;
   /** A weekly session saved before dates were required: it may stay undated, but should get dates. */
   undated: boolean;
 }) {
@@ -1034,14 +1058,34 @@ function RepeatFields({
             setEdit({
               ...edit,
               recurring,
-              weekdays: edit.weekdays.length > 0 ? edit.weekdays : [weekdayIndex(edit.date)],
-              startDate: edit.startDate || edit.date,
+              weekdays: edit.weekdays.length > 0 ? edit.weekdays : [weekdayIndex(edit.date || today)],
+              startDate: edit.startDate || edit.date || today,
             });
           }}
           className="size-5 accent-[#14201F]"
         />
         Recurring every week
       </label>
+      {!edit.recurring ? (
+        <label htmlFor={`${id}-date`} className="flex flex-col gap-1 text-[13px] font-semibold">
+          Date
+          <input
+            id={`${id}-date`}
+            type="date"
+            required
+            min={today}
+            value={edit.date}
+            disabled={disabled}
+            onChange={(event) => {
+              const date = event.target.value;
+              // A half-typed or cleared date is ignored, so the session stays where it was.
+              if (!isIsoDate(date)) return;
+              setEdit({ ...edit, date, weekdays: [weekdayIndex(date)] });
+            }}
+            className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-2 text-sm font-normal text-[#14201F] tabular-nums"
+          />
+        </label>
+      ) : null}
       {edit.recurring ? (
         <>
           <fieldset className="border-0 p-0">
@@ -1114,7 +1158,7 @@ function SessionFields({ edit, base, room }: { edit: EditorState; base: ConsultS
       <input type="hidden" name="id" value={base?.id ?? ""} />
       <input type="hidden" name="label" value={edit.label} />
       <input type="hidden" name="kind" value={once ? "once" : "recurring"} />
-      <input type="hidden" name="onDate" value={once ? (base?.onDate ?? edit.date) : ""} />
+      <input type="hidden" name="onDate" value={once ? edit.date : ""} />
       <input type="hidden" name="startDate" value={once ? "" : edit.startDate} />
       <input type="hidden" name="endDate" value={once ? "" : edit.endDate} />
       {(once ? [] : edit.weekdays).map((day) => (
@@ -1256,6 +1300,7 @@ function sameEditor(session: ConsultSession, edit: EditorState): boolean {
     session.label === edit.label &&
     session.mode === edit.mode &&
     !session.onDate === edit.recurring &&
+    (edit.recurring || session.onDate === edit.date) &&
     (!edit.recurring ||
       ([...session.weekdays].sort().join(",") === [...edit.weekdays].sort().join(",") &&
         (session.startDate ?? "") === edit.startDate &&
@@ -1284,7 +1329,7 @@ function toSession(edit: EditorState, base: ConsultSession | null, doctorId: str
     waveCapacity: edit.mode === "wave" ? edit.waveCapacity : null,
     startDate: once ? null : edit.startDate || null,
     endDate: once ? null : edit.endDate || null,
-    onDate: once ? (base?.onDate ?? edit.date) : null,
+    onDate: once ? edit.date || null : null,
     archivedAt: null,
     createdAt: base?.createdAt ?? "",
     updatedAt: base?.updatedAt ?? "",
@@ -1296,7 +1341,7 @@ function toInput(edit: EditorState, base: ConsultSession | null, room: string): 
   return {
     label: edit.label,
     kind: once ? "once" : "recurring",
-    onDate: once ? (base?.onDate ?? edit.date) : null,
+    onDate: once ? edit.date || null : null,
     startDate: once ? null : edit.startDate || null,
     endDate: once ? null : edit.endDate || null,
     weekdays: once ? [] : edit.weekdays,
@@ -1315,6 +1360,46 @@ function withDraft(sessions: readonly ConsultSession[], edit: EditorState | null
   const proposed = toSession(edit, edit.sessionId ? (sessions.find((session) => session.id === edit.sessionId) ?? null) : null, doctorId, room);
   if (!edit.sessionId) return [...sessions, proposed];
   return sessions.map((session) => (session.id === edit.sessionId ? proposed : session));
+}
+
+/** Weeks from this week to the week of `date` (Monday-based). */
+function weekOffsetOf(today: string, date: string): number {
+  const days = (Date.parse(`${mondayOf(date)}T00:00:00Z`) - Date.parse(`${mondayOf(today)}T00:00:00Z`)) / 86_400_000;
+  return Math.round(days / 7);
+}
+
+/**
+ * Where the calendar should show a draft after an edit: null when it still runs on the day it is
+ * open on, else its first day from today (or its start date) within half a year.
+ */
+function locateDraft(
+  sessions: readonly ConsultSession[],
+  visits: readonly ScheduleVisit[],
+  trims: readonly SessionTrim[],
+  edit: EditorState,
+  doctorId: string,
+  room: string,
+  today: string,
+): { key: string; date: string; offset: number } | null {
+  const id = edit.sessionId ?? "__new__";
+  const roster = withDraft(sessions, edit, doctorId, room);
+  const shownOn = (date: string) =>
+    buildWeek(roster, visits, trims, mondayOf(date), today)
+      .days.find((day) => day.date === date)
+      ?.sessions.some((item) => item.key === `${id}::${date}`) ?? false;
+  if (!edit.recurring) {
+    if (!isIsoDate(edit.date) || edit.key === `${id}::${edit.date}`) return null;
+    return { key: `${id}::${edit.date}`, date: edit.date, offset: weekOffsetOf(today, edit.date) };
+  }
+  if (isIsoDate(edit.date) && edit.key === `${id}::${edit.date}` && shownOn(edit.date)) return null;
+  const from = isIsoDate(edit.startDate) && edit.startDate > today ? edit.startDate : today;
+  for (let week = 0; week < 26; week += 1) {
+    const monday = addDays(mondayOf(from), week * 7);
+    const day = buildWeek(roster, visits, trims, monday, today)
+      .days.find((item) => item.date >= from && item.sessions.some((session) => session.key === `${id}::${item.date}`));
+    if (day) return { key: `${id}::${day.date}`, date: day.date, offset: weekOffsetOf(today, day.date) };
+  }
+  return null;
 }
 
 function blockPlaces(session: ConsultSession): number {

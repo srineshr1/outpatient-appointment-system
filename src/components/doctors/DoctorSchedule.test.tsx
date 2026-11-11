@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ConsultSession } from "@/lib/clinic-types";
@@ -91,5 +91,68 @@ describe("DoctorSchedule", () => {
     expect(screen.getByRole("checkbox", { name: "Recurring every week" })).toBeChecked();
     expect(screen.getByText(/has no start or end date/)).toBeInTheDocument();
     expect(screen.getByLabelText("Start date")).not.toBeRequired();
+  });
+});
+
+describe("Add session dates (regressions)", () => {
+  const busyDay: ConsultSession[] = [
+    { ...wave, id: "w-today", startTime: "09:10", endTime: "12:00", waveMinutes: null, waveCapacity: 6 },
+    { ...wave, id: "s-today", label: "New session", mode: "stream", startTime: "12:00", endTime: "16:00", slotMinutes: 20, waveCapacity: null },
+  ];
+
+  it("keeps the editor open when Recurring is ticked on a day that already has one-off sessions", async () => {
+    const user = userEvent.setup();
+    show(busyDay, []);
+    await user.click(screen.getByRole("button", { name: "Add session" }));
+    await user.click(screen.getByRole("checkbox", { name: "Recurring every week" }));
+    expect(screen.getByRole("checkbox", { name: "Recurring every week" })).toBeChecked();
+    expect(screen.getByLabelText("Start date")).toBeInTheDocument();
+    expect(screen.getByLabelText("End date")).toBeInTheDocument();
+  });
+
+  it("lets a weekly session start on a later date and change its days without losing the editor", async () => {
+    const user = userEvent.setup();
+    show([], []);
+    await user.click(screen.getByRole("button", { name: "Add session" }));
+    await user.click(screen.getByRole("checkbox", { name: "Recurring every week" }));
+    await user.clear(screen.getByLabelText("Start date"));
+    await user.type(screen.getByLabelText("Start date"), "2099-02-02");
+    await user.type(screen.getByLabelText("End date"), "2099-03-30");
+    expect(screen.getByLabelText("Start date")).toHaveValue("2099-02-02");
+    await user.click(screen.getByRole("button", { name: "Tuesday" }));
+    await user.click(screen.getByRole("button", { name: "Monday" }));
+    expect(screen.getByRole("button", { name: "Tuesday" })).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelector('input[name="startDate"]')).toHaveValue("2099-02-02");
+    expect(document.querySelectorAll('input[name="weekdays"]')).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Apply change" })).toBeEnabled();
+    // What the save action receives.
+    const sent = new FormData(document.getElementById("schedule-save") as HTMLFormElement);
+    expect(Object.fromEntries(["kind", "onDate", "startDate", "endDate"].map((key) => [key, sent.get(key)]))).toEqual({
+      kind: "recurring", onDate: "", startDate: "2099-02-02", endDate: "2099-03-30",
+    });
+    expect(sent.getAll("weekdays")).toEqual(["2"]);
+  });
+
+  it("lets a one-off session be put on any later date, not only today", async () => {
+    const user = userEvent.setup();
+    show([], []);
+    await user.click(screen.getByRole("button", { name: "Add session" }));
+    const date = screen.getByLabelText("Date");
+    expect(date).toHaveAttribute("min", TODAY);
+    expect(date).not.toHaveAttribute("max");
+    fireEvent.change(date, { target: { value: "2099-01-21" } });
+    expect(screen.getByLabelText("Date")).toHaveValue("2099-01-21");
+    expect(document.querySelector('input[name="onDate"]')).toHaveValue("2099-01-21");
+    expect(screen.getByRole("button", { name: "Apply change" })).toBeEnabled();
+  });
+
+  it("can move an existing one-off session to another date in Edit session", () => {
+    show();
+    const date = screen.getByLabelText("Date");
+    fireEvent.change(date, { target: { value: "" } });
+    expect(screen.getByLabelText("Date")).toHaveValue(TODAY);
+    fireEvent.change(date, { target: { value: "2099-01-07" } });
+    expect(document.querySelector('input[name="onDate"]')).toHaveValue("2099-01-07");
+    expect(screen.getByText(/3 patients no longer fit this change/)).toBeInTheDocument();
   });
 });
