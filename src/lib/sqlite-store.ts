@@ -1,5 +1,5 @@
 import { now, todayIso } from "./clock";
-import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged } from "./elastic-scheduling";
+import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, type Reservation } from "./elastic-scheduling";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -15,12 +15,15 @@ import {
   type ChargeRecord,
   type ClinicStore,
   type ConsultSession,
+  type Displacement,
   type LoginCodeRecord,
   type NewUser,
   type PaymentEntry,
   type Placement,
   type ProfileKind,
   type ProfileRecord,
+  type RebookingOffer,
+  type RebookingOfferStatus,
   type RescheduleRecord,
   type SessionMode,
   type SessionRecord,
@@ -75,6 +78,35 @@ interface AppointmentRow {
   token?: number | null;
   wave_capacity?: number | null;
   end_time?: string | null;
+  displaced_at?: string | null;
+  displaced_reason?: string | null;
+}
+
+interface OfferRow {
+  id: string;
+  appointment_id: string;
+  doctor_id: string;
+  token_hash: string;
+  status: string;
+  reason: string;
+  created_at: string;
+  expires_at: string;
+  closed_at: string | null;
+  chosen_slot_id: string | null;
+}
+
+interface HoldRow {
+  offer_id: string;
+  appointment_id: string;
+  doctor_id: string;
+  slot_id: string;
+  date: string;
+  time: string;
+  end_time: string | null;
+  session_id: string | null;
+  token: number | null;
+  wave_capacity: number | null;
+  position: number;
 }
 
 interface ProfileRow {
@@ -231,7 +263,36 @@ function toAppointment(row: AppointmentRow): AppointmentRecord {
     token: row.token ?? null,
     waveCapacity: row.wave_capacity ?? null,
     endTime: row.end_time ?? null,
+    ...(row.displaced_at ? { displacedAt: row.displaced_at, displacedReason: row.displaced_reason ?? "" } : {}),
   };
+}
+
+const OFFER_STATUSES: readonly RebookingOfferStatus[] = ["pending", "accepted", "expired", "cancelled"];
+
+function toOffer(row: OfferRow, holds: readonly HoldRow[]): RebookingOffer {
+  if (!(OFFER_STATUSES as readonly string[]).includes(row.status)) throw new Error("Stored offer has an unknown status.");
+  return {
+    id: row.id,
+    appointmentId: row.appointment_id,
+    doctorId: row.doctor_id,
+    tokenHash: row.token_hash,
+    status: row.status as RebookingOfferStatus,
+    slots: holds
+      .filter((hold) => hold.offer_id === row.id)
+      .sort((a, b) => a.position - b.position)
+      .map((hold) => ({ slotId: hold.slot_id, date: hold.date, time: hold.time, endTime: hold.end_time,
+        sessionId: hold.session_id, token: hold.token, waveCapacity: hold.wave_capacity })),
+    reason: row.reason,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    closedAt: row.closed_at,
+    chosenSlotId: row.chosen_slot_id,
+  };
+}
+
+function holdAsReservation(hold: HoldRow): Reservation {
+  return { id: `hold:${hold.offer_id}:${hold.slot_id}`, doctorId: hold.doctor_id, date: hold.date, time: hold.time,
+    endTime: hold.end_time, slotId: hold.slot_id, status: "booked", sessionId: hold.session_id };
 }
 
 function toProfile(row: ProfileRow): ProfileRecord {
@@ -533,6 +594,38 @@ export class SqliteClinicStore implements ClinicStore {
         at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS reschedules_by_appointment ON reschedules(appointment_id, at);
+
+      -- Displaced patient rebooking: offers keep only the hash of the link token, and the held
+      -- places live in their own rows so every placement check can see them.
+      CREATE TABLE IF NOT EXISTS rebooking_offers (
+        id TEXT PRIMARY KEY,
+        appointment_id TEXT NOT NULL,
+        doctor_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'expired', 'cancelled')),
+        reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        closed_at TEXT,
+        chosen_slot_id TEXT
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS rebooking_offers_one_pending ON rebooking_offers(appointment_id) WHERE status = 'pending';
+      CREATE INDEX IF NOT EXISTS rebooking_offers_by_doctor ON rebooking_offers(doctor_id);
+      CREATE TABLE IF NOT EXISTS rebooking_holds (
+        offer_id TEXT NOT NULL REFERENCES rebooking_offers(id) ON DELETE CASCADE,
+        appointment_id TEXT NOT NULL,
+        doctor_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL UNIQUE,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        end_time TEXT,
+        session_id TEXT,
+        token INTEGER,
+        wave_capacity INTEGER,
+        position INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (offer_id, slot_id)
+      );
+      CREATE INDEX IF NOT EXISTS rebooking_holds_by_doctor ON rebooking_holds(doctor_id, date);
       CREATE TRIGGER IF NOT EXISTS reschedules_no_update BEFORE UPDATE ON reschedules
         BEGIN SELECT RAISE(ABORT, 'Reschedule history is append-only.'); END;
       CREATE TRIGGER IF NOT EXISTS reschedules_no_delete BEFORE DELETE ON reschedules
@@ -566,6 +659,8 @@ export class SqliteClinicStore implements ClinicStore {
     this.addColumn("appointments", "token", "INTEGER");
     this.addColumn("appointments", "wave_capacity", "INTEGER");
     this.addColumn("appointments", "end_time", "TEXT");
+    this.addColumn("appointments", "displaced_at", "TEXT");
+    this.addColumn("appointments", "displaced_reason", "TEXT");
     this.addColumn("sessions", "id", "TEXT");
     this.addColumn("sessions", "created_at", "TEXT");
     this.addColumn("sessions", "device", "TEXT NOT NULL DEFAULT ''");
@@ -682,16 +777,24 @@ export class SqliteClinicStore implements ClinicStore {
 
   async listBlockedSlotIds(): Promise<string[]> {
     const rows = this.db
-      .prepare("SELECT slot_id FROM appointments WHERE status IN ('booked', 'completed', 'pending_payment')")
+      .prepare("SELECT slot_id FROM appointments WHERE status IN ('booked', 'completed', 'pending_payment') UNION ALL SELECT slot_id FROM rebooking_holds")
       .all() as unknown as { slot_id: string }[];
     return rows.map((row) => row.slot_id);
   }
 
+  /** Visits and held rebooking places count as reserved: a slot is free only if neither holds it. */
   private safePlacement(doctorId: string, place: Placement, excludeId?: string): boolean {
     const sessions = (this.db.prepare("SELECT * FROM consult_sessions WHERE doctor_id = ?").all(doctorId) as unknown as ConsultSessionRow[]).map(toConsultSession);
-    const visits = (this.db.prepare("SELECT * FROM appointments WHERE doctor_id = ?").all(doctorId) as unknown as AppointmentRow[]).map(toAppointment);
+    const visits: Reservation[] = (this.db.prepare("SELECT * FROM appointments WHERE doctor_id = ?").all(doctorId) as unknown as AppointmentRow[]).map(toAppointment);
+    const holds = (this.db.prepare("SELECT * FROM rebooking_holds WHERE doctor_id = ?").all(doctorId) as unknown as HoldRow[]).map(holdAsReservation);
     const trims = (this.db.prepare("SELECT * FROM consult_session_trims WHERE doctor_id = ?").all(doctorId) as unknown as TrimRow[]).map(toTrim);
-    return placementIsCurrent(doctorId, place, sessions, trims) && !placementConflicts(doctorId, place, visits, excludeId, sessions);
+    return placementIsCurrent(doctorId, place, sessions, trims) && !placementConflicts(doctorId, place, [...visits, ...holds], excludeId, sessions);
+  }
+
+  private slotHeld(slotId: string): boolean {
+    return this.db
+      .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed', 'pending_payment') UNION ALL SELECT 1 FROM rebooking_holds WHERE slot_id = ?")
+      .get(slotId, slotId) !== undefined;
   }
 
   async createAppointment(appointment: AppointmentRecord): Promise<"ok" | "taken"> {
@@ -703,10 +806,7 @@ export class SqliteClinicStore implements ClinicStore {
         this.db.exec("ROLLBACK");
         return "taken";
       }
-      const held = this.db
-        .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed', 'pending_payment')")
-        .get(appointment.slotId) as { held: number } | undefined;
-      if (held) {
+      if (this.slotHeld(appointment.slotId)) {
         this.db.exec("ROLLBACK");
         return "taken";
       }
@@ -1026,28 +1126,33 @@ export class SqliteClinicStore implements ClinicStore {
       );
   }
 
+  /** Inside an open transaction: refuse a structural change while reservations remain, then write. */
+  private writeSessionChecked(session: ConsultSession, trims: readonly SessionTrim[] | null): void {
+    const row = this.db.prepare("SELECT * FROM consult_sessions WHERE id = ?").get(session.id) as ConsultSessionRow | undefined;
+    if (row) {
+      const old = toConsultSession(row);
+      const visits = (this.db.prepare("SELECT * FROM appointments WHERE session_id = ?").all(session.id) as unknown as AppointmentRow[]).map(toAppointment);
+      if ((sessionStructureChanged(old, session) || old.archivedAt !== session.archivedAt) &&
+        visits.some(visit => occupiesTime(visit) && visit.date >= todayIso(now()))) {
+        throw new Error("Reserved sessions may change hours, name and room only.");
+      }
+    }
+    this.writeConsultSession(session, true);
+    if (trims) {
+      this.db.prepare("DELETE FROM consult_session_trims WHERE absorbed_by = ?").run(session.id);
+      const insert = this.db.prepare(
+        `INSERT INTO consult_session_trims (doctor_id, session_id, on_date, start_time, end_time, absorbed_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      for (const trim of trims) insert.run(session.doctorId, trim.sessionId, trim.date, trim.startTime, trim.endTime, session.id);
+    }
+  }
+
   private persistConsultSession(session: ConsultSession, trims: readonly SessionTrim[] | null): void {
     // No await between the read and write: SQLite's synchronous connection serializes this edit.
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const row = this.db.prepare("SELECT * FROM consult_sessions WHERE id = ?").get(session.id) as ConsultSessionRow | undefined;
-      if (row) {
-        const old = toConsultSession(row);
-        const visits = (this.db.prepare("SELECT * FROM appointments WHERE session_id = ?").all(session.id) as unknown as AppointmentRow[]).map(toAppointment);
-        if ((sessionStructureChanged(old, session) || old.archivedAt !== session.archivedAt) &&
-          visits.some(visit => occupiesTime(visit) && visit.date >= todayIso(now()))) {
-          throw new Error("Reserved sessions may change hours, name and room only.");
-        }
-      }
-      this.writeConsultSession(session, true);
-      if (trims) {
-        this.db.prepare("DELETE FROM consult_session_trims WHERE absorbed_by = ?").run(session.id);
-        const insert = this.db.prepare(
-          `INSERT INTO consult_session_trims (doctor_id, session_id, on_date, start_time, end_time, absorbed_by)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        );
-        for (const trim of trims) insert.run(session.doctorId, trim.sessionId, trim.date, trim.startTime, trim.endTime, session.id);
-      }
+      this.writeSessionChecked(session, trims);
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");
@@ -1103,10 +1208,7 @@ export class SqliteClinicStore implements ClinicStore {
         this.db.exec("ROLLBACK");
         return "taken";
       }
-      const held = this.db
-        .prepare("SELECT 1 AS held FROM appointments WHERE slot_id = ? AND status IN ('booked', 'completed', 'pending_payment')")
-        .get(to.slotId);
-      if (held) {
+      if (this.slotHeld(to.slotId)) {
         this.db.exec("ROLLBACK");
         return "taken";
       }
@@ -1163,5 +1265,122 @@ export class SqliteClinicStore implements ClinicStore {
           (filter.doctorId === undefined || move.doctorId === filter.doctorId) &&
           (filter.patientUserId === undefined || move.patientUserId === filter.patientUserId),
       );
+  }
+
+  /* ---------- Displaced patient rebooking ---------- */
+
+  async saveSessionDisplacing(session: ConsultSession, trims: readonly SessionTrim[], displaced: readonly Displacement[]): Promise<"ok" | "stale" | "taken"> {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const item of displaced) {
+        const changed = this.db
+          .prepare(`UPDATE appointments SET status = 'displaced', displaced_at = ?, displaced_reason = ?
+                    WHERE id = ? AND doctor_id = ? AND status = ? AND slot_id = ?`)
+          .run(item.at, item.reason, item.appointmentId, session.doctorId, item.fromStatus, item.fromSlotId);
+        if (Number(changed.changes) === 0) {
+          this.db.exec("ROLLBACK");
+          return "stale";
+        }
+      }
+      this.writeSessionChecked(session, trims);
+      for (const item of displaced) {
+        const offer = item.offer;
+        if (!offer) continue;
+        this.db
+          .prepare(`INSERT INTO rebooking_offers (id, appointment_id, doctor_id, token_hash, status, reason, created_at, expires_at)
+                    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`)
+          .run(offer.id, item.appointmentId, session.doctorId, offer.tokenHash, offer.reason, offer.createdAt, offer.expiresAt);
+        for (const [position, slot] of offer.slots.entries()) {
+          if (this.slotHeld(slot.slotId) || !this.safePlacement(session.doctorId, slot)) {
+            this.db.exec("ROLLBACK");
+            return "taken";
+          }
+          this.db
+            .prepare(`INSERT INTO rebooking_holds (offer_id, appointment_id, doctor_id, slot_id, date, time, end_time, session_id, token, wave_capacity, position)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .run(offer.id, item.appointmentId, session.doctorId, slot.slotId, slot.date, slot.time, slot.endTime,
+              slot.sessionId, slot.token, slot.waveCapacity, position);
+        }
+      }
+      this.db.exec("COMMIT");
+      return "ok";
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      if (/UNIQUE/i.test(error instanceof Error ? error.message : "")) return "taken";
+      throw error;
+    }
+  }
+
+  private readOffers(where: string, args: (string | null)[]): RebookingOffer[] {
+    const rows = this.db.prepare(`SELECT * FROM rebooking_offers ${where} ORDER BY created_at DESC, id`).all(...args) as unknown as OfferRow[];
+    if (rows.length === 0) return [];
+    const holds = this.db
+      .prepare(`SELECT * FROM rebooking_holds WHERE offer_id IN (${rows.map(() => "?").join(",")})`)
+      .all(...rows.map((row) => row.id)) as unknown as HoldRow[];
+    return rows.map((row) => toOffer(row, holds));
+  }
+
+  async listRebookingOffers(filter: { doctorId?: string; appointmentId?: string; status?: RebookingOfferStatus } = {}): Promise<RebookingOffer[]> {
+    const clauses: string[] = [];
+    const args: string[] = [];
+    if (filter.doctorId !== undefined) { clauses.push("doctor_id = ?"); args.push(filter.doctorId); }
+    if (filter.appointmentId !== undefined) { clauses.push("appointment_id = ?"); args.push(filter.appointmentId); }
+    if (filter.status !== undefined) { clauses.push("status = ?"); args.push(filter.status); }
+    return this.readOffers(clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", args);
+  }
+
+  async getRebookingOfferByTokenHash(tokenHash: string): Promise<RebookingOffer | null> {
+    return this.readOffers("WHERE token_hash = ?", [tokenHash])[0] ?? null;
+  }
+
+  async acceptRebookingOffer(offerId: string, to: Placement, history: RescheduleRecord, at: string): Promise<"ok" | "stale" | "taken" | "expired"> {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const offer = this.db.prepare("SELECT * FROM rebooking_offers WHERE id = ?").get(offerId) as OfferRow | undefined;
+      const visit = offer ? (this.db.prepare("SELECT * FROM appointments WHERE id = ?").get(offer.appointment_id) as AppointmentRow | undefined) : undefined;
+      const outcome = !offer || offer.status !== "pending" || !visit || visit.status !== "displaced" || visit.doctor_id !== offer.doctor_id
+        ? "stale" : offer.expires_at <= at ? "expired" : null;
+      if (outcome) {
+        this.db.exec("ROLLBACK");
+        return outcome;
+      }
+      // Its own held places are released first, so the chosen one is free for this visit only.
+      this.db.prepare("DELETE FROM rebooking_holds WHERE offer_id = ?").run(offerId);
+      if (!this.safePlacement(offer!.doctor_id, to, visit!.id) || this.slotHeld(to.slotId)) {
+        this.db.exec("ROLLBACK");
+        return "taken";
+      }
+      this.db
+        .prepare(`UPDATE appointments SET slot_id = ?, date = ?, time = ?, end_time = ?, session_id = ?, token = ?, wave_capacity = ?, status = 'booked'
+                  WHERE id = ? AND status = 'displaced'`)
+        .run(to.slotId, to.date, to.time, to.endTime, to.sessionId, to.token, to.waveCapacity, visit!.id);
+      this.db
+        .prepare(
+          `INSERT INTO reschedules (id, appointment_id, reference, doctor_id, patient_user_id, by_user_id, by_name, by_role,
+             from_slot_id, from_date, from_time, from_token, to_slot_id, to_date, to_time, to_token, reason, at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(history.id, visit!.id, history.reference, history.doctorId, history.patientUserId, history.byUserId, history.byName,
+          history.byRole, history.fromSlotId, history.fromDate, history.fromTime, history.fromToken, history.toSlotId,
+          history.toDate, history.toTime, history.toToken, history.reason, history.at);
+      this.db.prepare("UPDATE rebooking_offers SET status = 'accepted', closed_at = ?, chosen_slot_id = ? WHERE id = ?").run(at, to.slotId, offerId);
+      this.db.exec("COMMIT");
+      return "ok";
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      if (/UNIQUE/i.test(error instanceof Error ? error.message : "")) return "taken";
+      throw error;
+    }
+  }
+
+  async closeRebookingOffer(offerId: string, status: "cancelled" | "expired", at: string): Promise<"ok" | "stale"> {
+    return this.transaction(() => {
+      const offer = this.db.prepare("SELECT * FROM rebooking_offers WHERE id = ?").get(offerId) as OfferRow | undefined;
+      if (!offer || offer.status !== "pending") return { commit: false, value: "stale" as const };
+      this.db.prepare("DELETE FROM rebooking_holds WHERE offer_id = ?").run(offerId);
+      this.db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ? AND status = 'displaced'").run(offer.appointment_id);
+      this.db.prepare("UPDATE rebooking_offers SET status = ?, closed_at = ? WHERE id = ?").run(status, at, offerId);
+      return { commit: true, value: "ok" as const };
+    });
   }
 }

@@ -11,12 +11,15 @@ import {
   type ChargeRecord,
   type ClinicStore,
   type ConsultSession,
+  type Displacement,
   type LoginCodeRecord,
   type NewUser,
   type PaymentEntry,
   type Placement,
   type ProfileKind,
   type ProfileRecord,
+  type RebookingOffer,
+  type RebookingOfferStatus,
   type RescheduleRecord,
   type SessionRecord,
   type SessionTrim,
@@ -80,6 +83,84 @@ interface AppointmentRow {
   token: number | null;
   wave_capacity: number | null;
   end_time: string | null;
+  displaced_at?: string | null;
+  displaced_reason?: string | null;
+}
+
+interface OfferRow {
+  id: string;
+  appointment_id: string;
+  doctor_id: string;
+  token_hash: string;
+  status: string;
+  reason: string;
+  created_at: string;
+  expires_at: string;
+  closed_at: string | null;
+  chosen_slot_id: string | null;
+}
+
+interface HoldRow {
+  offer_id: string;
+  slot_id: string;
+  date: string;
+  time: string;
+  end_time: string | null;
+  session_id: string | null;
+  token: number | null;
+  wave_capacity: number | null;
+  position: number;
+}
+
+const OFFER_STATUSES: readonly RebookingOfferStatus[] = ["pending", "accepted", "expired", "cancelled"];
+const iso = (value: string | null) => (value ? new Date(value).toISOString() : null);
+
+function toOffer(row: OfferRow, holds: readonly HoldRow[]): RebookingOffer {
+  if (!(OFFER_STATUSES as readonly string[]).includes(row.status)) throw new Error("Stored offer has an unknown status.");
+  return {
+    id: row.id,
+    appointmentId: row.appointment_id,
+    doctorId: row.doctor_id,
+    tokenHash: row.token_hash,
+    status: row.status as RebookingOfferStatus,
+    slots: holds
+      .filter((hold) => hold.offer_id === row.id)
+      .sort((a, b) => a.position - b.position)
+      .map((hold) => ({ slotId: hold.slot_id, date: hold.date, time: hold.time, endTime: hold.end_time,
+        sessionId: hold.session_id, token: hold.token, waveCapacity: hold.wave_capacity })),
+    reason: row.reason,
+    createdAt: iso(row.created_at) ?? "",
+    expiresAt: iso(row.expires_at) ?? "",
+    closedAt: iso(row.closed_at),
+    chosenSlotId: row.chosen_slot_id,
+  };
+}
+
+function placementPayload(to: Placement): Row {
+  return { slot_id: to.slotId, date: to.date, time: to.time, end_time: to.endTime, session_id: to.sessionId,
+    token: to.token, wave_capacity: to.waveCapacity };
+}
+
+function historyPayload(history: RescheduleRecord): Row {
+  return {
+    id: history.id,
+    reference: history.reference,
+    doctor_id: history.doctorId,
+    patient_user_id: history.patientUserId,
+    by_user_id: history.byUserId,
+    by_name: history.byName,
+    by_role: history.byRole,
+    from_slot_id: history.fromSlotId,
+    from_date: history.fromDate,
+    from_time: history.fromTime,
+    from_token: history.fromToken,
+    to_slot_id: history.toSlotId,
+    to_date: history.toDate,
+    to_time: history.toTime,
+    to_token: history.toToken,
+    reason: history.reason,
+    at: history.at,
+  };
 }
 
 interface ProfileRow {
@@ -248,6 +329,7 @@ function toAppointment(row: AppointmentRow): AppointmentRecord {
     token: row.token ?? null,
     waveCapacity: row.wave_capacity ?? null,
     endTime: row.end_time ?? null,
+    ...(row.displaced_at ? { displacedAt: row.displaced_at, displacedReason: row.displaced_reason ?? "" } : {}),
   };
 }
 
@@ -594,7 +676,11 @@ export class SupabaseClinicStore implements ClinicStore {
         .order("slot_id")
         .range(from, to),
     );
-    return rows.map((row) => row.slot_id);
+    // Places held for displaced patients are taken too, until their offer closes.
+    const holds = await this.readAll<{ slot_id: string }>((from, to) =>
+      this.db.from("clinic_rebooking_holds").select("slot_id").order("slot_id").range(from, to),
+    );
+    return [...rows, ...holds].map((row) => row.slot_id);
   }
 
   async createAppointment(appointment: AppointmentRecord): Promise<"ok" | "taken"> {
@@ -941,5 +1027,79 @@ export class SupabaseClinicStore implements ClinicStore {
     });
     const live = await this.liveAppointmentIds();
     return rows.map(toReschedule).filter((row) => live.has(row.appointmentId));
+  }
+
+  /* ---------- Displaced patient rebooking (supabase/migrations/*_displaced_rebooking.sql) ---------- */
+
+  async saveSessionDisplacing(session: ConsultSession, trims: readonly SessionTrim[], displaced: readonly Displacement[]): Promise<"ok" | "stale" | "taken"> {
+    const { data, error } = await this.db.rpc("clinic_displace_and_save_session", {
+      p_session: sessionPayload(session),
+      p_trims: trims.map((trim) => ({ session_id: trim.sessionId, on_date: trim.date, start_time: trim.startTime, end_time: trim.endTime })),
+      p_displaced: displaced.map((item) => ({
+        appointment_id: item.appointmentId,
+        from_status: item.fromStatus,
+        from_slot_id: item.fromSlotId,
+        reason: item.reason,
+        at: item.at,
+        offer: item.offer
+          ? {
+              id: item.offer.id,
+              token_hash: item.offer.tokenHash,
+              reason: item.offer.reason,
+              created_at: item.offer.createdAt,
+              expires_at: item.offer.expiresAt,
+              slots: item.offer.slots.map(placementPayload),
+            }
+          : null,
+      })),
+    });
+    fail(error);
+    return data === "ok" ? "ok" : data === "taken" ? "taken" : "stale";
+  }
+
+  async listRebookingOffers(filter: { doctorId?: string; appointmentId?: string; status?: RebookingOfferStatus } = {}): Promise<RebookingOffer[]> {
+    const rows = await this.readAll<OfferRow>((from, to) => {
+      let query = this.db.from("clinic_rebooking_offers").select("*");
+      if (filter.doctorId !== undefined) query = query.eq("doctor_id", filter.doctorId);
+      if (filter.appointmentId !== undefined) query = query.eq("appointment_id", filter.appointmentId);
+      if (filter.status !== undefined) query = query.eq("status", filter.status);
+      return query.order("created_at", { ascending: false }).order("id").range(from, to);
+    });
+    return this.withHolds(rows);
+  }
+
+  private async withHolds(rows: readonly OfferRow[]): Promise<RebookingOffer[]> {
+    const pending = rows.filter((row) => row.status === "pending").map((row) => row.id);
+    const holds: HoldRow[] = [];
+    // Only pending offers hold places; read them in chunks so the URL stays short.
+    for (let at = 0; at < pending.length; at += 100) {
+      const { data, error } = await this.db.from("clinic_rebooking_holds").select("*").in("offer_id", pending.slice(at, at + 100));
+      fail(error);
+      holds.push(...((data ?? []) as HoldRow[]));
+    }
+    return rows.map((row) => toOffer(row, holds));
+  }
+
+  async getRebookingOfferByTokenHash(tokenHash: string): Promise<RebookingOffer | null> {
+    const { data, error } = await this.db.from("clinic_rebooking_offers").select("*").eq("token_hash", tokenHash).maybeSingle();
+    fail(error);
+    return data ? ((await this.withHolds([data as OfferRow]))[0] ?? null) : null;
+  }
+
+  async acceptRebookingOffer(offerId: string, to: Placement, history: RescheduleRecord, at: string): Promise<"ok" | "stale" | "taken" | "expired"> {
+    const { data, error } = await this.db.rpc("clinic_accept_rebooking", {
+      p_offer_id: offerId,
+      p_to: placementPayload(to),
+      p_history: historyPayload(history),
+      p_at: at,
+    });
+    fail(error);
+    return data === "ok" || data === "taken" || data === "expired" ? data : "stale";
+  }
+
+  async closeRebookingOffer(offerId: string, status: "cancelled" | "expired", at: string): Promise<"ok" | "stale"> {
+    const { data, error } = await this.db.rpc("clinic_close_rebooking", { p_offer_id: offerId, p_status: status, p_at: at });
+    fail(error);
+    return data === "ok" ? "ok" : "stale";
   }
 }

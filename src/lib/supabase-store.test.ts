@@ -66,12 +66,15 @@ describe("SupabaseClinicStore", () => {
 
   it("reads every page of a long list", async () => {
     const calls = stubApi((url) => {
+      // Places held for displaced patients are read separately and count as blocked too.
+      if (url.pathname.endsWith("/clinic_rebooking_holds")) return { status: 200, body: [{ slot_id: "held" }] };
       const range = (url.searchParams.get("offset") ?? "0") === "0" ? 1000 : 5;
       return { status: 200, body: Array.from({ length: range }, (_, i) => ({ slot_id: `s${i}` })) };
     });
     const ids = await store().listBlockedSlotIds();
-    expect(ids).toHaveLength(1005);
-    expect(calls).toHaveLength(2);
+    expect(ids).toHaveLength(1006);
+    expect(ids).toContain("held");
+    expect(calls).toHaveLength(3);
   });
 
   it("loads charges with their payments in one request, hiding charges for removed visits", async () => {
