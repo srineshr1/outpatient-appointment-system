@@ -8,11 +8,13 @@ import {
   type ChargeRecord,
   type ClinicStore,
   type ConsultSession,
+  type Displacement,
   type LoginCodeRecord,
   type NewUser,
   type Placement,
   type ProfileKind,
   type ProfileRecord,
+  type RebookingOffer,
   type RescheduleRecord,
   type SessionRecord,
   type SessionTrim,
@@ -21,6 +23,9 @@ import {
   type UserPatch,
 } from "./clinic-types";
 import { hashToken } from "./passwords";
+
+export const BLOB_NO_REBOOKING =
+  "Displacing patients requires the Supabase or SQLite store. The legacy Blob store cannot safely coordinate this change.";
 
 const ACCESS = "private" as const;
 /** Parallel reads when a page needs every object under a prefix. */
@@ -519,5 +524,27 @@ export class BlobClinicStore implements ClinicStore {
           (filter.patientUserId === undefined || move.patientUserId === filter.patientUserId),
       )
       .sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  /* Displaced patient rebooking needs one transaction across visits, sessions and held places. */
+
+  async saveSessionDisplacing(_session: ConsultSession, _trims: readonly SessionTrim[], _displaced: readonly Displacement[]): Promise<"ok" | "stale" | "taken"> {
+    throw new Error(BLOB_NO_REBOOKING);
+  }
+
+  async listRebookingOffers(): Promise<RebookingOffer[]> {
+    return [];
+  }
+
+  async getRebookingOfferByTokenHash(): Promise<RebookingOffer | null> {
+    return null;
+  }
+
+  async acceptRebookingOffer(): Promise<"ok" | "stale" | "taken" | "expired"> {
+    return "stale";
+  }
+
+  async closeRebookingOffer(): Promise<"ok" | "stale"> {
+    return "stale";
   }
 }

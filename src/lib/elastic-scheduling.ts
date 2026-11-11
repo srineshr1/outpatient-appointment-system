@@ -1,5 +1,5 @@
 /** Booking snapshots are immutable when a session's availability is resized. */
-import type { AppointmentRecord, ConsultSession, Placement, SessionTrim } from "./clinic-types";
+import type { AppointmentRecord, ConsultSession, Placement, RebookingOffer, SessionTrim } from "./clinic-types";
 import type { Slot } from "./data";
 import { applyHeld, baseSlotId, fromMinutes, heldId, overriddenDates, slotsForSession, toMinutes } from "./sessions";
 
@@ -15,7 +15,26 @@ export function sessionStructureChanged(a: ConsultSession, b: ConsultSession): b
     a.slotMinutes !== b.slotMinutes || a.waveMinutes !== b.waveMinutes || a.waveCapacity !== b.waveCapacity;
 }
 
-type Reservation = Pick<AppointmentRecord, "id" | "doctorId" | "date" | "time" | "endTime" | "slotId" | "status" | "sessionId">;
+export type Reservation = Pick<AppointmentRecord, "id" | "doctorId" | "date" | "time" | "endTime" | "slotId" | "status" | "sessionId">;
+
+/**
+ * Places held for displaced patients (pending rebooking offers), as reservations: they count like a
+ * booking for every placement check until the offer is accepted, cancelled or expired.
+ */
+export function holdReservations(offers: readonly RebookingOffer[]): Reservation[] {
+  return offers
+    .filter((offer) => offer.status === "pending")
+    .flatMap((offer) => offer.slots.map((slot) => ({
+      id: `hold:${offer.id}:${slot.slotId}`,
+      doctorId: offer.doctorId,
+      date: slot.date,
+      time: slot.time,
+      endTime: slot.endTime,
+      slotId: slot.slotId,
+      status: "booked" as const,
+      sessionId: slot.sessionId,
+    })));
+}
 
 function overlaps(slot: Slot, visit: Reservation): boolean {
   if (slot.doctorId !== visit.doctorId || slot.date !== visit.date) return false;
@@ -67,7 +86,7 @@ export function placementIsCurrent(
 
 /** Called inside the store's write transaction, with its latest reservations. */
 export function placementConflicts(
-  doctorId: string, place: Placement, visits: readonly AppointmentRecord[], excludeId?: string, sessions: readonly ConsultSession[] = [],
+  doctorId: string, place: Placement, visits: readonly Reservation[], excludeId?: string, sessions: readonly ConsultSession[] = [],
 ): boolean {
   const slot: Slot = { id: baseSlotId(place.slotId), doctorId, date: place.date, time: place.time,
     endTime: place.endTime ?? undefined, mode: place.token === null ? "stream" : "wave",
