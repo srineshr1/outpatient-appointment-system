@@ -14,6 +14,7 @@ import {
   fromMinutes,
   MAX_WAVE_CAPACITY,
   planAbsorption,
+  planStreamShift,
   sessionBlocks,
   STREAM_SLOT_MINUTES,
   toMinutes,
@@ -254,6 +255,7 @@ export function DoctorSchedule({
             setOpenVisitId={setOpenVisitId}
             onAdd={addNew}
             onHint={setHint}
+            nowMinutes={nowMinutes}
             saveAction={saveAction}
             saveState={saveState}
           />
@@ -441,6 +443,8 @@ function Editor(props: {
   setOpenVisitId: (id: string | null) => void;
   onAdd: () => void;
   onHint: (hint: string | null) => void;
+  /** Clinic wall-clock minutes now: today's visits that have started are not moved. */
+  nowMinutes: number;
   saveAction: (formData: FormData) => void;
   saveState: FormState;
 }) {
@@ -492,10 +496,28 @@ function Editor(props: {
   const plan = checked.ok
     ? planAbsorption(proposed, others, occupying(props.visits.filter((visit) => !leaving.has(visit.id))), props.today, props.trims)
     : null;
-  const blocked = past || !checked.ok || Boolean(plan && !plan.ok);
+  // Growing into the start of a stream where patients are booked: the stream starts later and those
+  // patients move to its next free slots that day, after the doctor confirms (planStreamShift).
+  const shift =
+    checked.ok && plan && !plan.ok && affected.length === 0
+      ? planStreamShift(
+          proposed,
+          others,
+          props.visits
+            .filter((visit) => visit.date >= props.today && holdsPlace(visit.status))
+            .map((visit) => ({ id: visit.id, status: visit.status, date: visit.date, time: visit.time, endTime: visit.endTime ?? null, sessionId: visit.sessionId ?? null })),
+          props.today,
+          props.trims,
+          (visit) => visit.date > props.today || toMinutes(visit.time) > props.nowMinutes,
+        )
+      : null;
+  const shiftMoves = shift && shift.ok ? shift.moves : [];
+  const blocked = past || !checked.ok || Boolean(plan && !plan.ok && shiftMoves.length === 0);
   const displacing = !blocked && dirty && affected.length > 0;
+  const shifting = !blocked && dirty && shiftMoves.length > 0;
+  const shiftCount = saveState?.shift?.count ?? shiftMoves.length;
   const displaceCount = saveState?.displace?.count ?? affected.length;
-  const canApply = editable && dirty && !blocked && !displacing;
+  const canApply = editable && dirty && !blocked && !displacing && !shifting;
 
   const shownBooked = selected ? selected.booked : 0;
   const shownCapacity = selected ? selected.capacity : checked.ok ? blockPlaces(proposed) : 0;
@@ -520,9 +542,21 @@ function Editor(props: {
     planTitle = "This change needs a small adjustment";
     planLines = [checked.message];
     planTone = "warn";
+  } else if (shift && shift.ok && shiftMoves.length > 0) {
+    const n = shiftMoves.length;
+    const names = new Map(props.visits.map((visit) => [visit.id, visit.patientName]));
+    const dates = new Set(shift.starts.map((start) => start.date));
+    const startTimes = [...new Set(shift.starts.map((start) => start.time))].join(" / ");
+    planTitle = `Stream will start at ${startTimes}${dates.size > 1 ? ` on ${dates.size} days` : ""}; ${n} ${n === 1 ? "patient" : "patients"} will be moved`;
+    planLines = shiftMoves.slice(0, 8).map(
+      (move) => `${names.get(move.visitId) ?? "Patient"} · ${dates.size > 1 ? `${formatShortDate(move.date)} ` : ""}${move.fromTime} → ${move.toTime}`,
+    );
+    if (n > 8) planLines.push(`+ ${n - 8} more`);
+    planLines.push("They keep their reference and get an email and text with the old and new time. Nothing changes until you confirm.");
+    planTone = "warn";
   } else if (plan && !plan.ok) {
     planTitle = "That overlaps another session";
-    planLines = [plan.message];
+    planLines = [shift && !shift.ok ? `${shift.message} ${plan.message}` : plan.message];
     planTone = "warn";
   } else if (affected.length > 0) {
     const n = affected.length;
@@ -708,6 +742,19 @@ function Editor(props: {
                     className="min-h-11 rounded-[10px] bg-[#8C1D18] px-3.5 text-sm font-semibold text-white"
                   >
                     {`Apply and notify ${displaceCount === 1 ? "1 patient" : `${displaceCount} patients`} with new times`}
+                  </PendingButton>
+                </div>
+              ) : null}
+              {shifting ? (
+                <div className="flex flex-col gap-2 rounded-[10px] border border-[#E3B079] bg-[#FFF1DC] p-3 text-[13px] text-[#5E2C05]">
+                  <input type="hidden" name="shiftCount" value={shiftCount} />
+                  <PendingButton
+                    name="shift"
+                    value="confirm"
+                    pendingLabel="Moving…"
+                    className="min-h-11 rounded-[10px] bg-[#14201F] px-3.5 text-sm font-semibold text-white"
+                  >
+                    {`Apply and move ${shiftCount === 1 ? "1 patient" : `${shiftCount} patients`} to later slots`}
                   </PendingButton>
                 </div>
               ) : null}
