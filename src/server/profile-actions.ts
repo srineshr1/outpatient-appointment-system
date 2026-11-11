@@ -203,9 +203,11 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     ? { ...existing, ...checked.value, updatedAt: at }
     : { id: `s${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`, doctorId: user.id, ...checked.value, archivedAt: null, createdAt: at, updatedAt: at };
 
-  // Recurrence, mode, step and capacity stay protected while reservations exist; hours, name and
-  // room may change (the store keeps reserved visits and holds at their original times).
-  if (existing && sessionStructureChanged(existing, session)) {
+  // Recurrence, mode, step and capacity may change while reservations exist only when every one of
+  // them still fits; the rest must be moved first or, once the doctor confirms, displaced and offered
+  // new times (below). The legacy Blob store cannot displace, so it keeps the old rule.
+  const structural = Boolean(existing && sessionStructureChanged(existing, session));
+  if (existing && structural && legacyBlobStore()) {
     const upcoming = await upcomingIn(user.id, existing.id);
     if (upcoming > 0) {
       return fail(
@@ -228,7 +230,9 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     const total = appointments.filter((visit) => visit.status === "booked" && visit.sessionId === existing!.id && visit.date >= today).length;
     const times = timesOf(stranded);
     const more = stranded.length > 3 ? ` and ${stranded.length - 3} more` : "";
-    const message = `${stranded.length} of ${total} booked ${stranded.length === 1 ? "visit falls" : "visits fall"} outside the new hours (${times.slice(0, 3).join(", ")}${more}). Move or cancel ${stranded.length === 1 ? "it" : "them"} first, add a new session instead, or notify ${stranded.length === 1 ? "the patient" : "them"} and offer new times.`;
+    const message = structural
+      ? `${stranded.length} ${stranded.length === 1 ? "reservation no longer fits" : "reservations no longer fit"} the changed session (${times.slice(0, 3).join(", ")}${more}): fewer places, another slot length or wave interval, or other days. Move or cancel ${stranded.length === 1 ? "it" : "them"} first, or notify ${stranded.length === 1 ? "the patient" : "them"} and offer new times.`
+      : `${stranded.length} of ${total} booked ${stranded.length === 1 ? "visit falls" : "visits fall"} outside the new hours (${times.slice(0, 3).join(", ")}${more}). Move or cancel ${stranded.length === 1 ? "it" : "them"} first, add a new session instead, or notify ${stranded.length === 1 ? "the patient" : "them"} and offer new times.`;
     if (!confirmed || confirmed.expected !== stranded.length) {
       const refused = fail(confirmed ? `The number of affected patients changed to ${stranded.length}. Check and confirm again.` : message)!;
       return { ...refused, displace: { count: stranded.length, times } };
@@ -260,7 +264,7 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     }
   } catch (error) {
     if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
-      return fail("A visit was reserved while you edited. Reload the session; you can still change its hours, name or room.");
+      return fail("A visit was reserved or changed while you edited, and it no longer fits this change. Reload the session and try again.");
     }
     throw error;
   }

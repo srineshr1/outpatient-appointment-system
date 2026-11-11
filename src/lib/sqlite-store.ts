@@ -1,5 +1,5 @@
 import { now, todayIso } from "./clock";
-import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, type Reservation } from "./elastic-scheduling";
+import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, stillFits, type Reservation } from "./elastic-scheduling";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -1126,14 +1126,16 @@ export class SqliteClinicStore implements ClinicStore {
       );
   }
 
-  /** Inside an open transaction: refuse a structural change while reservations remain, then write. */
+  /** Inside an open transaction: refuse a structural change that would strand a reservation, then write. */
   private writeSessionChecked(session: ConsultSession, trims: readonly SessionTrim[] | null): void {
     const row = this.db.prepare("SELECT * FROM consult_sessions WHERE id = ?").get(session.id) as ConsultSessionRow | undefined;
     if (row) {
       const old = toConsultSession(row);
       const visits = (this.db.prepare("SELECT * FROM appointments WHERE session_id = ?").all(session.id) as unknown as AppointmentRow[]).map(toAppointment);
-      if ((sessionStructureChanged(old, session) || old.archivedAt !== session.archivedAt) &&
-        visits.some(visit => occupiesTime(visit) && visit.date >= todayIso(now()))) {
+      const reserved = visits.filter(visit => occupiesTime(visit) && visit.date >= todayIso(now()));
+      // Removing needs no reservations left; a structural change needs every remaining one to still fit.
+      if ((old.archivedAt !== session.archivedAt && reserved.length > 0) ||
+        (sessionStructureChanged(old, session) && reserved.some(visit => !stillFits(visit, session)))) {
         throw new Error("Reserved sessions may change hours, name and room only.");
       }
     }

@@ -70,7 +70,7 @@ describe("doctor elastic scheduling action", () => {
   });
   it("returns a form error if a reservation wins the edit race", async () => {
     const spy = vi.spyOn(state.store!, "saveConsultSession").mockRejectedValueOnce(new Error("Reserved sessions may change hours, name and room only"));
-    expect(await saveSession(null, form({ slotMinutes: "15" }))).toMatchObject({ ok: false, message: expect.stringContaining("reserved while you edited") });
+    expect(await saveSession(null, form({ slotMinutes: "15" }))).toMatchObject({ ok: false, message: expect.stringContaining("changed while you edited") });
     spy.mockRestore();
   });
   it("shows a busy notice if a reservation wins the archive race", async () => {
