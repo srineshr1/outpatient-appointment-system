@@ -141,6 +141,21 @@ describe("doctor elastic scheduling action", () => {
   });
 });
 
+describe("weekly session dates", () => {
+  it("resizes an undated weekly session with a booked visit without asking for dates", async () => {
+    const booked = visit(); expect(await state.store!.createAppointment(booked)).toBe("ok");
+    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:/dashboard/sessions?saved=updated");
+    expect(await state.store!.getConsultSession(session.id)).toMatchObject({ startTime: "09:00", endTime: "12:00", startDate: null, endDate: null });
+    expect(await state.store!.getAppointment(booked.id)).toEqual(booked);
+  });
+  it("still requires both dates for a new weekly session and for a dated one", async () => {
+    expect(await saveSession(null, form({ id: "" }))).toMatchObject({ ok: false, message: expect.stringContaining("starts") });
+    await state.store!.putConsultSession({ ...session, startDate: "2099-01-01", endDate: "2099-12-31" });
+    expect(await saveSession(null, form({ endTime: "11:30" }))).toMatchObject({ ok: false, message: expect.stringContaining("starts") });
+    expect(await saveSession(null, form({ startDate: "2099-01-05" }))).toMatchObject({ ok: false, message: expect.stringContaining("ends") });
+  });
+});
+
 describe("transactional placement after resize", () => {
   it("rejects a removed stale placement even if the service previously checked it", async () => {
     await state.store!.putConsultSession({ ...session, endTime: "11:00" });
