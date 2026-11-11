@@ -139,3 +139,22 @@ describe("stillFits", () => {
     expect(stillFits(visit(), { ...session, archivedAt: "2099-01-01" })).toBe(false);
   });
 });
+
+describe("adding a session: one-off or weekly with dates", () => {
+  it("creates a one-off without any date range", async () => {
+    await expect(saveSession(null, form({ id: "", kind: "once", onDate: "2099-01-06", weekdays: "", startDate: "", endDate: "" })))
+      .rejects.toThrow("REDIRECT:/dashboard/sessions?saved=created");
+    const created = (await state.store!.listConsultSessions("doctor")).find((item) => item.id !== session.id);
+    expect(created).toMatchObject({ onDate: "2099-01-06", startDate: null, endDate: null });
+  });
+
+  it("refuses a new weekly session without both a start and an end date", async () => {
+    const missing: Record<string, string>[] = [{ startDate: "" }, { endDate: "" }, { startDate: "", endDate: "" }];
+    for (const patch of missing) {
+      expect(await saveSession(null, form({ id: "", startTime: "14:00", endTime: "15:00", ...patch }))).toMatchObject({ ok: false });
+    }
+    expect(await state.store!.listConsultSessions("doctor")).toHaveLength(1);
+    await expect(saveSession(null, form({ id: "", startTime: "14:00", endTime: "15:00" }))).rejects.toThrow("saved=created");
+    expect(await state.store!.listConsultSessions("doctor")).toHaveLength(2);
+  });
+});

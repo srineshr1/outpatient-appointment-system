@@ -5,10 +5,10 @@ import { useActionState, useMemo, useState, type ReactNode } from "react";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { PendingButton } from "@/components/ui/PendingButton";
 import type { ConsultSession, SessionTrim } from "@/lib/clinic-types";
-import { findOrphanedVisits } from "@/lib/elastic";
-import { sessionStructureChanged } from "@/lib/elastic-scheduling";
+import { sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
 import type { FormState } from "@/lib/form-state";
 import { formatShortDate } from "@/lib/format";
+import { weekdayIndex } from "@/lib/clock";
 import {
   checkSession,
   fromMinutes,
@@ -18,6 +18,7 @@ import {
   STREAM_SLOT_MINUTES,
   toMinutes,
   WAVE_MINUTES,
+  WEEKDAY_NAMES,
   type SessionInput,
 } from "@/lib/sessions";
 import { archiveSession, saveSession } from "@/server/profile-actions";
@@ -55,6 +56,11 @@ interface EditorState {
   slotMinutes: number;
   waveMinutes: number | null;
   waveCapacity: number;
+  /** Weekly (with days and a date range) or a one-off on `date`. */
+  recurring: boolean;
+  weekdays: number[];
+  startDate: string;
+  endDate: string;
 }
 
 export function DoctorSchedule({
@@ -131,6 +137,10 @@ export function DoctorSchedule({
       slotMinutes: 15,
       waveMinutes: null,
       waveCapacity: 6,
+      recurring: false,
+      weekdays: [weekdayIndex(date)],
+      startDate: date,
+      endDate: "",
     });
     setConfirmDelete(false);
     setOpenVisitId(null);
@@ -191,15 +201,26 @@ export function DoctorSchedule({
         </section>
 
         <div className="flex flex-wrap items-start gap-5">
-          <Calendar
-            week={week}
-            monday={monday}
-            weekOffset={weekOffset}
-            nowMinutes={nowMinutes}
-            selectedKey={edit?.key ?? null}
-            onSelect={choose}
-            onWeek={setWeekOffset}
-          />
+          <div className="flex min-w-0 flex-[999_1_640px] flex-col gap-5">
+            <Calendar
+              week={week}
+              monday={monday}
+              weekOffset={weekOffset}
+              nowMinutes={nowMinutes}
+              selectedKey={edit?.key ?? null}
+              onSelect={choose}
+              onWeek={setWeekOffset}
+            />
+            {selected ? (
+              <Appointments
+                selected={selected}
+                today={today}
+                returnTo={returnTo}
+                openVisitId={openVisitId}
+                setOpenVisitId={setOpenVisitId}
+              />
+            ) : null}
+          </div>
           <Editor
             editable={editable}
             edit={edit}
@@ -221,6 +242,7 @@ export function DoctorSchedule({
             onAdd={addNew}
             onHint={setHint}
             saveAction={saveAction}
+            saveState={saveState}
           />
         </div>
       </div>
@@ -250,7 +272,7 @@ function Calendar({
   const columnHeight = ((CLINIC_END - CLINIC_START) / 60) * HOUR_PX;
 
   return (
-    <section aria-label="Weekly calendar" className="min-w-0 flex-[999_1_640px] overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
+    <section aria-label="Weekly calendar" className="w-full min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
       <div className="flex flex-wrap items-center gap-2 p-4">
         <button type="button" aria-label="Previous week" onClick={() => onWeek(weekOffset - 1)} className={iconButton}>
           <Chevron direction="left" />
@@ -407,8 +429,9 @@ function Editor(props: {
   onAdd: () => void;
   onHint: (hint: string | null) => void;
   saveAction: (formData: FormData) => void;
+  saveState: FormState;
 }) {
-  const { edit, selected, base, editable, past } = props;
+  const { edit, selected, base, editable, past, saveState } = props;
   if (!edit || !selected) {
     return (
       <aside aria-label="Session editor" className="min-w-0 flex-[1_1_380px] overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
@@ -434,26 +457,32 @@ function Editor(props: {
   const reserved = props.visits.filter(
     (visit) => visit.sessionId === edit.sessionId && visit.date >= props.today && holdsPlace(visit.status),
   );
-  const structureLocked = reserved.length > 0 && edit.sessionId !== null;
   const proposed = toSession(edit, base, props.doctorId, props.room);
   const dirty = !base || !sameEditor(base, edit);
   const others = props.sessions.filter((session) => session.id !== proposed.id && !session.archivedAt);
   // A weekly session saved before dates were required may keep blank dates (the server allows it too).
   const keepOpenRange = Boolean(base && !base.onDate && !base.startDate && !base.endDate);
   const checked = checkSession(toInput(edit, base, props.room), others, props.today, { keepOpenRange });
-  const plan = checked.ok ? planAbsorption(proposed, others, occupying(props.visits), props.today, props.trims) : null;
-  const bookedUpcoming = props.visits.filter(
-    (visit) => visit.status === "booked" && visit.sessionId === edit.sessionId && visit.date >= props.today,
-  );
-  const orphans = base ? findOrphanedVisits(bookedUpcoming, proposed, props.doctorId) : { total: 0, orphaned: 0, orphanedTimes: [] };
+  // Patients whose place disappears with this change: outside shortened hours, or (for fewer places
+  // per wave, another slot length or interval, stream/wave or other days) no longer fitting at all.
   const structureChanged = Boolean(base && sessionStructureChanged(base, proposed));
-  const blocked =
-    past ||
-    !checked.ok ||
-    (plan && !plan.ok) ||
-    orphans.orphaned > 0 ||
-    (structureLocked && structureChanged);
-  const canApply = editable && dirty && !blocked;
+  const affected = base
+    ? props.visits.filter(
+        (visit) =>
+          visit.sessionId === base.id &&
+          visit.date >= props.today &&
+          (visit.status === "booked" || (structureChanged && visit.status === "pending_payment")) &&
+          !stillFits(visit, proposed),
+      )
+    : [];
+  const leaving = new Set(affected.map((visit) => visit.id));
+  const plan = checked.ok
+    ? planAbsorption(proposed, others, occupying(props.visits.filter((visit) => !leaving.has(visit.id))), props.today, props.trims)
+    : null;
+  const blocked = past || !checked.ok || Boolean(plan && !plan.ok);
+  const displacing = !blocked && dirty && affected.length > 0;
+  const displaceCount = saveState?.displace?.count ?? affected.length;
+  const canApply = editable && dirty && !blocked && !displacing;
 
   const oldPlaces = base ? blockPlaces(base) : 0;
   const newPlaces = checked.ok ? blockPlaces(proposed) : oldPlaces;
@@ -480,21 +509,14 @@ function Editor(props: {
     planTitle = "That overlaps another session";
     planLines = [plan.message];
     planTone = "warn";
-  } else if (structureLocked && structureChanged) {
-    planTitle = "Booked visits keep this session's shape";
-    planLines = [
-      `${reserved.length} ${reserved.length === 1 ? "visit uses" : "visits use"} this session. You can still change its hours, name or room. Move or cancel ${reserved.length === 1 ? "it" : "them"} before changing stream, wave, slot length or capacity.`,
-    ];
-    planTone = "warn";
-  } else if (orphans.orphaned > 0) {
-    planTitle = `${orphans.orphaned} booked ${orphans.orphaned === 1 ? "patient falls" : "patients fall"} outside the new hours`;
-    planLines = orphans.orphanedTimes.slice(0, 6).map((stamp) => {
-      const [date, time] = stamp.split(" ");
-      const visit = bookedUpcoming.find((item) => item.date === date && item.time === time);
-      return visit ? `${visit.patientName} · ${formatShortDate(date!)} ${time}` : stamp;
-    });
-    if (orphans.orphaned > 6) planLines.push(`+ ${orphans.orphaned - 6} more`);
-    planLines.push("Move or cancel them first. Their times stay as booked until you do.");
+  } else if (affected.length > 0) {
+    const n = affected.length;
+    planTitle = `${n} ${n === 1 ? "patient no longer fits" : "patients no longer fit"} this change`;
+    planLines = affected.slice(0, 6).map((visit) => `${visit.patientName} · ${formatShortDate(visit.date)} ${visit.time}${visit.token ? ` · token ${visit.token}` : ""}`);
+    if (n > 6) planLines.push(`+ ${n - 6} more`);
+    planLines.push(
+      "Move or cancel them first, or notify them: each patient is offered the nearest free times with you (held for 24 hours) and can pick one or cancel for a full refund. Nothing changes until you confirm.",
+    );
     planTone = "warn";
   } else if (dirty) {
     planTitle = delta > 0 ? `Adds ${placesWord(delta)}` : delta < 0 ? `Removes ${placesWord(-delta)} (all open)` : "Shifts the session window";
@@ -532,10 +554,11 @@ function Editor(props: {
                     props.onHint("Past sessions are read-only.");
                     return;
                   }
-                  if (reserved.length > 0) {
+                  if (reserved.length > 0 && !props.confirmDelete) {
                     event.preventDefault();
+                    props.setConfirmDelete(true);
                     props.onHint(
-                      `${reserved.length} booked ${reserved.length === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${reserved.length === 1 ? "it" : "them"} from the list below before deleting.`,
+                      `${reserved.length} booked ${reserved.length === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${reserved.length === 1 ? "it" : "them"} from the appointments list, or press "Delete anyway" to choose whether to notify ${reserved.length === 1 ? "that patient" : "those patients"} and offer new times.`,
                     );
                     return;
                   }
@@ -546,7 +569,7 @@ function Editor(props: {
                 }}
                 className="min-h-11 max-w-[140px] rounded-[10px] border border-[#8C1D18] bg-[#8C1D18] px-3 text-[13px] font-semibold text-white"
               >
-                {props.confirmDelete && reserved.length === 0 ? "Confirm delete" : "Delete session"}
+                {props.confirmDelete ? (reserved.length === 0 ? "Confirm delete" : "Delete anyway…") : "Delete session"}
               </button>
             </form>
           ) : null}
@@ -559,6 +582,7 @@ function Editor(props: {
         <div className="mt-2 text-[13px] text-[#4F605C] tabular-nums">
           {occurrenceLabel(selected.session, selected.date)} · {minutesLabel(edit.startMin)}–{minutesLabel(edit.endMin)}
         </div>
+        {editable ? <RepeatFields edit={edit} setEdit={props.setEdit} disabled={past} undated={keepOpenRange} /> : null}
         <fieldset className="mt-3 border-0 p-0">
           <legend className="sr-only">Scheduling type</legend>
           <div className="flex gap-2">
@@ -566,7 +590,7 @@ function Editor(props: {
             label="Stream"
             pressed={edit.mode === "stream"}
             palette={STREAM}
-            disabled={!editable || past || structureLocked}
+            disabled={!editable || past}
             onClick={() => props.setEdit({ ...edit, mode: "stream", waveMinutes: null })}
           >
             <StreamIcon />
@@ -575,7 +599,7 @@ function Editor(props: {
             label="Wave"
             pressed={edit.mode === "wave"}
             palette={WAVE}
-            disabled={!editable || past || structureLocked}
+            disabled={!editable || past}
             onClick={() => props.setEdit({ ...edit, mode: "wave", waveCapacity: edit.waveCapacity || 3 })}
           >
             <WaveIcon />
@@ -643,6 +667,29 @@ function Editor(props: {
                   </p>
                 ))}
               </div>
+              {displacing ? (
+                <div className="flex flex-col gap-2 rounded-[10px] border border-[#E3B079] bg-[#FFF1DC] p-3 text-[13px] text-[#5E2C05]">
+                  <label htmlFor="schedule-displace-reason" className="font-semibold">
+                    Message for the patients <span className="font-normal">(optional)</span>
+                  </label>
+                  <input
+                    id="schedule-displace-reason"
+                    name="displaceReason"
+                    maxLength={200}
+                    placeholder="For example: I am needed in theatre that morning."
+                    className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-3 text-sm text-[#14201F]"
+                  />
+                  <input type="hidden" name="displaceCount" value={displaceCount} />
+                  <PendingButton
+                    name="displace"
+                    value="confirm"
+                    pendingLabel="Notifying…"
+                    className="min-h-11 rounded-[10px] bg-[#8C1D18] px-3.5 text-sm font-semibold text-white"
+                  >
+                    {`Apply and notify ${displaceCount === 1 ? "1 patient" : `${displaceCount} patients`} with new times`}
+                  </PendingButton>
+                </div>
+              ) : null}
               {dirty ? (
                 <div className="flex flex-wrap gap-2">
                   <PendingButton
@@ -686,7 +733,7 @@ function Editor(props: {
                       key={choice.label}
                       type="button"
                       aria-pressed={on}
-                      disabled={past || structureLocked}
+                      disabled={past}
                       onClick={() => props.setEdit(snapInterval(edit, choice.value))}
                       className="min-h-11 flex-1 rounded-[10px] border text-[13px] font-semibold disabled:opacity-40"
                       style={{
@@ -708,7 +755,7 @@ function Editor(props: {
                   <button
                     type="button"
                     aria-label="One fewer patient per wave"
-                    disabled={past || structureLocked || edit.waveCapacity <= 1}
+                    disabled={past || edit.waveCapacity <= 1}
                     onClick={() => props.setEdit({ ...edit, waveCapacity: Math.max(1, edit.waveCapacity - 1) })}
                     className={iconButton}
                   >
@@ -718,7 +765,7 @@ function Editor(props: {
                   <button
                     type="button"
                     aria-label="One more patient per wave"
-                    disabled={past || structureLocked || edit.waveCapacity >= MAX_WAVE_CAPACITY}
+                    disabled={past || edit.waveCapacity >= MAX_WAVE_CAPACITY}
                     onClick={() => props.setEdit({ ...edit, waveCapacity: Math.min(MAX_WAVE_CAPACITY, edit.waveCapacity + 1) })}
                     className={iconButton}
                   >
@@ -730,14 +777,6 @@ function Editor(props: {
           </div>
         ) : null}
       </form>
-
-      <Appointments
-        selected={selected}
-        today={props.today}
-        returnTo={props.returnTo}
-        openVisitId={props.openVisitId}
-        setOpenVisitId={props.setOpenVisitId}
-      />
     </aside>
   );
 }
@@ -756,74 +795,99 @@ function Appointments({
   setOpenVisitId: (id: string | null) => void;
 }) {
   const open = Math.max(0, selected.capacity - selected.booked);
+  const wave = selected.session.mode === "wave";
+  const row = (visit: ScheduleVisit, lead: string) => (
+    <VisitRow
+      key={visit.id}
+      visit={visit}
+      lead={lead}
+      today={today}
+      returnTo={returnTo}
+      open={openVisitId === visit.id}
+      onToggle={() => setOpenVisitId(openVisitId === visit.id ? null : visit.id)}
+      onClose={() => setOpenVisitId(null)}
+    />
+  );
   return (
-    <div>
-      <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
-        <span className="text-base font-bold">Appointments</span>
+    <section aria-labelledby="schedule-appointments" className="w-full rounded-[14px] border border-[#E3E8E6] bg-white">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 pb-2">
+        <h2 id="schedule-appointments" className="text-base font-bold">
+          Appointments
+          <span className="ml-2 text-[13px] font-normal text-[#4F605C]">
+            {selected.session.label || "Session"} · {occurrenceLabel(selected.session, selected.date)}
+          </span>
+        </h2>
         <span className="text-[13px] text-[#4F605C] tabular-nums">
           {selected.booked} booked · {open} open
         </span>
       </div>
-      <div className="flex max-h-[520px] flex-col gap-1.5 overflow-y-auto px-4 pb-4">
+      <div className="flex flex-col gap-3 px-4 pb-4">
         {selected.outside.length > 0 ? (
-          <p className="rounded-[10px] border border-[#E3B079] bg-[#FFF1DC] px-3 py-2 text-[13px] leading-snug text-[#5E2C05]">
-            {selected.outside.length === 1 ? "1 visit sits" : `${selected.outside.length} visits sit`} outside these hours and{" "}
-            {selected.outside.length === 1 ? "keeps its" : "keep their"} original time.
-          </p>
-        ) : null}
-        {selected.outside.map((visit) => (
-          <VisitRow
-            key={visit.id}
-            visit={visit}
-            lead={visit.time}
-            today={today}
-            returnTo={returnTo}
-            open={openVisitId === visit.id}
-            onToggle={() => setOpenVisitId(openVisitId === visit.id ? null : visit.id)}
-            onClose={() => setOpenVisitId(null)}
-          />
-        ))}
-        {selected.blocks.map((block, index) => (
-          <div key={block.time} className="flex flex-col gap-1.5">
-            {selected.session.mode === "wave" ? (
-              <div className="flex items-center justify-between px-0.5 pt-2.5 text-xs font-bold tracking-wide text-[#64300A] uppercase tabular-nums">
-                <span>
-                  Wave {index + 1} · {block.time}
-                </span>
-                <span>
-                  {block.seats.filter((seat) => seat.visit).length}/{block.places}
-                </span>
-              </div>
-            ) : null}
-            {block.seats.map((seat) => {
-              const visit = seat.visit;
-              return visit ? (
-                <VisitRow
-                  key={visit.id}
-                  visit={visit}
-                  lead={selected.session.mode === "wave" ? `Seat ${seat.seat}` : block.time}
-                  today={today}
-                  returnTo={returnTo}
-                  open={openVisitId === visit.id}
-                  onToggle={() => setOpenVisitId(openVisitId === visit.id ? null : visit.id)}
-                  onClose={() => setOpenVisitId(null)}
-                />
-              ) : (
-                <div
-                  key={`${block.time}-${seat.seat}`}
-                  className="flex min-h-12 items-center gap-2.5 rounded-[10px] border border-dashed border-[#9AA8A4] bg-white pr-1.5 pl-3"
-                >
-                  <span className="min-w-[52px] text-[13px] text-[#4F605C] tabular-nums">
-                    {selected.session.mode === "wave" ? `Seat ${seat.seat}` : block.time}
-                  </span>
-                  <span className="flex-1 text-[13px] text-[#4F605C]">Open</span>
-                </div>
-              );
-            })}
+          <div className="flex flex-col gap-1.5">
+            <p className="rounded-[10px] border border-[#E3B079] bg-[#FFF1DC] px-3 py-2 text-[13px] leading-snug text-[#5E2C05]">
+              {selected.outside.length === 1 ? "1 visit sits" : `${selected.outside.length} visits sit`} outside these hours and{" "}
+              {selected.outside.length === 1 ? "keeps its" : "keep their"} original time.
+            </p>
+            <div className="grid gap-1.5 md:grid-cols-2">{selected.outside.map((visit) => row(visit, visit.time))}</div>
           </div>
-        ))}
+        ) : null}
+        {selected.blocks.map((block, index) => {
+          const taken = block.seats.filter((seat) => seat.visit);
+          const free = block.seats.filter((seat) => !seat.visit);
+          return (
+            <div key={block.time} className="flex flex-col gap-1.5">
+              {wave ? (
+                <div className="flex items-center justify-between px-0.5 pt-1 text-xs font-bold tracking-wide text-[#64300A] uppercase tabular-nums">
+                  <span>
+                    Wave {index + 1} · {block.time}
+                  </span>
+                  <span>
+                    {taken.length}/{block.places}
+                  </span>
+                </div>
+              ) : null}
+              {taken.length > 0 ? (
+                <div className="grid gap-1.5 md:grid-cols-2">
+                  {taken.map((seat) => row(seat.visit!, wave ? `Seat ${seat.seat}` : block.time))}
+                </div>
+              ) : null}
+              {free.length > 0 && wave ? (
+                <ul aria-label={`Open seats in wave ${index + 1}`} className="flex flex-wrap gap-1.5">
+                  {free.map((seat) => (
+                    <li
+                      key={`${block.time}-${seat.seat}`}
+                      className="inline-flex min-h-8 items-center rounded-full border border-dashed border-[#9AA8A4] px-2.5 text-xs text-[#4F605C] tabular-nums"
+                    >
+                      Seat {seat.seat} · open
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          );
+        })}
+        {!wave && selected.blocks.some((block) => block.seats.some((seat) => !seat.visit)) ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="px-0.5 text-xs font-bold tracking-wide text-[#4F605C] uppercase">Open slots</span>
+            <ul aria-label="Open slots" className="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5">
+              {selected.blocks
+                .filter((block) => block.seats.some((seat) => !seat.visit))
+                .map((block) => (
+                  <li
+                    key={block.time}
+                    className="inline-flex min-h-8 items-center justify-center rounded-full border border-dashed border-[#9AA8A4] text-xs text-[#4F605C] tabular-nums"
+                  >
+                    {block.time}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ) : null}
+        {selected.blocks.length === 0 && selected.outside.length === 0 ? (
+          <p className="text-[13px] text-[#4F605C]">No places in this session.</p>
+        ) : null}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -845,6 +909,7 @@ function VisitRow({
   onClose: () => void;
 }) {
   const upcoming = visit.date >= today && visit.status === "booked";
+  const [confirmCancel, setConfirmCancel] = useState(false);
   return (
     <div className="overflow-hidden rounded-[10px] border" style={{ borderColor: open ? "#14201F" : "#E3E8E6", background: open ? "#F7F9F8" : "#FFFFFF" }}>
       <button
@@ -874,16 +939,43 @@ function VisitRow({
               </>
             ) : null}
           </p>
-          <div className="flex gap-2">
-            {visit.status === "booked" || visit.status === "pending_payment" ? (
-              <form action={updateVisit} className="flex-1">
-                <input type="hidden" name="id" value={visit.id} />
-                <input type="hidden" name="status" value="cancelled" />
-                <input type="hidden" name="return" value={returnTo} />
-                <PendingButton pendingLabel="Cancelling…" className="min-h-11 w-full rounded-[10px] border border-[#B3261E] bg-[#FDECEA] text-[13px] font-semibold text-[#8C1D18]">
-                  Cancel appointment
+          {confirmCancel ? (
+            <form
+              action={updateVisit}
+              role="alert"
+              aria-labelledby={`cancel-${visit.id}`}
+              className="flex flex-col gap-2 rounded-[10px] border border-[#B3261E] bg-[#FDECEA] p-3 text-[13px] text-[#8C1D18]"
+            >
+              <p id={`cancel-${visit.id}`} className="font-semibold">
+                Cancel {visit.patientName}&rsquo;s appointment on {formatShortDate(visit.date)} at {visit.time}?
+              </p>
+              <p>The place opens for others and the patient is told. A paid visit is refunded.</p>
+              <input type="hidden" name="id" value={visit.id} />
+              <input type="hidden" name="status" value="cancelled" />
+              <input type="hidden" name="return" value={returnTo} />
+              <div className="flex gap-2">
+                <PendingButton pendingLabel="Cancelling…" className="min-h-11 flex-1 rounded-[10px] bg-[#8C1D18] text-[13px] font-semibold text-white">
+                  Yes, cancel it
                 </PendingButton>
-              </form>
+                <button
+                  type="button"
+                  onClick={() => setConfirmCancel(false)}
+                  className="min-h-11 flex-1 rounded-[10px] border border-[#14201F] bg-white text-[13px] font-semibold text-[#14201F]"
+                >
+                  Keep appointment
+                </button>
+              </div>
+            </form>
+          ) : null}
+          <div className="flex gap-2">
+            {(visit.status === "booked" || visit.status === "pending_payment") && !confirmCancel ? (
+              <button
+                type="button"
+                onClick={() => setConfirmCancel(true)}
+                className="min-h-11 flex-1 rounded-[10px] border border-[#B3261E] bg-[#FDECEA] text-[13px] font-semibold text-[#8C1D18]"
+              >
+                Cancel appointment
+              </button>
             ) : null}
             {visit.status === "booked" ? (
               <form action={updateVisit} className="flex-1">
@@ -915,17 +1007,117 @@ function VisitRow({
   );
 }
 
+/** One-off on the chosen date, or weekly on chosen days between two dates (both required). */
+function RepeatFields({
+  edit,
+  setEdit,
+  disabled,
+  undated,
+}: {
+  edit: EditorState;
+  setEdit: (edit: EditorState) => void;
+  disabled: boolean;
+  /** A weekly session saved before dates were required: it may stay undated, but should get dates. */
+  undated: boolean;
+}) {
+  const id = `repeat-${edit.key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+  return (
+    <div className="mt-3 flex flex-col gap-2.5">
+      <label htmlFor={`${id}-on`} className="inline-flex min-h-11 items-center gap-2.5 text-sm font-semibold">
+        <input
+          id={`${id}-on`}
+          type="checkbox"
+          checked={edit.recurring}
+          disabled={disabled}
+          onChange={(event) => {
+            const recurring = event.target.checked;
+            setEdit({
+              ...edit,
+              recurring,
+              weekdays: edit.weekdays.length > 0 ? edit.weekdays : [weekdayIndex(edit.date)],
+              startDate: edit.startDate || edit.date,
+            });
+          }}
+          className="size-5 accent-[#14201F]"
+        />
+        Recurring every week
+      </label>
+      {edit.recurring ? (
+        <>
+          <fieldset className="border-0 p-0">
+            <legend className="text-[13px] font-semibold">Days</legend>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {WEEKDAY_NAMES.map((name, index) => {
+                const day = index + 1;
+                const on = edit.weekdays.includes(day);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    aria-label={name}
+                    aria-pressed={on}
+                    disabled={disabled}
+                    onClick={() =>
+                      setEdit({ ...edit, weekdays: on ? edit.weekdays.filter((item) => item !== day) : [...edit.weekdays, day].sort((a, b) => a - b) })
+                    }
+                    className="min-h-11 min-w-11 rounded-[10px] border px-2 text-[13px] font-semibold disabled:opacity-40"
+                    style={{ borderColor: "#14201F", background: on ? "#14201F" : "#FFFFFF", color: on ? "#FFFFFF" : "#14201F" }}
+                  >
+                    {name.slice(0, 3)}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+          {undated && !edit.startDate && !edit.endDate ? (
+            <p className="rounded-[10px] border border-[#9CC9DE] bg-[#E3F0F8] px-3 py-2 text-[13px] leading-snug text-[#083F59]">
+              This weekly session has no start or end date. Add both so patients see when it runs.
+            </p>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            <label htmlFor={`${id}-from`} className="flex flex-col gap-1 text-[13px] font-semibold">
+              Start date
+              <input
+                id={`${id}-from`}
+                type="date"
+                required={!undated}
+                value={edit.startDate}
+                disabled={disabled}
+                onChange={(event) => setEdit({ ...edit, startDate: event.target.value })}
+                className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-2 text-sm font-normal text-[#14201F] tabular-nums"
+              />
+            </label>
+            <label htmlFor={`${id}-until`} className="flex flex-col gap-1 text-[13px] font-semibold">
+              End date
+              <input
+                id={`${id}-until`}
+                type="date"
+                required={!undated}
+                min={edit.startDate || undefined}
+                value={edit.endDate}
+                disabled={disabled}
+                onChange={(event) => setEdit({ ...edit, endDate: event.target.value })}
+                className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-2 text-sm font-normal text-[#14201F] tabular-nums"
+              />
+            </label>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function SessionFields({ edit, base, room }: { edit: EditorState; base: ConsultSession | null; room: string }) {
-  const once = !base || Boolean(base.onDate);
+  const once = !edit.recurring;
   return (
     <>
       <input type="hidden" name="id" value={base?.id ?? ""} />
       <input type="hidden" name="label" value={edit.label} />
       <input type="hidden" name="kind" value={once ? "once" : "recurring"} />
       <input type="hidden" name="onDate" value={once ? (base?.onDate ?? edit.date) : ""} />
-      <input type="hidden" name="startDate" value={once ? "" : (base?.startDate ?? "")} />
-      <input type="hidden" name="endDate" value={once ? "" : (base?.endDate ?? "")} />
-      {(once ? [] : (base?.weekdays ?? [])).map((day) => (
+      <input type="hidden" name="startDate" value={once ? "" : edit.startDate} />
+      <input type="hidden" name="endDate" value={once ? "" : edit.endDate} />
+      {(once ? [] : edit.weekdays).map((day) => (
         <input key={day} type="hidden" name="weekdays" value={day} />
       ))}
       <input type="hidden" name="startTime" value={minutesLabel(edit.startMin)} />
@@ -1052,6 +1244,10 @@ function editorFrom(session: ConsultSession, key: string): EditorState {
     slotMinutes: session.slotMinutes ?? 15,
     waveMinutes: session.waveMinutes,
     waveCapacity: session.waveCapacity ?? 6,
+    recurring: !session.onDate,
+    weekdays: session.onDate ? [weekdayIndex(date)] : [...session.weekdays],
+    startDate: session.onDate ? date : (session.startDate ?? ""),
+    endDate: session.onDate ? "" : (session.endDate ?? ""),
   };
 }
 
@@ -1059,6 +1255,11 @@ function sameEditor(session: ConsultSession, edit: EditorState): boolean {
   return (
     session.label === edit.label &&
     session.mode === edit.mode &&
+    !session.onDate === edit.recurring &&
+    (!edit.recurring ||
+      ([...session.weekdays].sort().join(",") === [...edit.weekdays].sort().join(",") &&
+        (session.startDate ?? "") === edit.startDate &&
+        (session.endDate ?? "") === edit.endDate)) &&
     toMinutes(session.startTime) === edit.startMin &&
     toMinutes(session.endTime) === edit.endMin &&
     (edit.mode === "stream"
@@ -1068,12 +1269,12 @@ function sameEditor(session: ConsultSession, edit: EditorState): boolean {
 }
 
 function toSession(edit: EditorState, base: ConsultSession | null, doctorId: string, room: string): ConsultSession {
-  const once = !base || Boolean(base.onDate);
+  const once = !edit.recurring;
   return {
     id: base?.id ?? "__new__",
     doctorId: base?.doctorId ?? doctorId,
     label: edit.label,
-    weekdays: once ? [] : (base?.weekdays ?? []),
+    weekdays: once ? [] : [...edit.weekdays].sort((a, b) => a - b),
     startTime: fromMinutes(edit.startMin),
     endTime: fromMinutes(edit.endMin),
     room: base?.room || room,
@@ -1081,8 +1282,8 @@ function toSession(edit: EditorState, base: ConsultSession | null, doctorId: str
     slotMinutes: edit.mode === "stream" ? edit.slotMinutes : null,
     waveMinutes: edit.mode === "wave" ? edit.waveMinutes : null,
     waveCapacity: edit.mode === "wave" ? edit.waveCapacity : null,
-    startDate: once ? null : (base?.startDate ?? null),
-    endDate: once ? null : (base?.endDate ?? null),
+    startDate: once ? null : edit.startDate || null,
+    endDate: once ? null : edit.endDate || null,
     onDate: once ? (base?.onDate ?? edit.date) : null,
     archivedAt: null,
     createdAt: base?.createdAt ?? "",
@@ -1091,14 +1292,14 @@ function toSession(edit: EditorState, base: ConsultSession | null, doctorId: str
 }
 
 function toInput(edit: EditorState, base: ConsultSession | null, room: string): SessionInput {
-  const once = !base || Boolean(base.onDate);
+  const once = !edit.recurring;
   return {
     label: edit.label,
     kind: once ? "once" : "recurring",
     onDate: once ? (base?.onDate ?? edit.date) : null,
-    startDate: once ? null : (base?.startDate ?? null),
-    endDate: once ? null : (base?.endDate ?? null),
-    weekdays: once ? [] : (base?.weekdays ?? []),
+    startDate: once ? null : edit.startDate || null,
+    endDate: once ? null : edit.endDate || null,
+    weekdays: once ? [] : edit.weekdays,
     startTime: fromMinutes(edit.startMin),
     endTime: fromMinutes(edit.endMin),
     room: base?.room || room,
