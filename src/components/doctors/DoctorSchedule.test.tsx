@@ -156,3 +156,31 @@ describe("Add session dates (regressions)", () => {
     expect(screen.getByText(/3 patients no longer fit this change/)).toBeInTheDocument();
   });
 });
+
+describe("growing a wave into the start of a stream", () => {
+  const morning: ConsultSession = { ...wave, id: "w-am", label: "Wave", startTime: "09:10", endTime: "12:00", waveMinutes: null, waveCapacity: 6 };
+  const afternoon: ConsultSession = { ...wave, id: "s-pm", label: "New session", mode: "stream", startTime: "12:00", endTime: "16:00", slotMinutes: 20, waveCapacity: null };
+  const srinesh: ScheduleVisit = { id: "v-s", sessionId: "s-pm", slotId: `doc-${TODAY}-1200`, date: TODAY, time: "12:00", endTime: "12:20",
+    token: null, patientName: "Srinesh", reason: "Medication review", status: "booked", reference: "HSP-000009" };
+
+  it("previews the later stream start and who moves, and asks to confirm", () => {
+    show([morning, afternoon], [srinesh]);
+    fireEvent.change(screen.getByRole("slider", { name: "Session end time" }), { target: { value: String(12 * 60 + 40) } });
+    expect(screen.getByText("Stream will start at 12:40; 1 patient will be moved")).toBeInTheDocument();
+    expect(screen.getByText("Srinesh · 12:00 → 12:40")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply change" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply and move 1 patient to later slots" })).toBeEnabled();
+    expect(document.querySelector('input[name="shiftCount"]')).toHaveValue("1");
+  });
+
+  it("blocks with the reason when the stream has no free later slot", () => {
+    const short = { ...afternoon, endTime: "12:40" };
+    const next = { ...srinesh, id: "v-n", slotId: `doc-${TODAY}-1220`, time: "12:20", endTime: "12:40", patientName: "Next" };
+    show([morning, short], [srinesh, next]);
+    fireEvent.change(screen.getByRole("slider", { name: "Session end time" }), { target: { value: String(12 * 60 + 20) } });
+    expect(screen.getByText("That overlaps another session")).toBeInTheDocument();
+    expect(screen.getByText(/only 0 free later slots/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Apply and move/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Apply change" })).toBeDisabled();
+  });
+});

@@ -20,7 +20,8 @@ import {
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
 import { BLOB_NO_REBOOKING } from "@/lib/blob-store";
 import { displaceAndSave, displacedBy } from "@/lib/rebooking";
-import { checkSession, planAbsorption, type SessionInput } from "@/lib/sessions";
+import { checkSession, planAbsorption, planStreamShift, type SessionInput, type StreamMove } from "@/lib/sessions";
+import { shiftAndSave, shiftCandidates, shiftLines, shiftMovable } from "@/lib/stream-shift";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
 
@@ -243,7 +244,36 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   const occupying = appointments
     .filter((visit) => occupiesTime(visit) && visit.date >= today && !leaving.has(visit.id))
     .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime ?? null, sessionId: visit.sessionId ?? null }));
-  const plan = planAbsorption(session, mine.filter((item) => item.id !== session.id), occupying, today, storedTrims);
+  let plan = planAbsorption(session, mine.filter((item) => item.id !== session.id), occupying, today, storedTrims);
+  // Growing into the start of a stream where patients are booked: the stream can start later and move
+  // them to its free later slots that day, once the doctor confirms. Not combined with displacing.
+  let moves: StreamMove[] = [];
+  if (!plan.ok && stranded.length === 0) {
+    const shift = planStreamShift(
+      session,
+      mine.filter((item) => item.id !== session.id),
+      shiftCandidates(appointments, today),
+      today,
+      storedTrims,
+      shiftMovable(appointments),
+    );
+    if (shift && !shift.ok) return fail(`${shift.message} ${plan.message}`);
+    if (shift) {
+      const lines = shiftLines(shift.moves, appointments);
+      const expected = text(formData, "shift") === "confirm" ? Number(text(formData, "shiftCount")) : null;
+      if (expected !== shift.moves.length) {
+        const n = shift.moves.length;
+        const starts = [...new Set(shift.starts.map((start) => start.time))].join(", ");
+        const message = expected === null
+          ? `The other stream will start at ${starts} and ${n} ${n === 1 ? "patient moves" : "patients move"} to its next free ${n === 1 ? "slot" : "slots"}: ${lines.join("; ")}. Confirm to apply and tell ${n === 1 ? "the patient" : "them"} the new time.`
+          : `The number of patients to move changed to ${n}. Check and confirm again.`;
+        return { ...fail(message)!, shift: { count: n, lines } };
+      }
+      if (legacyBlobStore()) return fail(BLOB_NO_REBOOKING);
+      moves = shift.moves;
+      plan = { ok: true, trims: shift.trims, notice: shift.notice };
+    }
+  }
   if (!plan.ok) return fail(plan.message);
 
   const hoursChanged = Boolean(existing && (existing.startTime !== session.startTime || existing.endTime !== session.endTime));
@@ -252,8 +282,19 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   }
 
   let displaced = 0;
+  let shifted = 0;
   try {
-    if (stranded.length > 0 && existing && confirmed) {
+    if (moves.length > 0) {
+      const result = await shiftAndSave(user, session, plan.trims, moves, appointments);
+      if (!result.ok) {
+        return fail(
+          result.reason === "taken"
+            ? "One of the later slots was booked while you confirmed. Check the session and try again."
+            : "Bookings changed while you confirmed. Reload the session and try again.",
+        );
+      }
+      shifted = result.moved.length;
+    } else if (stranded.length > 0 && existing && confirmed) {
       const result = await displaceAndSave(user, existing, session, plan.trims, confirmed);
       if (!result.ok && result.reason === "changed") return fail("The number of affected patients changed. Check and confirm again.");
       if (!result.ok && result.reason !== "none") return fail("Bookings changed while you confirmed. Reload the session and try again.");
@@ -280,7 +321,7 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   refresh();
   // A unique stamp: the workspace form resets only on a save that actually landed.
   const lent = plan.notice ? `&lent=${encodeURIComponent(plan.notice)}` : "";
-  const moved = displaced > 0 ? `&displaced=${displaced}` : "";
+  const moved = `${displaced > 0 ? `&displaced=${displaced}` : ""}${shifted > 0 ? `&shifted=${shifted}` : ""}`;
   redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${lent}${moved}`);
 }
 

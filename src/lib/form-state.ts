@@ -11,4 +11,9 @@ export type FormState = {
    * "Notify them and offer new times"; nothing changes until the doctor confirms that.
    */
   displace?: { count: number; times: string[] };
+  /**
+   * The session grows into the start of a neighbouring stream that has patients there: they can move
+   * to its later free slots. How many, and "Name 12:00 → 12:40" lines. Nothing moves until confirmed.
+   */
+  shift?: { count: number; lines: string[] };
 } | null;

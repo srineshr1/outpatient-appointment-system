@@ -31,7 +31,7 @@ function reasonLabel(id: string): string {
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ welcome?: string; saved?: string; notice?: string; n?: string; v?: string; lent?: string; displaced?: string; displace?: string }>;
+  searchParams: Promise<{ welcome?: string; saved?: string; notice?: string; n?: string; v?: string; lent?: string; displaced?: string; displace?: string; shifted?: string }>;
 }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!user) redirect("/sign-in?as=staff&next=/dashboard/sessions");
@@ -52,12 +52,15 @@ export default async function SessionsPage({
   const moved = Number(query.displaced ?? 0);
   const movedNote =
     moved > 0 ? ` ${moved === 1 ? "1 patient was" : `${moved} patients were`} moved off the removed hours and offered new times.` : "";
+  const shifted = Number(query.shifted ?? 0);
+  const shiftedNote =
+    shifted > 0 ? ` ${shifted === 1 ? "1 patient was" : `${shifted} patients were`} moved to a later slot in the other session and told the new time.` : "";
   const busy = query.notice === "busy";
   // A session with booked visits: the doctor may remove it anyway and offer those patients new times.
   const removing = busy && query.displace ? status.sessions.find((session) => session.id === query.displace) : undefined;
   const count = Number(query.n ?? 0);
   const notice = saved
-    ? `${saved}${lent}${movedNote}`
+    ? `${saved}${lent}${movedNote}${shiftedNote}`
     : busy && !(removing && count > 0)
       ? `${query.n ?? "Some"} booked visits use that session. Move or cancel them first.`
       : query.notice === "missing"
