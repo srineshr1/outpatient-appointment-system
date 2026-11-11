@@ -17,6 +17,10 @@ interface Layout {
   rows: Array<[string, string]>;
   footnote?: string;
   cta?: { label: string; url: string };
+  /** One button per choice (e.g. each held time), above the main call to action. */
+  choices?: Array<{ label: string; url: string }>;
+  /** Smaller text links after the call to action. */
+  links?: Array<{ label: string; url: string }>;
   firstName: string;
 }
 
@@ -27,8 +31,10 @@ function layout(input: Layout): RenderedMessage {
     input.intro,
     "",
     ...input.rows.map(([label, value]) => `${label}: ${value}`),
+    ...(input.choices?.length ? ["", ...input.choices.map((choice) => `${choice.label}: ${choice.url}`)] : []),
     ...(input.footnote ? ["", input.footnote] : []),
     ...(input.cta ? ["", `${input.cta.label}: ${input.cta.url}`] : []),
+    ...(input.links?.length ? ["", ...input.links.map((item) => `${item.label}: ${item.url}`)] : []),
     "",
     practice.name,
     practice.address,
@@ -45,8 +51,10 @@ function layout(input: Layout): RenderedMessage {
 <table role="presentation" style="font-size:15px;">
 ${input.rows.map(row).join("")}
 </table>
+${input.choices?.length ? `<p style="margin:20px 0 0;">${input.choices.map((choice) => `<a href="${escapeHtml(choice.url)}" style="display:block;margin:0 0 8px;background:#e8f1fb;color:#0b4f8a;text-decoration:none;font-size:15px;font-weight:600;padding:10px 14px;border-radius:8px;">${escapeHtml(choice.label)}</a>`).join("")}</p>` : ""}
 ${input.footnote ? `<p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#6e6e73;">${escapeHtml(input.footnote)}</p>` : ""}
 ${input.cta ? `<p style="margin:20px 0 0;"><a href="${escapeHtml(input.cta.url)}" style="display:inline-block;background:#0071e3;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:10px 18px;border-radius:8px;">${escapeHtml(input.cta.label)}</a></p>` : ""}
+${input.links?.length ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.8;">${input.links.map((item) => `<a href="${escapeHtml(item.url)}" style="color:#0071e3;">${escapeHtml(item.label)}</a>`).join("<br>")}</p>` : ""}
 </div>
 <p style="max-width:480px;margin:12px auto 0;font-size:12px;color:#86868b;">${escapeHtml(practice.name)} · ${escapeHtml(practice.address)}</p>
 </body></html>`;
@@ -238,6 +246,71 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         ]),
         footnote: "Times are practice time. You can turn this email off under Notifications on your clinic book.",
         cta: { label: "Open clinic book", url: link("/dashboard") },
+      });
+    }
+    case "rebooking_offer": {
+      const links = data.rebookLinks;
+      const slots = links?.slots ?? (data.offerSlots ?? []).map((slot) => ({ when: slot.when, url: link("/appointments") }));
+      return layout({
+        ...base,
+        subject: `Please pick a new time for ${data.reference}`,
+        heading: "Your appointment time is no longer available",
+        intro:
+          `we are sorry: ${data.doctorName} has changed their consulting hours and can no longer see you at the time you booked. ` +
+          (slots.length > 0
+            ? `We are holding ${slots.length === 1 ? "this time" : `these ${slots.length} times`} for you${data.expiresWhen ? ` until ${data.expiresWhen}` : ""}. Choose one and your visit moves there, with the same reference and payment.`
+            : "We could not find a free time to hold for you, but you can look for another time or cancel for a full refund."),
+        rows: [
+          ["Reference", data.reference],
+          ["Doctor", data.doctorName],
+          ["Booked for", data.when],
+          ...(data.reason ? [["Why", data.reason] as [string, string]] : []),
+        ],
+        choices: slots.map((slot) => ({ label: `Move to ${slot.when}`, url: slot.url })),
+        footnote: `If you do nothing${data.expiresWhen ? ` by ${data.expiresWhen}` : " within 24 hours"}, the visit is cancelled and anything you paid is refunded in full.`,
+        links: links
+          ? [
+              { label: "Show more times", url: links.more },
+              { label: "Cancel and get a full refund", url: links.cancel },
+            ]
+          : [{ label: "Manage appointment", url: link("/appointments") }],
+      });
+    }
+    case "rebooking_confirmed":
+      return layout({
+        ...base,
+        subject: `Appointment ${data.reference} moved to ${data.when}`,
+        heading: "Your new time is booked",
+        intro: `thank you for choosing a new time with ${data.doctorName}. The reference and any payment stay the same.`,
+        rows: [
+          ["Reference", data.reference],
+          ["Doctor", data.doctorName],
+          ["Was", data.previousWhen ?? ""],
+          ["Now", data.token ? `${data.when} (token ${data.token})` : data.when],
+        ],
+        footnote: "Please arrive about ten minutes early. You can still move or cancel the visit from your appointments.",
+        cta: { label: "View appointments", url: link("/appointments") },
+      });
+    case "rebooking_closed": {
+      const refunded = data.refundMinor !== undefined && data.refundMinor > 0;
+      return layout({
+        ...base,
+        subject: `Appointment ${data.reference} cancelled`,
+        heading: "Appointment cancelled",
+        intro:
+          data.offerOutcome === "expired"
+            ? `no new time was chosen in time, so your visit with ${data.doctorName} has been cancelled. We are sorry for the trouble.`
+            : `as you asked, your visit with ${data.doctorName} has been cancelled. We are sorry for the trouble.`,
+        rows: [
+          ["Reference", data.reference],
+          ["Doctor", data.doctorName],
+          ["Was", data.previousWhen ?? data.when],
+          ...(data.refundMinor !== undefined ? [["Refund", refunded ? `${money(data.refundMinor)} initiated (full)` : "None due"] as [string, string]] : []),
+        ],
+        footnote: refunded
+          ? "We will email you when the bank confirms the refund; this usually takes 5 to 7 working days."
+          : (data.detail ?? "Nothing was charged for this visit. You can book another visit at any time."),
+        cta: { label: "Book again", url: link("/book") },
       });
     }
     case "reminder":

@@ -8,6 +8,9 @@ import { Notice } from "@/components/ui/Card";
 import { todayIso, now } from "@/lib/clock";
 import { getCurrentUser } from "@/lib/session";
 import { paymentLabels } from "@/lib/billing";
+import { formatShortDate } from "@/lib/format";
+import { rebookPath } from "@/lib/rebooking";
+import { getStore } from "@/lib/store";
 import { reschedulesFor, visitsFor } from "@/lib/visits";
 
 export const metadata: Metadata = {
@@ -30,6 +33,13 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   const all = visitsFor({ ...user, role: "patient", doctorId: null });
   const [visits, payments, moves] = await Promise.all([all, paymentLabels(all), reschedulesFor({ ...user, role: "patient", doctorId: null })]);
   const today = todayIso(now());
+  // Visits the doctor moved off removed hours that still need an answer: link straight to the offer.
+  const displaced = visits.filter((visit) => visit.status === "displaced");
+  const store = displaced.length > 0 ? await getStore() : null;
+  const open = store
+    ? (await Promise.all(displaced.map(async (visit) => ({ visit, offer: (await store.listRebookingOffers({ appointmentId: visit.id, status: "pending" }))[0] }))))
+        .filter((item) => item.offer)
+    : [];
 
   return (
     <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
@@ -67,6 +77,14 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
           {notice}
         </Notice>
       ) : null}
+      {open.map(({ visit, offer }) => (
+        <Notice key={visit.id} tone="info" className="mt-6">
+          Your doctor changed their hours, so your visit on {formatShortDate(visit.date)}, {visit.time} ({visit.reference}) needs a new time.{" "}
+          <Link href={rebookPath(offer!.id)} className="font-medium text-accent underline underline-offset-4">
+            Pick a new time or cancel for a refund
+          </Link>
+        </Notice>
+      ))}
       <VisitList visits={visits} today={today} mode="patient" returnTo="/appointments" payments={payments} moves={moves} />
     </div>
   );
