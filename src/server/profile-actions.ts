@@ -18,7 +18,8 @@ import {
   type PatientProfileField,
 } from "@/lib/profiles";
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
-import { findOrphanedVisits } from "@/lib/elastic";
+import { BLOB_NO_REBOOKING } from "@/lib/blob-store";
+import { displaceAndSave, displacedBy } from "@/lib/rebooking";
 import { checkSession, planAbsorption, type SessionInput } from "@/lib/sessions";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
@@ -158,26 +159,20 @@ async function upcomingIn(doctorId: string, sessionId: string): Promise<number> 
   return visits.filter((visit) => occupiesTime(visit) && visit.sessionId === sessionId && visit.date >= today).length;
 }
 
-/**
- * Elastic scheduling: find booked visits that would be orphaned if the session changes shape.
- *
- * Instead of blocking every shape change, we generate the slot ids the new session would produce
- * over the dates that have bookings, and check whether each booking's slot still exists. Only
- * bookings whose slot id disappears are orphaned. This lets schedule expansion (9 AM–12 PM →
- * 8 AM–12 PM) and safe shrinks (10 AM–12 PM → 10 AM–11 AM when all bookings are before 11 AM)
- * go through, while still blocking changes that would strand a booked patient.
- */
-async function orphanedVisits(
-  doctorId: string,
-  existing: ConsultSession,
-  newSession: ConsultSession,
-): Promise<{ total: number; orphaned: number; orphanedTimes: string[] }> {
-  const today = todayIso(now());
-  const visits = await (await getStore()).listAppointments({ doctorId });
-  const upcoming = visits.filter(
-    (visit) => visit.status === "booked" && visit.sessionId === existing.id && visit.date >= today,
-  );
-  return findOrphanedVisits(upcoming, newSession, doctorId);
+/** "2099-01-05 11:30" for the first few displaced visits. */
+function timesOf(visits: readonly { date: string; time: string }[]): string[] {
+  return visits.map((visit) => `${visit.date} ${visit.time}`);
+}
+
+/** Whether the doctor confirmed "Notify them and offer new times", and for how many patients. */
+function displaceConfirmed(formData: FormData): { expected: number; reason: string } | null {
+  if (text(formData, "displace") !== "confirm") return null;
+  const expected = Number(text(formData, "displaceCount"));
+  return Number.isInteger(expected) && expected > 0 ? { expected, reason: text(formData, "displaceReason") } : null;
+}
+
+function legacyBlobStore(): boolean {
+  return process.env.DATA_STORE !== "supabase" && Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 }
 
 export async function saveSession(_previous: FormState, formData: FormData): Promise<FormState> {
@@ -217,26 +212,30 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     }
   }
 
-  // Elastic scheduling: hour changes must not orphan booked visits. Expansion is always safe;
-  // a shrink that would strand a booking outside the new hours is rejected up front instead of
-  // leaving the visit outside its session's availability.
-  if (existing) {
-    const { total, orphaned, orphanedTimes } = await orphanedVisits(user.id, existing, session);
-    if (orphaned > 0) {
-      const times = orphanedTimes.slice(0, 3).join(", ");
-      const more = orphaned > 3 ? ` and ${orphaned - 3} more` : "";
-      return fail(
-        `${orphaned} of ${total} booked ${orphaned === 1 ? "visit falls" : "visits fall"} outside the new hours (${times}${more}). Move or cancel ${orphaned === 1 ? "it" : "them"} first, or add a new session instead.`,
-      );
-    }
-  }
-
   const [appointments, storedTrims] = await Promise.all([
     store.listAppointments({ doctorId: user.id }),
     store.listSessionTrims(user.id),
   ]);
+
+  // Elastic scheduling: hour changes must not strand booked visits. Expansion is always safe; a
+  // shrink that would leave a booking outside the new hours is refused, unless the doctor explicitly
+  // confirms "Notify them and offer new times" (displaced patient rebooking).
+  const stranded = existing ? displacedBy(appointments, existing, session, today) : [];
+  const confirmed = displaceConfirmed(formData);
+  if (stranded.length > 0) {
+    const total = appointments.filter((visit) => visit.status === "booked" && visit.sessionId === existing!.id && visit.date >= today).length;
+    const times = timesOf(stranded);
+    const more = stranded.length > 3 ? ` and ${stranded.length - 3} more` : "";
+    const message = `${stranded.length} of ${total} booked ${stranded.length === 1 ? "visit falls" : "visits fall"} outside the new hours (${times.slice(0, 3).join(", ")}${more}). Move or cancel ${stranded.length === 1 ? "it" : "them"} first, add a new session instead, or notify ${stranded.length === 1 ? "the patient" : "them"} and offer new times.`;
+    if (!confirmed || confirmed.expected !== stranded.length) {
+      const refused = fail(confirmed ? `The number of affected patients changed to ${stranded.length}. Check and confirm again.` : message)!;
+      return { ...refused, displace: { count: stranded.length, times } };
+    }
+    if (legacyBlobStore()) return fail(BLOB_NO_REBOOKING);
+  }
+  const leaving = new Set(stranded.map((visit) => visit.id));
   const occupying = appointments
-    .filter((visit) => occupiesTime(visit) && visit.date >= today)
+    .filter((visit) => occupiesTime(visit) && visit.date >= today && !leaving.has(visit.id))
     .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime ?? null, sessionId: visit.sessionId ?? null }));
   const plan = planAbsorption(session, mine.filter((item) => item.id !== session.id), occupying, today, storedTrims);
   if (!plan.ok) return fail(plan.message);
@@ -246,8 +245,17 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     return fail("Resizing availability requires the Supabase or SQLite store. The legacy Blob store cannot safely coordinate this change.");
   }
 
+  let displaced = 0;
   try {
-    await store.saveConsultSession(session, plan.trims);
+    if (stranded.length > 0 && existing && confirmed) {
+      const result = await displaceAndSave(user, existing, session, plan.trims, confirmed);
+      if (!result.ok && result.reason === "changed") return fail("The number of affected patients changed. Check and confirm again.");
+      if (!result.ok && result.reason !== "none") return fail("Bookings changed while you confirmed. Reload the session and try again.");
+      if (result.ok) displaced = result.displaced.length;
+      else await store.saveConsultSession(session, plan.trims);
+    } else {
+      await store.saveConsultSession(session, plan.trims);
+    }
   } catch (error) {
     if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
       return fail("A visit was reserved while you edited. Reload the session; you can still change its hours, name or room.");
@@ -266,7 +274,8 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   refresh();
   // A unique stamp: the workspace form resets only on a save that actually landed.
   const lent = plan.notice ? `&lent=${encodeURIComponent(plan.notice)}` : "";
-  redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${lent}`);
+  const moved = displaced > 0 ? `&displaced=${displaced}` : "";
+  redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${lent}${moved}`);
 }
 
 export async function archiveSession(formData: FormData): Promise<void> {
@@ -274,15 +283,31 @@ export async function archiveSession(formData: FormData): Promise<void> {
   const store = await getStore();
   const session = await store.getConsultSession(text(formData, "id"));
   if (!session || session.doctorId !== user.id || session.archivedAt) redirect("/dashboard/sessions?notice=missing");
+  const removed = { ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() };
   const upcoming = await upcomingIn(user.id, session.id);
-  if (upcoming > 0) redirect(`/dashboard/sessions?notice=busy&n=${upcoming}`);
-  try {
-    await store.saveConsultSession({ ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() }, []);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
-      redirect("/dashboard/sessions?notice=busy&n=1");
+  let displaced = 0;
+  if (upcoming > 0) {
+    // Only an explicit "Notify them and offer new times" may remove a session that has reservations.
+    const stranded = displacedBy(await store.listAppointments({ doctorId: user.id }), session, removed, todayIso(now()));
+    const offerable = stranded.length === upcoming && !legacyBlobStore();
+    const ask = `/dashboard/sessions?notice=busy&n=${upcoming}${offerable ? `&displace=${encodeURIComponent(session.id)}` : ""}`;
+    const confirmed = displaceConfirmed(formData);
+    if (!confirmed || !offerable) redirect(ask);
+    const result = await displaceAndSave(user, session, removed, [], confirmed).catch((error: unknown) => {
+      if (error instanceof Error && error.message.includes("Reserved sessions may change")) return null;
+      throw error;
+    });
+    if (!result || !result.ok) redirect(ask);
+    displaced = result.displaced.length;
+  } else {
+    try {
+      await store.saveConsultSession(removed, []);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
+        redirect("/dashboard/sessions?notice=busy&n=1");
+      }
+      throw error;
     }
-    throw error;
   }
   forgetBlockedSlots();
   await loadDoctors(true);
@@ -294,5 +319,5 @@ export async function archiveSession(formData: FormData): Promise<void> {
     summary: `${session.label || "Session"} · ${session.startTime}–${session.endTime}`,
   });
   refresh();
-  redirect("/dashboard/sessions?saved=removed");
+  redirect(`/dashboard/sessions?saved=removed${displaced > 0 ? `&displaced=${displaced}` : ""}`);
 }

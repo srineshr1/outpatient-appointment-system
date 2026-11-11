@@ -6,4 +6,9 @@ export type FormState = {
   errors?: Record<string, string>;
   /** What was typed, so a refused form keeps it. */
   values?: Record<string, string>;
+  /**
+   * A session change that would remove booked visits: how many, and when. The form then offers
+   * "Notify them and offer new times"; nothing changes until the doctor confirms that.
+   */
+  displace?: { count: number; times: string[] };
 } | null;
