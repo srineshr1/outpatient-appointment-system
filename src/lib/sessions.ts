@@ -665,7 +665,15 @@ export function planAbsorption(
  * Check what a doctor typed for a session. Overlap with another session is decided by
  * `planAbsorption`: a free edge can be lent, and a booked patient is never cancelled here.
  */
-export function checkSession(input: SessionInput, _others: readonly ConsultSession[], today?: string): SessionCheck {
+export interface CheckSessionOptions {
+  /**
+   * The session being edited is a weekly one saved before dates were required (no start or end
+   * date). It may stay open-ended when both dates are left blank, so its hours can still be resized.
+   */
+  keepOpenRange?: boolean;
+}
+
+export function checkSession(input: SessionInput, _others: readonly ConsultSession[], today?: string, options: CheckSessionOptions = {}): SessionCheck {
   const once = input.kind === "once";
   let weekdays = [...new Set(input.weekdays)].filter((day) => Number.isInteger(day) && day >= 1 && day <= 6).sort((a, b) => a - b);
   let onDate: string | null = null;
@@ -682,11 +690,7 @@ export function checkSession(input: SessionInput, _others: readonly ConsultSessi
     if (weekdays.length === 0) return { ok: false, message: "Choose at least one weekday." };
     const start = input.startDate?.trim() || null;
     const end = input.endDate?.trim() || null;
-    // Blank dates keep an open-ended weekly session. A start or an end on its own is incomplete.
-    if (!start && !end) {
-      startDate = null;
-      endDate = null;
-    } else {
+    if (!(options.keepOpenRange && !start && !end)) {
       if (!isIsoDate(start)) return { ok: false, message: "Choose the date this session starts." };
       if (!isIsoDate(end)) return { ok: false, message: "Choose the date this session ends." };
       if (end < start) return { ok: false, message: "The end date must be on or after the start date." };

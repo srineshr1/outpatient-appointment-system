@@ -438,7 +438,9 @@ function Editor(props: {
   const proposed = toSession(edit, base, props.doctorId, props.room);
   const dirty = !base || !sameEditor(base, edit);
   const others = props.sessions.filter((session) => session.id !== proposed.id && !session.archivedAt);
-  const checked = checkSession(toInput(edit, base, props.room), others, props.today);
+  // A weekly session saved before dates were required may keep blank dates (the server allows it too).
+  const keepOpenRange = Boolean(base && !base.onDate && !base.startDate && !base.endDate);
+  const checked = checkSession(toInput(edit, base, props.room), others, props.today, { keepOpenRange });
   const plan = checked.ok ? planAbsorption(proposed, others, occupying(props.visits), props.today, props.trims) : null;
   const bookedUpcoming = props.visits.filter(
     (visit) => visit.status === "booked" && visit.sessionId === edit.sessionId && visit.date >= props.today,

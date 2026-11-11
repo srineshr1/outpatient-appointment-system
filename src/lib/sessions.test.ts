@@ -215,8 +215,20 @@ describe("recurring date ranges and one-off sessions (IST dates)", () => {
     expect(ok).toMatchObject({ ok: true, value: { onDate: "2026-11-07", weekdays: [], startDate: null } });
   });
 
+  it("lets an undated weekly session being edited stay open-ended, but only with both dates blank", () => {
+    const open = { keepOpenRange: true };
+    expect(checkSession({ ...input, weekdays: [1] }, [], "2026-11-04", open)).toMatchObject({ ok: true, value: { startDate: null, endDate: null } });
+    expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10" }, [], "2026-11-04", open).ok).toBe(false);
+    expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10", endDate: "2026-11-30" }, [], "2026-11-04", open)).toMatchObject({
+      ok: true, value: { startDate: "2026-11-10", endDate: "2026-11-30" },
+    });
+    expect(checkSession({ ...input, weekdays: [] }, [], "2026-11-04", open).ok).toBe(false);
+  });
+
   it("checks a recurring range", () => {
-    expect(checkSession({ ...input, weekdays: [1] }, [], "2026-11-04")).toMatchObject({ ok: true, value: { startDate: null, endDate: null, weekdays: [1] } });
+    // New weekly sessions need both dates; only an existing undated one may stay open-ended (keepOpenRange).
+    expect(checkSession({ ...input, weekdays: [1] }, [], "2026-11-04").ok).toBe(false);
+    expect(checkSession({ ...input, weekdays: [1] }, [], "2026-11-04", { keepOpenRange: true })).toMatchObject({ ok: true, value: { startDate: null, endDate: null, weekdays: [1] } });
     expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10" }, [], "2026-11-04").ok).toBe(false);
     expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-20", endDate: "2026-11-10" }, [], "2026-11-04")).toMatchObject({ ok: false });
     expect(checkSession({ ...input, weekdays: [1], startDate: "2026-11-10", endDate: "2026-11-15" }, [], "2026-11-04")).toMatchObject({ ok: false });

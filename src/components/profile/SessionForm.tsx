@@ -72,6 +72,8 @@ export function SessionForm({
   const shown = state?.values?.mode === "wave" || state?.values?.mode === "stream" ? state.values.mode : mode;
   const v = (key: string, fallback: string | number) => state?.values?.[key] ?? String(fallback);
   const idPrefix = `session-${defaults.id || "new"}`;
+  // A weekly session saved before dates were required can be edited without adding dates.
+  const openRange = Boolean(defaults.id) && defaults.kind === "recurring" && !defaults.startDate && !defaults.endDate;
   // The week stays clear until the doctor actually picks days or hours. Pre-filled defaults are not a selection.
   const scheduleTouched = useRef(false);
   const lastDraft = useRef("");
@@ -156,11 +158,11 @@ export function SessionForm({
           ))}
         </div>
       </fieldset>
-      <Field id={`${idPrefix}-from`} label="From date" hint="The first day this session runs.">
-        {({ id, describedBy }) => <input id={id} name="startDate" type="date" required defaultValue={v("startDate", defaults.startDate)} aria-describedby={describedBy} className="field tabular" />}
+      <Field id={`${idPrefix}-from`} label="From date" hint={openRange ? "Optional for this session: leave both dates blank to keep it running every week." : "The first day this session runs."}>
+        {({ id, describedBy }) => <input id={id} name="startDate" type="date" required={!openRange} defaultValue={v("startDate", defaults.startDate)} aria-describedby={describedBy} className="field tabular" />}
       </Field>
-      <Field id={`${idPrefix}-until`} label="Until date" hint="The last day this session runs.">
-        {({ id, describedBy }) => <input id={id} name="endDate" type="date" required defaultValue={v("endDate", defaults.endDate)} aria-describedby={describedBy} className="field tabular" />}
+      <Field id={`${idPrefix}-until`} label="Until date" hint={openRange ? "Optional for this session, as above." : "The last day this session runs."}>
+        {({ id, describedBy }) => <input id={id} name="endDate" type="date" required={!openRange} defaultValue={v("endDate", defaults.endDate)} aria-describedby={describedBy} className="field tabular" />}
       </Field>
         </>
       )}
