@@ -25,6 +25,7 @@ import { FIELD_ORDER, validatePatient } from "../validate";
 import { changeAppointmentStatus } from "../visits";
 import { cardFromSealed, claimConfirmation, issueConfirmation, verifyConfirmation, type PendingAction, type PendingCard } from "./confirm-token";
 import { reasonLabel } from "./read";
+import { saveConfirmedSession } from "./session-act";
 
 export interface ActionOutcome {
   ok: boolean;
@@ -208,13 +209,14 @@ export async function confirmPending(user: PublicUser, token: string): Promise<A
 export async function rejectPending(user: PublicUser, token: string): Promise<ActionOutcome> {
   const verified = await verifyConfirmation(token, user.id).catch(() => null);
   if (verified?.ok) claimConfirmation(verified.sealed.jti, verified.sealed.exp);
-  return { ok: true, summary: "Okay. I have not booked, cancelled, moved or opened a payment." };
+  return { ok: true, summary: "Okay. I have not booked, cancelled, moved, opened a payment or changed a session." };
 }
 
 async function runAction(user: PublicUser, action: PendingAction): Promise<ActionOutcome> {
   if (action.type === "book") return book(user, action);
   if (action.type === "cancel") return cancel(user, action.visitId);
   if (action.type === "reschedule") return move(user, action.visitId, action.slotId, action.reason);
+  if (action.type === "session") return saveConfirmedSession(user, action);
   return pay(user, action.visitId);
 }
 
@@ -336,5 +338,5 @@ export async function restoreCard(user: PublicUser, token: string): Promise<Pend
 }
 
 function isAction(value: PendingAction): boolean {
-  return value.type === "book" || value.type === "cancel" || value.type === "reschedule" || value.type === "pay";
+  return value.type === "book" || value.type === "cancel" || value.type === "reschedule" || value.type === "pay" || value.type === "session";
 }
