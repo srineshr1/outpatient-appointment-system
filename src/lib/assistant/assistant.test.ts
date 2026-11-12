@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppointmentRecord, PublicUser } from "../clinic-types";
 import { setNow } from "../clock";
 import { confirmBooking, getSlots } from "../repository";
@@ -10,6 +10,7 @@ import { resetConfirmationsForTests, issueConfirmation } from "./confirm-token";
 import { isEcho } from "./echo";
 import { interpretReply } from "./intent";
 import { prescriptions, searchDoctors, visitConflicts } from "./read";
+import { bookingHref, mergeSlotLinks, type SlotLink } from "./slot-links";
 import { runTool } from "./tools";
 import { handleTurn, resetTurnsForTests } from "./turn";
 
@@ -210,5 +211,65 @@ describe("assistant clinic actions", () => {
     const done = await confirmPending(patient, mine.pending!.token);
     expect(done.ok).toBe(true);
     expect((await (await getStore()).getAppointment(booked.visit.id))?.status).toBe("cancelled");
+  });
+});
+
+describe("assistant open-time links", () => {
+  it("returns open times as structured links for patients, and plain times for doctors", async () => {
+    const patient = await account("user-patient-demo");
+    const cho = await account("user-cho");
+    const listed = await runTool(patient, "list_open_slots", { doctorId: "cho" });
+    expect(listed.slots?.length).toBeGreaterThan(0);
+    const first = listed.slots![0]!;
+    expect(first).toMatchObject({ doctorId: "cho", doctor: expect.stringContaining("Cho") });
+    expect(first.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(first.time).toMatch(/^\d{2}:\d{2}$/);
+    expect(first.href).toBe(bookingHref(first.id));
+    expect(first.href).toBe(`/book/details?slot=${encodeURIComponent(first.id)}`);
+
+    const next = await runTool(patient, "next_available", { doctorId: "cho" });
+    expect(next.slots).toHaveLength(1);
+    const own = await runTool(cho, "list_open_slots", {});
+    expect(own.slots?.length).toBeGreaterThan(0);
+    expect(own.slots!.every((slot) => slot.href === null)).toBe(true);
+
+    const refused = await runTool(patient, "list_open_slots", { doctorId: "nobody" });
+    expect(refused.slots).toBeUndefined();
+    expect(await runTool(patient, "list_visit_reasons", {})).not.toHaveProperty("slots");
+  });
+
+  it("merges times without repeats, in order, and caps the list", () => {
+    const make = (id: string, date: string, time: string): SlotLink => ({ id, doctorId: "cho", doctor: "Dr Cho", date, time, endTime: null, mode: "stream", href: null });
+    const merged = mergeSlotLinks([make("b", "2026-11-13", "09:00"), make("a", "2026-11-12", "10:45")], [make("a", "2026-11-12", "10:45")]);
+    expect(merged.map((slot) => slot.id)).toEqual(["a", "b"]);
+    const many = Array.from({ length: 40 }, (_, index) => make(`s${index}`, "2026-11-12", `${String(9 + Math.floor(index / 4)).padStart(2, "0")}:${String((index % 4) * 15).padStart(2, "0")}`));
+    expect(mergeSlotLinks([], many)).toHaveLength(24);
+  });
+
+  it("passes the tools' open times through a turn alongside the reply", async () => {
+    const patient = await account("user-patient-demo");
+    const saved = { xai: process.env.XAI_API_KEY, gemini: process.env.GEMINI_API_KEY };
+    process.env.XAI_API_KEY = "test-key";
+    delete process.env.GEMINI_API_KEY;
+    const replies = [
+      { output: [{ type: "function_call", name: "list_open_slots", call_id: "c1", arguments: JSON.stringify({ doctorId: "cho" }) }] },
+      { output_text: "Dr Cho has times today and tomorrow. Tap one to book it." },
+    ];
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify(replies.shift()) }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await handleTurn(patient, [{ role: "user", content: "Can you find the available slots for Cho" }], null);
+      expect(result.reply).toBe("Dr Cho has times today and tomorrow. Tap one to book it.");
+      expect(result.pending).toBeNull();
+      expect(result.slots?.length).toBeGreaterThan(0);
+      expect(result.slots![0]!.href).toMatch(/^\/book\/details\?slot=/);
+      // Nothing was booked by listing times.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+      if (saved.xai === undefined) delete process.env.XAI_API_KEY;
+      else process.env.XAI_API_KEY = saved.xai;
+      if (saved.gemini !== undefined) process.env.GEMINI_API_KEY = saved.gemini;
+    }
   });
 });
