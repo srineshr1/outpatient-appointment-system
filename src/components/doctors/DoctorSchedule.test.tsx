@@ -26,14 +26,47 @@ function show(sessions: ConsultSession[] = [wave], visits: ScheduleVisit[] = [se
 }
 
 describe("DoctorSchedule", () => {
-  it("lists the selected session's appointments below the calendar, not in the editor", () => {
+  it("lists the selected session's appointments in their own pane, between the calendar and the editor", () => {
     show();
     const list = screen.getByRole("region", { name: /Appointments/ });
     const calendar = screen.getByRole("region", { name: "Weekly calendar" });
     const editor = screen.getByRole("complementary", { name: "Session editor" });
     expect(editor.contains(list)).toBe(false);
+    expect(calendar.contains(list)).toBe(false);
+    // Narrow screens stack in reading order: calendar, appointments, editor. Wide screens place them in three panes.
     expect(calendar.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(list.compareDocumentPosition(editor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(list).getByText("Asha")).toBeInTheDocument();
+    expect(within(list).getByText("3 booked · 0 open")).toBeInTheDocument();
+  });
+
+  it("keeps the idle states when no session is selected", () => {
+    show([], []);
+    expect(screen.getByText("No session selected")).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "Appointments" });
+    expect(within(list).getByText("Pick a session in the calendar to see its appointments.")).toBeInTheDocument();
+  });
+
+  it("shows open wave seats as numbered rows", () => {
+    show([wave], [seat(1, "Asha")]);
+    const seats = screen.getByRole("list", { name: "Open seats in wave 1" });
+    const rows = within(seats).getAllByRole("listitem");
+    expect(rows.map((row) => row.textContent)).toEqual(["2Seat 210:00 · open", "3Seat 310:00 · open"]);
+  });
+
+  it("has no weekly booked banner, and keeps the week navigator in the page heading", async () => {
+    const user = userEvent.setup();
+    show();
+    expect(screen.queryByText(/Booked this week/i)).toBeNull();
+    expect(screen.queryByRole("region", { name: "Week summary" })).toBeNull();
+    const calendar = screen.getByRole("region", { name: "Weekly calendar" });
+    const nav = screen.getByRole("navigation", { name: "Week" });
+    expect(calendar.contains(nav)).toBe(false);
+    expect(within(nav).getByText("This week")).toBeInTheDocument();
+    await user.click(within(nav).getByRole("button", { name: "Next week" }));
+    expect(within(nav).getByText("Next week")).toBeInTheDocument();
+    await user.click(within(nav).getByRole("button", { name: "Today" }));
+    expect(within(nav).getByText("This week")).toBeInTheDocument();
   });
 
   it("offers to notify the patient who no longer fits fewer places per wave", async () => {

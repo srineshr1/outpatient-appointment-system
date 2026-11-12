@@ -72,7 +72,7 @@ export default async function SessionsPage({
   return (
     <div>
       {removing && count > 0 ? (
-        <div className="mx-auto max-w-[1760px] px-4 pt-4 md:px-6 2xl:px-8">
+        <div className="px-4 pt-4 md:px-6 xl:px-7">
           <section aria-labelledby="remove-displace" role="alert" className="rounded-card bg-danger-soft px-5 py-4 text-callout text-ink">
             <h2 id="remove-displace" className="text-body font-semibold">
               {count === 1 ? "1 patient is" : `${count} patients are`} booked in {removing.label || "that session"}
@@ -103,7 +103,7 @@ export default async function SessionsPage({
         </div>
       ) : null}
       {!status.steps[0]!.done ? (
-        <div className="mx-auto max-w-[1760px] px-4 pt-4 md:px-6 2xl:px-8">
+        <div className="px-4 pt-4 md:px-6 xl:px-7">
           <Notice tone="info">
             Patients can’t see you yet.{" "}
             <Link href="/dashboard/profile" className="text-accent underline underline-offset-4">
@@ -127,7 +127,7 @@ export default async function SessionsPage({
         returnTo="/dashboard/sessions"
         notice={notice}
       />
-      <div className="mx-auto max-w-[1760px] px-4 md:px-6 2xl:px-8">
+      <div className="px-4 md:px-6 xl:px-7">
         <DisplacedPatients entries={displaced} />
       </div>
     </div>

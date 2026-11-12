@@ -115,7 +115,7 @@ describe("calendar scale", () => {
       `clamp(${HOUR_MIN_PX}px, calc((100dvh - ${SCHEDULE_CHROME_PX}px) / ${(CLINIC_END - CLINIC_START) / 60}), ${HOUR_MAX_PX}px)`,
     );
     expect(HOUR_MIN_PX).toBeGreaterThanOrEqual(BLOCK_MIN_PX);
-    expect(HOUR_MAX_PX).toBe(64);
+    expect(HOUR_MAX_PX).toBe(96);
   });
 
   it("places sessions in hour units, so cards line up with the hour rows at any height", () => {

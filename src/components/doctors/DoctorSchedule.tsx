@@ -165,36 +165,20 @@ export function DoctorSchedule({
     setHint(`A one-hour stream is ready at ${minutesLabel(start)}. Set when it ends, switch it to a wave, or rename it, then apply.`);
   }
 
-  const util = week.capacity ? Math.round((100 * week.booked) / week.capacity) : 0;
   const banner = saveState && !saveState.ok ? saveState.message : (hint ?? notice);
   const bannerWarn = Boolean((saveState && !saveState.ok) || hint);
 
   return (
     <div className="bg-[#F4F6F5] text-[#14201F]">
-      <div className="mx-auto flex max-w-[1760px] flex-col gap-4 px-4 py-5 md:px-6 2xl:px-8">
+      <div className="flex flex-col gap-3.5 px-4 py-4 md:px-6 xl:px-7 xl:pt-[18px] xl:pb-6">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-          <div>
-            <PageHeading className="text-[28px] leading-tight font-bold tracking-tight">Schedule</PageHeading>
-            <p className="mt-1 text-sm text-[#4F605C]">
+          <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
+            <PageHeading className="text-[26px] leading-tight font-bold tracking-tight">Schedule</PageHeading>
+            <p className="text-sm text-[#4F605C]">
               {doctorName} · Outpatient clinic · {todayTitle(today)}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <section
-              aria-label="Week summary"
-              className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-[#E3E8E6] bg-white px-4 py-2"
-            >
-              <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">Booked this week</span>
-              <span className="flex items-baseline gap-1.5">
-                <span className="text-xl leading-none font-bold tabular-nums">{week.booked}</span>
-                <span className="text-sm text-[#4F605C]">
-                  of {week.capacity} places · {util}%
-                </span>
-              </span>
-              <div className="hidden h-2 w-24 rounded-[3px] bg-[#E3E8E6] sm:block">
-                <div className="h-2 rounded-[3px] bg-[#14201F]" style={{ width: `${util}%` }} />
-              </div>
-            </section>
             {editHref ? (
               <Link
                 href={editHref}
@@ -203,6 +187,7 @@ export function DoctorSchedule({
                 Edit schedule
               </Link>
             ) : null}
+            <WeekNav monday={monday} weekOffset={weekOffset} onWeek={setWeekOffset} />
           </div>
         </header>
 
@@ -220,73 +205,111 @@ export function DoctorSchedule({
           </div>
         ) : null}
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="flex min-w-0 flex-col gap-4">
+        {/*
+          Three panes on a wide screen: appointments on the left, the week in the middle, the editor on
+          the right. The calendar sets the row height (its hours follow the viewport); the side panes
+          fill that height and scroll on their own. Narrower screens keep the calendar first, with the
+          appointments under it and the editor beside (xl) or below them.
+        */}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start min-[87.5rem]:grid-cols-[256px_minmax(0,1fr)_352px] min-[87.5rem]:items-stretch min-[100rem]:grid-cols-[284px_minmax(0,1fr)_384px]">
+          <div className="min-w-0 xl:col-start-1 xl:row-start-1 min-[87.5rem]:col-start-2">
             <Calendar
               week={week}
-              monday={monday}
-              weekOffset={weekOffset}
               nowMinutes={nowMinutes}
               selectedKey={edit?.key ?? null}
               onSelect={choose}
-              onWeek={setWeekOffset}
             />
-            {selected ? (
-              <Appointments
+          </div>
+          <div
+            className={`min-w-0 xl:col-start-1 xl:row-start-2 min-[87.5rem]:relative min-[87.5rem]:col-start-1 min-[87.5rem]:row-start-1 ${selected ? "" : "hidden min-[87.5rem]:block"}`}
+          >
+            <div className={paneScroll}>
+              {selected ? (
+                <Appointments
+                  selected={selected}
+                  today={today}
+                  returnTo={returnTo}
+                  openVisitId={openVisitId}
+                  setOpenVisitId={setOpenVisitId}
+                />
+              ) : (
+                <section aria-labelledby="schedule-appointments" className="rounded-[14px] border border-[#E3E8E6] bg-white p-4 min-[87.5rem]:h-full">
+                  <h2 id="schedule-appointments" className="text-base font-bold">
+                    Appointments
+                  </h2>
+                  <p className="mt-1 text-[13px] leading-normal text-[#4F605C]">Pick a session in the calendar to see its appointments.</p>
+                </section>
+              )}
+            </div>
+          </div>
+          <div className="min-w-0 xl:col-start-2 xl:row-span-2 xl:row-start-1 min-[87.5rem]:relative min-[87.5rem]:col-start-3 min-[87.5rem]:row-span-1">
+            <div className={paneScroll}>
+              <Editor
+                editable={editable}
+                edit={edit}
+                setEdit={updateEdit}
                 selected={selected}
+                base={base}
+                sessions={sessions}
+                visits={visits}
+                trims={trims}
+                room={room}
+                doctorId={doctorId}
                 today={today}
+                past={past}
                 returnTo={returnTo}
+                confirmDelete={confirmDelete}
+                setConfirmDelete={setConfirmDelete}
                 openVisitId={openVisitId}
                 setOpenVisitId={setOpenVisitId}
+                onAdd={addNew}
+                onHint={setHint}
+                nowMinutes={nowMinutes}
+                saveAction={saveAction}
+                saveState={saveState}
               />
-            ) : null}
+            </div>
           </div>
-          <Editor
-            editable={editable}
-            edit={edit}
-            setEdit={updateEdit}
-            selected={selected}
-            base={base}
-            sessions={sessions}
-            visits={visits}
-            trims={trims}
-            room={room}
-            doctorId={doctorId}
-            today={today}
-            past={past}
-            returnTo={returnTo}
-            confirmDelete={confirmDelete}
-            setConfirmDelete={setConfirmDelete}
-            openVisitId={openVisitId}
-            setOpenVisitId={setOpenVisitId}
-            onAdd={addNew}
-            onHint={setHint}
-            nowMinutes={nowMinutes}
-            saveAction={saveAction}
-            saveState={saveState}
-          />
         </div>
       </div>
     </div>
   );
 }
 
+/** A side pane on the three-pane layout: as tall as the calendar, scrolling inside when its content is taller. */
+const paneScroll =
+  "min-[87.5rem]:absolute min-[87.5rem]:inset-0 min-[87.5rem]:overflow-y-auto min-[87.5rem]:overscroll-contain min-[87.5rem]:rounded-[14px] min-[87.5rem]:[scrollbar-width:thin]";
+
+function WeekNav({ monday, weekOffset, onWeek }: { monday: string; weekOffset: number; onWeek: (offset: number) => void }) {
+  return (
+    <nav aria-label="Week" className="flex flex-wrap items-center gap-2">
+      <button type="button" aria-label="Previous week" onClick={() => onWeek(weekOffset - 1)} className={iconButton}>
+        <Chevron direction="left" />
+      </button>
+      <button type="button" aria-label="Next week" onClick={() => onWeek(weekOffset + 1)} className={iconButton}>
+        <Chevron direction="right" />
+      </button>
+      <button type="button" onClick={() => onWeek(0)} className={`${textButton} px-4`}>
+        Today
+      </button>
+      <div className="ml-1 flex flex-col">
+        <span className="text-base font-bold tabular-nums">{weekTitle(monday)}</span>
+        <span className="text-xs text-[#4F605C]">{weekTag(weekOffset)}</span>
+      </div>
+    </nav>
+  );
+}
+
 function Calendar({
   week,
-  monday,
-  weekOffset,
   nowMinutes,
   selectedKey,
   onSelect,
-  onWeek,
 }: {
   week: ReturnType<typeof buildWeek>;
-  monday: string;
-  weekOffset: number;
   nowMinutes: number;
   selectedKey: string | null;
   onSelect: (item: DaySession) => void;
-  onWeek: (offset: number) => void;
 }) {
   const hours = [];
   for (let hour = 8; hour < 18; hour += 1) hours.push(minutesLabel(hour * 60));
@@ -300,23 +323,8 @@ function Calendar({
       className="w-full min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white"
       style={scale}
     >
-      <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-        <button type="button" aria-label="Previous week" onClick={() => onWeek(weekOffset - 1)} className={iconButton}>
-          <Chevron direction="left" />
-        </button>
-        <button type="button" aria-label="Next week" onClick={() => onWeek(weekOffset + 1)} className={iconButton}>
-          <Chevron direction="right" />
-        </button>
-        <button type="button" onClick={() => onWeek(0)} className={`${textButton} px-4`}>
-          Today
-        </button>
-        <div className="ml-1 flex flex-col">
-          <span className="text-base font-bold">{weekTitle(monday)}</span>
-          <span className="text-xs text-[#4F605C]">{weekTag(weekOffset)}</span>
-        </div>
-      </div>
-      <div className="overflow-x-auto border-t border-[#E3E8E6]">
-        <div className="min-w-[760px]">
+      <div className="overflow-x-auto">
+        <div className="min-w-[600px]">
           <div className="grid grid-cols-[52px_repeat(6,minmax(0,1fr))]">
             <div className="border-b border-[#E3E8E6]" />
             {week.days.map((day) => (
@@ -605,7 +613,7 @@ function Editor(props: {
 
   return (
     <aside aria-label="Session editor" className="min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
-      <div className="border-b border-[#E3E8E6] p-4">
+      <div className="border-b border-[#E3E8E6] p-4 min-[87.5rem]:py-3">
         <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">Edit session</span>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <input
@@ -693,7 +701,7 @@ function Editor(props: {
 
       <form id="schedule-save" action={props.saveAction} className="contents">
         <SessionFields edit={edit} base={base} room={props.room} />
-        <div className="border-b border-[#E3E8E6] p-4">
+        <div className="border-b border-[#E3E8E6] p-4 min-[87.5rem]:py-3">
           <div className="flex items-end gap-6">
             <Stat label="Booked" value={shownBooked} />
             <Stat label="Capacity" value={shownCapacity} />
@@ -707,7 +715,7 @@ function Editor(props: {
           </div>
 
           {editable ? (
-            <div className="mt-4 flex flex-col gap-4">
+            <div className="mt-4 flex flex-col gap-4 min-[87.5rem]:mt-3 min-[87.5rem]:gap-3">
               <div className="grid grid-cols-2 gap-3">
                 <TimeWheelPicker
                   label="Starts"
@@ -817,7 +825,7 @@ function Editor(props: {
         </div>
 
         {editable ? (
-          <div className="flex flex-col gap-3.5 border-b border-[#E3E8E6] p-4">
+          <div className="flex flex-col gap-3.5 border-b border-[#E3E8E6] p-4 min-[87.5rem]:py-3">
             <fieldset className="border-0 p-0">
               <legend className="text-sm font-semibold">{edit.mode === "wave" ? "Wave interval" : "Slot length"}</legend>
               <div className="mt-2 flex gap-1.5">
@@ -903,15 +911,20 @@ function Appointments({
       onClose={() => setOpenVisitId(null)}
     />
   );
+  const label = selected.session.label || "Session";
   return (
-    <section aria-labelledby="schedule-appointments" className="w-full rounded-[14px] border border-[#E3E8E6] bg-white">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 pb-2">
+    <section aria-labelledby="schedule-appointments" className="w-full rounded-[14px] border border-[#E3E8E6] bg-white min-[87.5rem]:min-h-full">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 pt-4 pb-3 min-[87.5rem]:flex-col">
         <h2 id="schedule-appointments" className="text-base font-bold">
           Appointments
-          <span className="ml-2 text-[13px] font-normal text-[#4F605C]">
-            {selected.session.label || "Session"} · {occurrenceLabel(selected.session, selected.date)}
+          <span className="sr-only">
+            {" "}
+            · {label} · {occurrenceLabel(selected.session, selected.date)}
           </span>
         </h2>
+        <p aria-hidden="true" className="text-[13px] text-[#4F605C] min-[87.5rem]:-mt-0.5">
+          {label} · {occurrenceLabel(selected.session, selected.date)}
+        </p>
         <span className="text-[13px] text-[#4F605C] tabular-nums">
           {selected.booked} booked · {open} open
         </span>
@@ -923,44 +936,48 @@ function Appointments({
               {selected.outside.length === 1 ? "1 visit sits" : `${selected.outside.length} visits sit`} outside these hours and{" "}
               {selected.outside.length === 1 ? "keeps its" : "keep their"} original time.
             </p>
-            <div className="grid gap-1.5 md:grid-cols-2">{selected.outside.map((visit) => row(visit, visit.time))}</div>
+            <div className={visitGrid}>{selected.outside.map((visit) => row(visit, visit.time))}</div>
           </div>
         ) : null}
-        {selected.blocks.map((block, index) => {
-          const taken = block.seats.filter((seat) => seat.visit);
-          const free = block.seats.filter((seat) => !seat.visit);
-          return (
-            <div key={block.time} className="flex flex-col gap-1.5">
-              {wave ? (
-                <div className="flex items-center justify-between px-0.5 pt-1 text-xs font-bold tracking-wide text-[#64300A] uppercase tabular-nums">
-                  <span>
-                    Wave {index + 1} · {block.time}
-                  </span>
-                  <span>
-                    {taken.length}/{block.places}
-                  </span>
+        {wave
+          ? selected.blocks.map((block, index) => {
+              const taken = block.seats.filter((seat) => seat.visit);
+              const free = block.seats.filter((seat) => !seat.visit);
+              return (
+                <div key={block.time} className="flex flex-col gap-2.5 rounded-[12px] border border-[#F0D9BE] bg-[#FFFAF3] p-3">
+                  <div className="flex items-center justify-between px-0.5 text-xs font-bold tracking-wide text-[#64300A] uppercase tabular-nums">
+                    <span>
+                      Wave {index + 1} · {block.time}
+                    </span>
+                    <span>
+                      {taken.length}/{block.places}
+                    </span>
+                  </div>
+                  {taken.length > 0 ? <div className={visitGrid}>{taken.map((seat) => row(seat.visit!, `Seat ${seat.seat}`))}</div> : null}
+                  {free.length > 0 ? (
+                    <ul aria-label={`Open seats in wave ${index + 1}`} className={visitGrid}>
+                      {free.map((seat) => (
+                        <li key={`${block.time}-${seat.seat}`} className={openRow}>
+                          <span aria-hidden="true" className={seatNumber} style={{ borderColor: WAVE.bd, color: WAVE.fg }}>
+                            {seat.seat}
+                          </span>
+                          <span className="flex flex-col leading-snug">
+                            <span className="text-[13.5px] font-semibold text-[#14201F]">Seat {seat.seat}</span>
+                            <span className="text-xs text-[#4F605C] tabular-nums">{block.time} · open</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
-              ) : null}
-              {taken.length > 0 ? (
-                <div className="grid gap-1.5 md:grid-cols-2">
-                  {taken.map((seat) => row(seat.visit!, wave ? `Seat ${seat.seat}` : block.time))}
-                </div>
-              ) : null}
-              {free.length > 0 && wave ? (
-                <ul aria-label={`Open seats in wave ${index + 1}`} className="flex flex-wrap gap-1.5">
-                  {free.map((seat) => (
-                    <li
-                      key={`${block.time}-${seat.seat}`}
-                      className="inline-flex min-h-8 items-center rounded-full border border-dashed border-[#9AA8A4] px-2.5 text-xs text-[#4F605C] tabular-nums"
-                    >
-                      Seat {seat.seat} · open
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          );
-        })}
+              );
+            })
+          : null}
+        {!wave && selected.blocks.some((block) => block.seats.some((seat) => seat.visit)) ? (
+          <div className={visitGrid}>
+            {selected.blocks.flatMap((block) => block.seats.filter((seat) => seat.visit).map((seat) => row(seat.visit!, block.time)))}
+          </div>
+        ) : null}
         {!wave && selected.blocks.some((block) => block.seats.some((seat) => !seat.visit)) ? (
           <div className="flex flex-col gap-1.5">
             <span className="px-0.5 text-xs font-bold tracking-wide text-[#4F605C] uppercase">Open slots</span>
@@ -985,6 +1002,13 @@ function Appointments({
     </section>
   );
 }
+
+/** Visits and open seats: one column in the narrow left pane, more where the list sits under the calendar. */
+const visitGrid = "grid gap-2 sm:grid-cols-2 xl:grid-cols-3 min-[87.5rem]:grid-cols-1";
+const openRow =
+  "flex min-h-[60px] items-center gap-3 rounded-[12px] border border-dashed border-[#9AA8A4] bg-white px-3.5 py-2";
+const seatNumber =
+  "inline-flex size-[30px] shrink-0 items-center justify-center rounded-full border-[1.5px] bg-white text-[13px] font-bold tabular-nums";
 
 function VisitRow({
   visit,
@@ -1119,30 +1143,42 @@ function RepeatFields({
   undated: boolean;
 }) {
   const id = `repeat-${edit.key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+  const recurringBox = (
+    <label
+      htmlFor={`${id}-on`}
+      className={`inline-flex min-h-11 items-center gap-2.5 font-semibold ${edit.recurring ? "text-sm" : "text-[13px] min-[87.5rem]:min-h-8"}`}
+    >
+      <input
+        id={`${id}-on`}
+        type="checkbox"
+        checked={edit.recurring}
+        disabled={disabled}
+        onChange={(event) => {
+          const recurring = event.target.checked;
+          setEdit({
+            ...edit,
+            recurring,
+            weekdays: edit.weekdays.length > 0 ? edit.weekdays : [weekdayIndex(edit.date || today)],
+            startDate: edit.startDate || edit.date || today,
+          });
+        }}
+        className={edit.recurring ? "size-5 accent-[#14201F]" : "size-[18px] accent-[#14201F]"}
+      />
+      Recurring every week
+    </label>
+  );
   return (
-    <div className="mt-3 flex flex-col gap-2.5">
-      <label htmlFor={`${id}-on`} className="inline-flex min-h-11 items-center gap-2.5 text-sm font-semibold">
-        <input
-          id={`${id}-on`}
-          type="checkbox"
-          checked={edit.recurring}
-          disabled={disabled}
-          onChange={(event) => {
-            const recurring = event.target.checked;
-            setEdit({
-              ...edit,
-              recurring,
-              weekdays: edit.weekdays.length > 0 ? edit.weekdays : [weekdayIndex(edit.date || today)],
-              startDate: edit.startDate || edit.date || today,
-            });
-          }}
-          className="size-5 accent-[#14201F]"
-        />
-        Recurring every week
-      </label>
+    <div className={`flex flex-col gap-2.5 ${edit.recurring ? "mt-3" : "mt-1.5"}`}>
+      {edit.recurring ? recurringBox : null}
       {!edit.recurring ? (
-        <label htmlFor={`${id}-date`} className="flex flex-col gap-1 text-[13px] font-semibold">
-          Date
+        // A one-off: the weekly switch shares the Date label's line, so the editor stays short.
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center justify-between gap-x-3">
+            <label htmlFor={`${id}-date`} className="text-[13px] font-semibold">
+              Date
+            </label>
+            {recurringBox}
+          </div>
           <input
             id={`${id}-date`}
             type="date"
@@ -1158,7 +1194,7 @@ function RepeatFields({
             }}
             className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-2 text-sm font-normal text-[#14201F] tabular-nums"
           />
-        </label>
+        </div>
       ) : null}
       {edit.recurring ? (
         <>

@@ -16,13 +16,14 @@ export const CLINIC_END = 18 * 60;
 
 /**
  * Hour row height on the week calendar. Rows share the viewport height that is left after the site
- * header, the page heading and the calendar's own toolbar and day headings (SCHEDULE_CHROME_PX), so
- * the whole clinic day fits on a laptop screen without scrolling the grid. Clamped so rows never
- * get too short to read a session card, or taller than the old fixed 64px.
+ * header, the one-line page heading (title and week navigator) and the calendar's day headings
+ * (SCHEDULE_CHROME_PX), so the whole clinic day fills the screen between the appointments and the
+ * editor without scrolling. Clamped so rows never get too short to read a session card, and stop
+ * growing on very tall screens.
  */
 export const HOUR_MIN_PX = 44;
-export const HOUR_MAX_PX = 64;
-export const SCHEDULE_CHROME_PX = 320;
+export const HOUR_MAX_PX = 96;
+export const SCHEDULE_CHROME_PX = 228;
 /** Shortest a session card is drawn, so its heading row and slot dots stay readable. */
 export const BLOCK_MIN_PX = 38;
 /** CSS custom property that holds the hour height, set once on the calendar. */
