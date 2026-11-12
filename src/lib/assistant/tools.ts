@@ -19,10 +19,13 @@ import {
   workingHours,
 } from "./read";
 import type { PendingCard } from "./confirm-token";
+import { SLOT_TOOLS, slotLinksFrom, type SlotLink } from "./slot-links";
 
 export interface ToolResult {
   forModel: unknown;
   pending?: PendingCard;
+  /** Open times in the result, for the dock to show as links. Never sent to the model. */
+  slots?: SlotLink[];
 }
 
 interface ToolSpec {
@@ -87,6 +90,13 @@ function flag(args: unknown, key: string): boolean {
 }
 
 export async function runTool(user: PublicUser, name: string, args: unknown): Promise<ToolResult> {
+  const result = await dispatchTool(user, name, args);
+  if (!SLOT_TOOLS.has(name)) return result;
+  const slots = slotLinksFrom(user, result.forModel);
+  return slots.length ? { ...result, slots } : result;
+}
+
+async function dispatchTool(user: PublicUser, name: string, args: unknown): Promise<ToolResult> {
   const allowed = new Set(toolSpecs(user).map((tool) => tool.name));
   if (!allowed.has(name)) return { forModel: { error: "That action isn't available to this account." } };
 

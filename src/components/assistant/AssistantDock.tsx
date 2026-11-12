@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
+import type { SlotLink } from "@/lib/assistant/slot-links";
+import { addDays, todayIso } from "@/lib/clock";
+import { formatShortDate } from "@/lib/format";
 import { buttonClass } from "@/components/ui/button-styles";
 
 interface PendingCard {
@@ -18,12 +22,14 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   payUrl?: string;
+  slots?: SlotLink[];
 }
 
 interface TurnResponse {
   reply?: string;
   pending?: PendingCard | null;
   payUrl?: string;
+  slots?: SlotLink[];
   message?: string;
 }
 
@@ -39,6 +45,58 @@ function expiryLabel(iso: string): string {
 }
 
 type DockUser = Pick<PublicUser, "name" | "role">;
+
+function dayLabel(date: string, today: string): string {
+  const short = formatShortDate(date);
+  if (date === today) return `Today, ${short}`;
+  if (date === addDays(today, 1)) return `Tomorrow, ${short}`;
+  return short;
+}
+
+/** Open times grouped by doctor and day. For patients each time opens its booking form. */
+export function SlotList({ slots, onPick }: { slots: readonly SlotLink[]; onPick?: () => void }) {
+  const today = todayIso();
+  const groups: { key: string; doctor: string; date: string; slots: SlotLink[] }[] = [];
+  for (const slot of slots) {
+    const key = `${slot.doctorId}|${slot.date}`;
+    const group = groups.find((item) => item.key === key);
+    if (group) group.slots.push(slot);
+    else groups.push({ key, doctor: slot.doctor, date: slot.date, slots: [slot] });
+  }
+  const manyDoctors = new Set(slots.map((slot) => slot.doctorId)).size > 1;
+  const bookable = slots.some((slot) => slot.href);
+  return (
+    <div className="mt-2 space-y-3 rounded-2xl border border-hairline bg-canvas p-3">
+      {groups.map((group) => {
+        const label = `${manyDoctors ? `${group.doctor} · ` : ""}${dayLabel(group.date, today)}`;
+        return (
+          <div key={group.key}>
+            <p className="text-caption font-semibold text-ink-2">{label}</p>
+            <ul aria-label={`Open times, ${group.doctor}, ${dayLabel(group.date, today)}`} className="mt-1.5 flex flex-wrap gap-1.5">
+              {group.slots.map((slot) => (
+                <li key={slot.id}>
+                  {slot.href ? (
+                    <Link
+                      href={slot.href}
+                      onClick={onPick}
+                      aria-label={`Book ${slot.doctor}, ${dayLabel(slot.date, today)} at ${slot.time}`}
+                      className="tabular inline-flex h-8 items-center rounded-full border border-accent px-3 text-callout font-medium text-accent hover:bg-accent hover:text-white focus-visible:bg-accent focus-visible:text-white"
+                    >
+                      {slot.time}
+                    </Link>
+                  ) : (
+                    <span className="tabular inline-flex h-8 items-center rounded-full bg-fill px-3 text-callout text-ink">{slot.time}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+      {bookable ? <p className="text-caption text-muted">Tap a time to open its booking form. Nothing is booked until you confirm there.</p> : null}
+    </div>
+  );
+}
 
 interface SpeechRec {
   continuous: boolean;
@@ -606,7 +664,15 @@ export function AssistantDock({ user }: { user: DockUser }) {
       const data = (await response.json()) as TurnResponse;
       if (!response.ok) throw new Error(data.message || "The assistant couldn't answer.");
       const reply = data.reply?.trim() || "I couldn't put that into words. Please ask again.";
-      const next = [...history, { role: "assistant" as const, content: reply, ...(data.payUrl ? { payUrl: data.payUrl } : {}) }];
+      const next = [
+        ...history,
+        {
+          role: "assistant" as const,
+          content: reply,
+          ...(data.payUrl ? { payUrl: data.payUrl } : {}),
+          ...(Array.isArray(data.slots) && data.slots.length ? { slots: data.slots } : {}),
+        },
+      ];
       messagesRef.current = next;
       setMessages(next);
       setPending(data.pending ?? null);
@@ -772,6 +838,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 {message.payUrl ? (
                   <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
                 ) : null}
+                {message.slots?.length ? <SlotList slots={message.slots} onPick={() => setOpen(false)} /> : null}
               </div>
             ))}
             {waiting ? <p className="text-callout text-muted">Checking the book…</p> : null}

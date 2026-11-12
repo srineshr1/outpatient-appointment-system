@@ -3,6 +3,7 @@ import { confirmPending, rejectPending, restoreCard } from "./act";
 import type { PendingCard } from "./confirm-token";
 import { askClinic } from "./grok";
 import { interpretReply } from "./intent";
+import type { SlotLink } from "./slot-links";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -13,6 +14,8 @@ export interface TurnResult {
   reply: string;
   pending: PendingCard | null;
   payUrl?: string;
+  /** Open times to show under the reply, grouped by day in the dock. */
+  slots?: SlotLink[];
 }
 
 const hits = new Map<string, number[]>();
@@ -65,5 +68,5 @@ export async function handleTurn(user: PublicUser, messages: ChatMessage[], pend
 
   const asked = await askClinic(user, messages);
   const pending = asked.pending ?? (pendingToken ? await restoreCard(user, pendingToken) : null);
-  return { reply: asked.reply, pending };
+  return { reply: asked.reply, pending, ...(asked.slots.length ? { slots: asked.slots } : {}) };
 }

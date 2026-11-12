@@ -14,7 +14,7 @@ import { Card, Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { Switch } from "@/components/ui/Switch";
 import { mondayOf } from "@/lib/clock";
-import { practice, reasons, type Doctor } from "@/lib/data";
+import { practice, reasons, type Doctor, type Slot } from "@/lib/data";
 import { feeFor, formatMoney } from "@/lib/fees";
 import { ageLabel, formatWhen } from "@/lib/format";
 import { spring } from "@/lib/motion";
@@ -39,8 +39,11 @@ export function DetailsView({
   doctors,
   account,
   onlinePayments = false,
+  linkedSlot = null,
 }: {
   doctors: Doctor[];
+  /** A time opened from a link (/book/details?slot=), checked open on the server. It replaces any held time. */
+  linkedSlot?: Slot | null;
   account: BookingAccount;
   /** True when the payment provider is set up. Otherwise the fee is paid at the desk. */
   onlinePayments?: boolean;
@@ -56,17 +59,32 @@ export function DetailsView({
   const [payOnline, setPayOnline] = useState(true);
   const leaving = useRef(false);
   const prefilled = useRef(false);
+  const linkHandled = useRef(false);
 
   const { held, form } = state;
+  // Until the linked time is held, don't treat "nothing held" as a fresh tab.
+  const linking = Boolean(linkedSlot) && !linkHandled.current && held?.id !== linkedSlot?.id;
   const doctor = held ? (doctors.find((item) => item.id === held.doctorId) ?? null) : null;
   const reason = reasons.find((item) => item.id === form.reasonId) ?? null;
   const fee = reason ? feeFor(reason.id, doctor?.feePence) : 0;
   const backHref = held ? `/doctors/${held.doctorId}?week=${mondayOf(held.date)}` : "/book";
 
+  // Hold the linked time, the same hold as choosing it on the doctor's week, then tidy the URL.
+  useEffect(() => {
+    if (!ready || !linkedSlot || linkHandled.current) return;
+    linkHandled.current = true;
+    if (held?.id !== linkedSlot.id) dispatch({ type: "hold", slot: linkedSlot });
+    const url = new URL(globalThis.location.href);
+    if (url.searchParams.has("slot")) {
+      url.searchParams.delete("slot");
+      globalThis.history.replaceState(globalThis.history.state, "", url);
+    }
+  }, [ready, linkedSlot, held, dispatch]);
+
   // Nothing held (fresh tab, or the booking just finished): start from the directory.
   useEffect(() => {
-    if (ready && (!held || !doctor) && !leaving.current) router.replace("/book");
-  }, [ready, held, doctor, router]);
+    if (ready && !linking && (!held || !doctor) && !leaving.current) router.replace("/book");
+  }, [ready, linking, held, doctor, router]);
 
   useEffect(() => {
     if (!ready || prefilled.current) return;

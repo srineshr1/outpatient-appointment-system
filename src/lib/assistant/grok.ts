@@ -7,7 +7,19 @@ import { practice } from "../data";
 import { weekdayLong } from "../format";
 import { todayIso, now } from "../clock";
 import type { PendingCard } from "./confirm-token";
+import { mergeSlotLinks, type SlotLink } from "./slot-links";
 import { runTool, toolSpecs, type ToolResult } from "./tools";
+
+export interface ClinicAnswer {
+  reply: string;
+  pending: PendingCard | null;
+  /** Open times the tools returned this turn. Dropped when a change is waiting for confirmation. */
+  slots: SlotLink[];
+}
+
+function answer(reply: string, pending: PendingCard | null, slots: SlotLink[]): ClinicAnswer {
+  return { reply, pending, slots: pending ? [] : slots };
+}
 
 const ENDPOINT = "https://api.x.ai/v1/responses";
 const MAX_STEPS = 4;
@@ -31,6 +43,9 @@ function systemPrompt(user: PublicUser): string {
     "Prescriptions are not stored. Leave is not stored: a day with no consulting session is a day out of clinic.",
     "Do not reveal dates of birth, phone numbers, CHI numbers, or another person's visits. A doctor may use the patient names the tools return for their own book.",
     "Do not read out slot ids or confirmation tokens.",
+    user.role === "patient"
+      ? "When a tool returns open times, the app lists them under your reply, grouped by day, and each time opens the booking form for it. Do not list the times yourself. Say in one short sentence which doctor and days have times and that the user can tap a time to book it, or ask you to prepare the booking."
+      : "When a tool returns open times, the app lists them under your reply, grouped by day. Do not list the times yourself. Summarise in one short sentence, for example how many are open and on which days.",
     "Reply in the same language as the user's latest message. Hindi in Devanagari, Hinglish in Latin script, English in English. Do not ask which language they want.",
     "Be brief.",
   ].join(" ");
@@ -171,7 +186,7 @@ async function completeGemini(input: unknown[], tools: ReturnType<typeof toolSpe
 async function askGemini(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
-): Promise<{ reply: string; pending: PendingCard | null }> {
+): Promise<ClinicAnswer> {
   const tools = toolSpecs(user);
   const system = systemPrompt(user);
   let input: unknown[] = history.map((message) =>
@@ -180,13 +195,14 @@ async function askGemini(
       : { type: "model_output", content: [{ type: "text", text: message.content }] },
   );
   let pending: PendingCard | null = null;
+  let slots: SlotLink[] = [];
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const body = await completeGemini(input, tools, system);
     const steps = body.steps ?? [];
     const calls = geminiCalls(steps);
     if (calls.length === 0) {
-      return { reply: geminiText(body) || "I couldn't put that into words. Please ask again.", pending };
+      return answer(geminiText(body) || "I couldn't put that into words. Please ask again.", pending, slots);
     }
     input = [...input, ...steps];
     for (const call of calls) {
@@ -208,6 +224,7 @@ async function askGemini(
         result = { forModel: { error: "That couldn't be read from the clinic book. Please try again." } };
       }
       let forModel = result.forModel;
+      if (result.slots?.length) slots = mergeSlotLinks(slots, result.slots);
       if (result.pending) {
         if (!pending) pending = result.pending;
         else forModel = { error: "Only one change can wait for confirmation at a time. Ask the user about the first one." };
@@ -220,13 +237,13 @@ async function askGemini(
       });
     }
   }
-  return { reply: "I couldn't finish that in a few steps. Please ask for one thing at a time.", pending };
+  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", pending, slots);
 }
 
 export async function askClinic(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
-): Promise<{ reply: string; pending: PendingCard | null }> {
+): Promise<ClinicAnswer> {
   if (!assistantConfigured()) {
     throw new Error("The assistant is not configured. Set GEMINI_API_KEY or XAI_API_KEY on the server.");
   }
@@ -234,12 +251,13 @@ export async function askClinic(
   const tools = toolSpecs(user);
   let input: unknown[] = [{ role: "system", content: systemPrompt(user) }, ...history];
   let pending: PendingCard | null = null;
+  let slots: SlotLink[] = [];
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const body = await complete(input, tools);
     const calls = callsOf(body.output ?? []);
     if (calls.length === 0) {
-      return { reply: textOf(body) || "I couldn't put that into words. Please ask again.", pending };
+      return answer(textOf(body) || "I couldn't put that into words. Please ask again.", pending, slots);
     }
     input = [...input, ...(body.output ?? [])];
     for (const call of calls) {
@@ -261,6 +279,7 @@ export async function askClinic(
         result = { forModel: { error: "That couldn't be read from the clinic book. Please try again." } };
       }
       let forModel = result.forModel;
+      if (result.slots?.length) slots = mergeSlotLinks(slots, result.slots);
       if (result.pending) {
         if (!pending) pending = result.pending;
         else forModel = { error: "Only one change can wait for confirmation at a time. Ask the user about the first one." };
@@ -268,5 +287,5 @@ export async function askClinic(
       input.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(forModel).slice(0, 12_000) });
     }
   }
-  return { reply: "I couldn't finish that in a few steps. Please ask for one thing at a time.", pending };
+  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", pending, slots);
 }
