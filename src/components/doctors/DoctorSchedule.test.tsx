@@ -165,7 +165,8 @@ describe("growing a wave into the start of a stream", () => {
 
   it("previews the later stream start and who moves, and asks to confirm", () => {
     show([morning, afternoon], [srinesh]);
-    fireEvent.change(screen.getByRole("slider", { name: "Session end time" }), { target: { value: String(12 * 60 + 40) } });
+    spinMinutes("Session end time", 8); // 12:00 → 12:40 in 5-minute steps
+    expect(screen.getByRole("spinbutton", { name: "Session end time, minutes" })).toHaveAttribute("aria-valuetext", "Ends at 12:40");
     expect(screen.getByText("Stream will start at 12:40; 1 patient will be moved")).toBeInTheDocument();
     expect(screen.getByText("Srinesh · 12:00 → 12:40")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply change" })).toBeDisabled();
@@ -177,10 +178,15 @@ describe("growing a wave into the start of a stream", () => {
     const short = { ...afternoon, endTime: "12:40" };
     const next = { ...srinesh, id: "v-n", slotId: `doc-${TODAY}-1220`, time: "12:20", endTime: "12:40", patientName: "Next" };
     show([morning, short], [srinesh, next]);
-    fireEvent.change(screen.getByRole("slider", { name: "Session end time" }), { target: { value: String(12 * 60 + 20) } });
+    spinMinutes("Session end time", 4); // 12:00 → 12:20
     expect(screen.getByText("That overlaps another session")).toBeInTheDocument();
     expect(screen.getByText(/only 0 free later slots/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Apply and move/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Apply change" })).toBeDisabled();
   });
 });
+
+function spinMinutes(name: string, steps: number) {
+  const drum = screen.getByRole("spinbutton", { name: `${name}, minutes` });
+  for (let i = 0; i < Math.abs(steps); i += 1) fireEvent.keyDown(drum, { key: steps > 0 ? "ArrowUp" : "ArrowDown" });
+}
