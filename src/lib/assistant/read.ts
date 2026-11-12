@@ -60,7 +60,7 @@ export function publicVisit(visit: AppointmentRecord, audience: "doctor" | "pati
 }
 
 function statusCounts(visits: readonly AppointmentRecord[]): Record<AppointmentStatus, number> & { total: number } {
-  const counts: Record<AppointmentStatus, number> = { booked: 0, completed: 0, cancelled: 0, pending_payment: 0, expired: 0 };
+  const counts: Record<AppointmentStatus, number> = { booked: 0, completed: 0, cancelled: 0, pending_payment: 0, expired: 0, displaced: 0 };
   for (const visit of visits) counts[visit.status] += 1;
   return { ...counts, total: visits.length };
 }
@@ -100,8 +100,9 @@ export async function doctorStats(user: PublicUser, fromInput?: string, toInput?
     cancelled: counts.cancelled,
     awaitingPayment: counts.pending_payment,
     expiredHolds: counts.expired,
+    displaced: counts.displaced,
     total: counts.total,
-    note: "Confirmed means a booked visit. Awaiting payment is a time held while the patient pays online.",
+    note: "Confirmed means a booked visit. Awaiting payment is a time held while the patient pays online. Displaced means the doctor removed those hours and the patient was offered other times.",
   };
 }
 
