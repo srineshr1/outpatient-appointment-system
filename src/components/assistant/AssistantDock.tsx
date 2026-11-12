@@ -453,6 +453,11 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 value={interim || draft}
                 readOnly={Boolean(interim)}
                 onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                  event.preventDefault();
+                  if (!waiting) void send(draft);
+                }}
                 placeholder={listening ? "Listening…" : "Ask about a visit"}
                 className="h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pr-12 pl-4 text-callout text-ink outline-none focus:border-accent"
               />
