@@ -7,6 +7,7 @@ import { Providers } from "@/components/providers/Providers";
 import { SiteFooter } from "@/components/shell/SiteFooter";
 import { SiteChrome } from "@/components/shell/SiteChrome";
 import { HeaderSkeleton } from "@/components/loading/HeaderSkeleton";
+import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { SiteHeader } from "@/components/shell/SiteHeader";
 import { getOps } from "@/lib/ops";
 import { now } from "@/lib/clock";
@@ -82,7 +83,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
 async function HeaderWithUser() {
   const user = await getCurrentUser();
-  return <SiteHeader user={user} unread={user ? await unreadFor(user.id) : 0} />;
+  const unread = user ? await unreadFor(user.id) : 0;
+  return (
+    <>
+      <SiteHeader user={user} unread={unread} />
+      {user && (user.role === "patient" || user.role === "doctor") ? <AssistantDock user={user} /> : null}
+    </>
+  );
 }
 
 /** The number on the bell. A failed read shows no number rather than breaking the page. */

@@ -49,7 +49,7 @@ export function navLinks(user: LinkUser | null): NavLink[] {
   if (keepsOwnBook(user)) {
     return [
       { href: "/dashboard", label: "Clinic book" },
-      { href: "/dashboard/sessions", label: "Sessions" },
+      { href: "/dashboard/sessions", label: "Schedule" },
       { href: "/dashboard/profile", label: "Profile" },
     ];
   }
@@ -69,7 +69,7 @@ function accountLinks(user: LinkUser): NavLink[] {
   return keepsOwnBook(user)
     ? [
         { href: "/dashboard", label: "Clinic book" },
-        { href: "/dashboard/sessions", label: "Consulting sessions" },
+        { href: "/dashboard/sessions", label: "Schedule" },
         { href: "/dashboard/profile", label: "Your profile" },
       ]
     : [{ href: "/dashboard", label: "Clinic book" }];

@@ -81,11 +81,13 @@ describe("doctor confirms displacing booked visits", () => {
     expect((await state.store!.getAppointment("v"))?.status).toBe("booked");
   });
 
-  it("still refuses structural changes on a booked session even when confirmed", async () => {
+  it("moves a visit that no longer fits a confirmed structural change (another slot length)", async () => {
     expect(await state.store!.createAppointment(visit())).toBe("ok");
-    expect(await saveSession(null, form({ slotMinutes: "15", displace: "confirm", displaceCount: "1" }))).toMatchObject({ ok: false });
+    expect(await saveSession(null, form({ slotMinutes: "15" }))).toMatchObject({ ok: false, displace: { count: 1 } });
     expect((await state.store!.getConsultSession(session.id))?.slotMinutes).toBe(30);
-    expect((await state.store!.getAppointment("v"))?.status).toBe("booked");
+    await expect(saveSession(null, form({ slotMinutes: "15", displace: "confirm", displaceCount: "1" }))).rejects.toThrow(/displaced=1/);
+    expect((await state.store!.getConsultSession(session.id))?.slotMinutes).toBe(15);
+    expect((await state.store!.getAppointment("v"))?.status).toBe("displaced");
   });
 
   it("asks before removing a booked session, then displaces every upcoming visit on confirm", async () => {

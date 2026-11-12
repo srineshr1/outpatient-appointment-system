@@ -1,5 +1,5 @@
 import { now, todayIso } from "./clock";
-import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, type Reservation } from "./elastic-scheduling";
+import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, stillFits, type Reservation } from "./elastic-scheduling";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -28,6 +28,7 @@ import {
   type SessionMode,
   type SessionRecord,
   type SessionTrim,
+  type ShiftMove,
   type StoredUser,
   type UserAccount,
   type UserPatch,
@@ -1126,14 +1127,16 @@ export class SqliteClinicStore implements ClinicStore {
       );
   }
 
-  /** Inside an open transaction: refuse a structural change while reservations remain, then write. */
+  /** Inside an open transaction: refuse a structural change that would strand a reservation, then write. */
   private writeSessionChecked(session: ConsultSession, trims: readonly SessionTrim[] | null): void {
     const row = this.db.prepare("SELECT * FROM consult_sessions WHERE id = ?").get(session.id) as ConsultSessionRow | undefined;
     if (row) {
       const old = toConsultSession(row);
       const visits = (this.db.prepare("SELECT * FROM appointments WHERE session_id = ?").all(session.id) as unknown as AppointmentRow[]).map(toAppointment);
-      if ((sessionStructureChanged(old, session) || old.archivedAt !== session.archivedAt) &&
-        visits.some(visit => occupiesTime(visit) && visit.date >= todayIso(now()))) {
+      const reserved = visits.filter(visit => occupiesTime(visit) && visit.date >= todayIso(now()));
+      // Removing needs no reservations left; a structural change needs every remaining one to still fit.
+      if ((old.archivedAt !== session.archivedAt && reserved.length > 0) ||
+        (sessionStructureChanged(old, session) && reserved.some(visit => !stillFits(visit, session)))) {
         throw new Error("Reserved sessions may change hours, name and room only.");
       }
     }
@@ -1188,6 +1191,42 @@ export class SqliteClinicStore implements ClinicStore {
     }
   }
 
+  /** Inside an open transaction: put a visit at `to` and write its history line. */
+  private writeMove(id: string, to: Placement, history: RescheduleRecord): void {
+    this.db
+      .prepare(
+        `UPDATE appointments SET slot_id = ?, date = ?, time = ?, end_time = ?, session_id = ?, token = ?, wave_capacity = ?
+         WHERE id = ?`,
+      )
+      .run(to.slotId, to.date, to.time, to.endTime, to.sessionId, to.token, to.waveCapacity, id);
+    this.db
+      .prepare(
+        `INSERT INTO reschedules (id, appointment_id, reference, doctor_id, patient_user_id, by_user_id, by_name, by_role,
+           from_slot_id, from_date, from_time, from_token, to_slot_id, to_date, to_time, to_token, reason, at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        history.id,
+        id,
+        history.reference,
+        history.doctorId,
+        history.patientUserId,
+        history.byUserId,
+        history.byName,
+        history.byRole,
+        history.fromSlotId,
+        history.fromDate,
+        history.fromTime,
+        history.fromToken,
+        history.toSlotId,
+        history.toDate,
+        history.toTime,
+        history.toToken,
+        history.reason,
+        history.at,
+      );
+  }
+
   async rescheduleAppointment(
     id: string,
     fromSlotId: string,
@@ -1212,38 +1251,7 @@ export class SqliteClinicStore implements ClinicStore {
         this.db.exec("ROLLBACK");
         return "taken";
       }
-      this.db
-        .prepare(
-          `UPDATE appointments SET slot_id = ?, date = ?, time = ?, end_time = ?, session_id = ?, token = ?, wave_capacity = ?
-           WHERE id = ?`,
-        )
-        .run(to.slotId, to.date, to.time, to.endTime, to.sessionId, to.token, to.waveCapacity, id);
-      this.db
-        .prepare(
-          `INSERT INTO reschedules (id, appointment_id, reference, doctor_id, patient_user_id, by_user_id, by_name, by_role,
-             from_slot_id, from_date, from_time, from_token, to_slot_id, to_date, to_time, to_token, reason, at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          history.id,
-          id,
-          history.reference,
-          history.doctorId,
-          history.patientUserId,
-          history.byUserId,
-          history.byName,
-          history.byRole,
-          history.fromSlotId,
-          history.fromDate,
-          history.fromTime,
-          history.fromToken,
-          history.toSlotId,
-          history.toDate,
-          history.toTime,
-          history.toToken,
-          history.reason,
-          history.at,
-        );
+      this.writeMove(id, to, history);
       this.db.exec("COMMIT");
       return "ok";
     } catch (error) {
@@ -1301,6 +1309,39 @@ export class SqliteClinicStore implements ClinicStore {
             .run(offer.id, item.appointmentId, session.doctorId, slot.slotId, slot.date, slot.time, slot.endTime,
               slot.sessionId, slot.token, slot.waveCapacity, position);
         }
+      }
+      this.db.exec("COMMIT");
+      return "ok";
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      if (/UNIQUE/i.test(error instanceof Error ? error.message : "")) return "taken";
+      throw error;
+    }
+  }
+
+  async saveSessionShifting(session: ConsultSession, trims: readonly SessionTrim[], moves: readonly ShiftMove[]): Promise<"ok" | "stale" | "taken"> {
+    this.db.exec("BEGIN IMMEDIATE");
+    const stop = (outcome: "stale" | "taken") => {
+      this.db.exec("ROLLBACK");
+      return outcome;
+    };
+    try {
+      this.writeSessionChecked(session, trims);
+      for (const move of moves) {
+        const current = this.db.prepare("SELECT status, slot_id, doctor_id FROM appointments WHERE id = ?").get(move.appointmentId) as
+          | { status: string; slot_id: string; doctor_id: string }
+          | undefined;
+        if (!current || current.status !== "booked" || current.slot_id !== move.fromSlotId || current.doctor_id !== session.doctorId) return stop("stale");
+        if (!this.safePlacement(session.doctorId, move.to, move.appointmentId) || this.slotHeld(move.to.slotId)) return stop("taken");
+        this.writeMove(move.appointmentId, move.to, move.history);
+      }
+      // Nothing that holds a place may be left inside a cut part.
+      for (const trim of trims) {
+        const reached = this.db
+          .prepare(`SELECT 1 AS hit FROM appointments WHERE session_id = ? AND date = ? AND status IN ('booked', 'pending_payment', 'completed')
+                    AND time < ? AND COALESCE(end_time, '23:59') > ?`)
+          .get(trim.sessionId, trim.date, trim.endTime, trim.startTime);
+        if (reached) return stop("stale");
       }
       this.db.exec("COMMIT");
       return "ok";
