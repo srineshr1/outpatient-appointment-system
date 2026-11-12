@@ -763,7 +763,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
 
   const intro =
     user.role === "doctor"
-      ? "Ask about today's book, your hours, or a clash. I prepare a cancellation or a move, and I wait for you to confirm before anything changes."
+      ? "Ask about today's book, your hours, or a clash. I prepare a cancellation, a move, or a new or changed session, and I wait for you to confirm before anything changes."
       : "Ask about your visits, a doctor, or a free time. I prepare a booking, a move, a cancellation or a payment, and I wait for you to confirm before anything changes.";
 
   const dockStyle: CSSProperties | undefined =
