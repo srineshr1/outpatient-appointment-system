@@ -47,17 +47,7 @@ export function parseMessages(input: unknown): ChatMessage[] | null {
   return messages;
 }
 
-export function parseLanguage(value: unknown): "en" | "hi" | "hinglish" {
-  if (value === "hi" || value === "hinglish") return value;
-  return "en";
-}
-
-export async function handleTurn(
-  user: PublicUser,
-  messages: ChatMessage[],
-  language: "en" | "hi" | "hinglish",
-  pendingToken: string | null,
-): Promise<TurnResult> {
+export async function handleTurn(user: PublicUser, messages: ChatMessage[], pendingToken: string | null): Promise<TurnResult> {
   const last = [...messages].reverse().find((message) => message.role === "user");
   if (!last) return { reply: "Ask me about a visit, a doctor, or a time.", pending: null };
 
@@ -73,7 +63,7 @@ export async function handleTurn(
     }
   }
 
-  const asked = await askClinic(user, messages, language);
+  const asked = await askClinic(user, messages);
   const pending = asked.pending ?? (pendingToken ? await restoreCard(user, pendingToken) : null);
   return { reply: asked.reply, pending };
 }

@@ -103,12 +103,12 @@ describe("assistant clinic actions", () => {
     expect(proposed.pending?.summary).toContain("Dr");
     expect(await store.listAppointments({ patientUserId: patient.id })).toHaveLength(before);
 
-    const refused = await handleTurn(patient, [{ role: "user", content: "no thanks" }], "en", proposed.pending!.token);
+    const refused = await handleTurn(patient, [{ role: "user", content: "no thanks" }], proposed.pending!.token);
     expect(refused.reply).toMatch(/have not booked/i);
     expect(await store.listAppointments({ patientUserId: patient.id })).toHaveLength(before);
 
     const again = await runTool(patient, "propose_book", { slotId: slot.id, reasonId: "follow", payOnline: false });
-    const booked = await handleTurn(patient, [{ role: "user", content: "yes" }], "en", again.pending!.token);
+    const booked = await handleTurn(patient, [{ role: "user", content: "yes" }], again.pending!.token);
     expect(booked.reply).toMatch(/Booked HSP-/);
     expect(booked.pending).toBeNull();
     const visits = await store.listAppointments({ patientUserId: patient.id });

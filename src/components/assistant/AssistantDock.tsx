@@ -5,8 +5,6 @@ import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
 import { buttonClass } from "@/components/ui/button-styles";
 
-type ReplyLanguage = "en" | "hi" | "hinglish";
-
 interface PendingCard {
   token: string;
   title: string;
@@ -28,7 +26,10 @@ interface TurnResponse {
   message?: string;
 }
 
-const REC_LANG: Record<ReplyLanguage, string> = { en: "en-IN", hi: "hi-IN", hinglish: "en-IN" };
+/** Devanagari means Hindi. Latin script covers English and Hinglish. */
+function localeFor(text: string): "hi-IN" | "en-IN" {
+  return /\p{Script=Devanagari}/u.test(text) ? "hi-IN" : "en-IN";
+}
 
 function expiryLabel(iso: string): string {
   const when = new Date(iso);
@@ -63,7 +64,6 @@ function recognitionCtor(): (new () => SpeechRec) | null {
 export function AssistantDock({ user }: { user: DockUser }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
-  const [language, setLanguage] = useState<ReplyLanguage>("en");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingCard | null>(null);
   const [draft, setDraft] = useState("");
@@ -88,11 +88,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const queuedRef = useRef<string | null>(null);
   const lastSpokenRef = useRef("");
   const ignoreUntilRef = useRef(0);
-  const languageRef = useRef<ReplyLanguage>("en");
+  const localeRef = useRef<"hi-IN" | "en-IN">(typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("hi") ? "hi-IN" : "en-IN");
   const pendingRef = useRef<PendingCard | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
 
-  useEffect(() => { languageRef.current = language; }, [language]);
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
@@ -140,7 +139,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
     const rec = new Ctor();
     rec.continuous = true;
     rec.interimResults = true;
-    rec.lang = REC_LANG[languageRef.current];
+    rec.lang = localeRef.current;
     rec.onresult = (event) => {
       if (!wantListenRef.current || speakingRef.current) return;
       let finalText = "";
@@ -153,6 +152,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setInterim(partial);
       const heard = finalText.trim();
       if (!heard) return;
+      localeRef.current = localeFor(heard);
       if (Date.now() < ignoreUntilRef.current || isEcho(heard, lastSpokenRef.current)) return;
       setInterim("");
       void send(heard);
@@ -237,13 +237,12 @@ export function AssistantDock({ user }: { user: DockUser }) {
       }
       speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").slice(0, 600));
-      utterance.lang = languageRef.current === "hi" ? "hi-IN" : "en-IN";
+      const locale = localeFor(text);
+      localeRef.current = locale;
+      utterance.lang = locale;
       const voices = speechSynthesis.getVoices();
-      const prefix = languageRef.current === "hi" ? "hi" : "en";
+      const prefix = locale === "hi-IN" ? "hi" : "en";
       utterance.voice = voices.find((voice) => voice.lang.toLowerCase().startsWith(prefix)) ?? null;
-      if (languageRef.current === "hi" && !utterance.voice) {
-        setVoiceNote("This device has no Hindi voice, so speech uses the default voice. The text is still Hindi.");
-      }
       lastSpokenRef.current = utterance.text;
       let settled = false;
       const finish = () => {
@@ -272,6 +271,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
+    localeRef.current = localeFor(trimmed);
     if (busyRef.current) {
       queuedRef.current = trimmed;
       return;
@@ -289,7 +289,6 @@ export function AssistantDock({ user }: { user: DockUser }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           messages: history.map(({ role, content }) => ({ role, content })),
-          replyLanguage: languageRef.current,
           pendingToken: pendingRef.current?.token ?? null,
         }),
       });
@@ -410,36 +409,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
               Close
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
-            <label className="text-caption text-ink-2" htmlFor={`${titleId}-lang`}>Language</label>
-            <select
-              id={`${titleId}-lang`}
-              className="min-h-11 rounded-full border border-hairline bg-canvas px-3 text-callout text-ink"
-              value={language}
-              onChange={(event) => {
-                const next = event.target.value as ReplyLanguage;
-                setLanguage(next);
-                languageRef.current = next;
-                if (voiceOnRef.current) {
-                  pauseListen();
-                  startListen();
-                }
-              }}
-            >
-              <option value="en">English</option>
-              <option value="hi">Hindi</option>
-              <option value="hinglish">Hinglish</option>
-            </select>
-            <button type="button" className={buttonClass(voiceOn ? "primary" : "secondary")} aria-pressed={voiceOn} onClick={toggleVoice}>
-              {voiceOn ? (listening ? "Listening" : "Voice on") : "Voice"}
-            </button>
-            {speaking ? (
-              <button type="button" className={buttonClass("secondary")} onClick={interrupt}>
-                Stop speaking
-              </button>
-            ) : null}
-          </div>
-          {voiceNote ? <p className="px-4 pt-2 text-caption text-warn">{voiceNote}</p> : null}
+          {voiceNote ? <p className="px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
           <div ref={scrollerRef} className="mt-2 flex-1 space-y-3 overflow-y-auto px-4 py-3" aria-live="polite">
             <p className="text-callout text-ink-2">{intro}</p>
             {messages.map((message, index) => (
@@ -468,24 +438,44 @@ export function AssistantDock({ user }: { user: DockUser }) {
             ) : null}
           </div>
           <form
-            className="flex items-end gap-2 border-t border-hairline p-3"
+            className="flex items-center gap-2 border-t border-hairline p-3"
             onSubmit={(event) => {
               event.preventDefault();
               void send(draft);
             }}
           >
             <label className="sr-only" htmlFor={`${titleId}-input`}>Message</label>
-            <textarea
-              id={`${titleId}-input`}
-              ref={inputRef}
-              rows={2}
-              value={interim || draft}
-              readOnly={Boolean(interim)}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={listening ? "Listening…" : "Ask about a visit"}
-              className="min-h-12 flex-1 resize-none rounded-2xl border border-hairline bg-canvas px-3 py-2 text-callout text-ink outline-none focus:border-accent"
-            />
-            <button type="submit" className={buttonClass("primary")} disabled={waiting || !draft.trim()}>
+            <div className="relative h-12 min-w-0 flex-1">
+              <textarea
+                id={`${titleId}-input`}
+                ref={inputRef}
+                rows={1}
+                value={interim || draft}
+                readOnly={Boolean(interim)}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={listening ? "Listening…" : "Ask about a visit"}
+                className="h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pr-12 pl-4 text-callout text-ink outline-none focus:border-accent"
+              />
+              <button
+                type="button"
+                aria-label={speaking ? "Stop speaking" : voiceOn ? "Stop voice" : "Speak"}
+                aria-pressed={voiceOn}
+                onClick={() => (speaking ? interrupt() : toggleVoice())}
+                className={`absolute top-1/2 right-1.5 grid size-8 -translate-y-1/2 place-items-center rounded-full ${
+                  voiceOn || speaking ? "bg-accent text-white" : "bg-fill text-ink hover:bg-fill-strong"
+                }`}
+              >
+                {speaking ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="2" fill="currentColor" /></svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                    <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                    <path d="M7 11a5 5 0 0 0 10 0M12 16v3M9 19h6" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            <button type="submit" className={`${buttonClass("primary")} h-12`} disabled={waiting || !draft.trim()}>
               Send
             </button>
           </form>

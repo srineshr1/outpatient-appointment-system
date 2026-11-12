@@ -21,14 +21,8 @@ export function assistantConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.XAI_API_KEY?.trim());
 }
 
-function systemPrompt(user: PublicUser, language: "en" | "hi" | "hinglish"): string {
+function systemPrompt(user: PublicUser): string {
   const today = todayIso(now());
-  const voice =
-    language === "hi"
-      ? "Reply in Hindi, using Devanagari."
-      : language === "hinglish"
-        ? "Reply in Hinglish: everyday Hindi mixed with English, in Latin script."
-        : "Reply in clear English.";
   return [
     `You are the clinic assistant for ${practice.name}. Today is ${weekdayLong(today)} ${today}, clinic time Asia/Kolkata.`,
     `The signed-in user is ${user.name}, a ${user.role}.`,
@@ -37,7 +31,7 @@ function systemPrompt(user: PublicUser, language: "en" | "hi" | "hinglish"): str
     "Prescriptions are not stored. Leave is not stored: a day with no consulting session is a day out of clinic.",
     "Do not reveal dates of birth, phone numbers, CHI numbers, or another person's visits. A doctor may use the patient names the tools return for their own book.",
     "Do not read out slot ids or confirmation tokens.",
-    voice,
+    "Reply in the same language as the user's latest message. Hindi in Devanagari, Hinglish in Latin script, English in English. Do not ask which language they want.",
     "Be brief.",
   ].join(" ");
 }
@@ -177,10 +171,9 @@ async function completeGemini(input: unknown[], tools: ReturnType<typeof toolSpe
 async function askGemini(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
-  language: "en" | "hi" | "hinglish",
 ): Promise<{ reply: string; pending: PendingCard | null }> {
   const tools = toolSpecs(user);
-  const system = systemPrompt(user, language);
+  const system = systemPrompt(user);
   let input: unknown[] = history.map((message) =>
     message.role === "user"
       ? { type: "user_input", content: [{ type: "text", text: message.content }] }
@@ -233,14 +226,13 @@ async function askGemini(
 export async function askClinic(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
-  language: "en" | "hi" | "hinglish",
 ): Promise<{ reply: string; pending: PendingCard | null }> {
   if (!assistantConfigured()) {
     throw new Error("The assistant is not configured. Set GEMINI_API_KEY or XAI_API_KEY on the server.");
   }
-  if (process.env.GEMINI_API_KEY?.trim()) return askGemini(user, history, language);
+  if (process.env.GEMINI_API_KEY?.trim()) return askGemini(user, history);
   const tools = toolSpecs(user);
-  let input: unknown[] = [{ role: "system", content: systemPrompt(user, language) }, ...history];
+  let input: unknown[] = [{ role: "system", content: systemPrompt(user) }, ...history];
   let pending: PendingCard | null = null;
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
