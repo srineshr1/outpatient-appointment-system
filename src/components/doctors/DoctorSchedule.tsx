@@ -24,6 +24,7 @@ import {
 } from "@/lib/sessions";
 import { archiveSession, saveSession } from "@/server/profile-actions";
 import { updateVisit } from "@/server/booking-actions";
+import { TimeWheelPicker } from "./TimeWheel";
 import {
   buildWeek,
   CLINIC_END,
@@ -685,8 +686,8 @@ function Editor(props: {
         </fieldset>
         <p className="mt-2.5 text-[13px] leading-normal text-[#4F605C]">
           {edit.mode === "wave"
-            ? "Several patients share a start time and are seen in token order. Drag Starts or Ends to lengthen or shorten the wave."
-            : "One patient per slot, evenly spaced. Drag Starts or Ends to add or remove slots."}
+            ? "Several patients share a start time and are seen in token order. Scroll the Starts or Ends time to lengthen or shorten the wave."
+            : "One patient per slot, evenly spaced. Scroll the Starts or Ends time to add or remove slots."}
         </p>
       </div>
 
@@ -707,30 +708,34 @@ function Editor(props: {
 
           {editable ? (
             <div className="mt-4 flex flex-col gap-4">
-              <Slider
-                label="Starts"
-                text={`Starts at ${minutesLabel(edit.startMin)}`}
-                value={edit.startMin}
-                min={grid.min}
-                max={Math.max(grid.min, edit.endMin - step)}
-                step={step}
-                disabled={past || edit.endMin - step <= grid.min}
-                note={startNote}
-                color={palette.dot}
-                onChange={(startMin) => props.setEdit({ ...edit, startMin: Math.min(startMin, edit.endMin - step) })}
-              />
-              <Slider
-                label="Ends"
-                text={`Ends at ${minutesLabel(edit.endMin)}`}
-                value={edit.endMin}
-                min={Math.min(grid.max, edit.startMin + step)}
-                max={grid.max}
-                step={step}
-                disabled={past || grid.max <= edit.startMin + step}
-                note={endNote}
-                color={palette.dot}
-                onChange={(endMin) => props.setEdit({ ...edit, endMin: Math.max(endMin, edit.startMin + step) })}
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <TimeWheelPicker
+                  label="Starts"
+                  ariaLabel="Session start time"
+                  valueText={`Starts at ${minutesLabel(edit.startMin)}`}
+                  value={edit.startMin}
+                  min={grid.min}
+                  max={Math.max(grid.min, edit.endMin - step)}
+                  step={step}
+                  disabled={past || edit.endMin - step <= grid.min}
+                  note={startNote}
+                  palette={palette}
+                  onChange={(startMin) => props.setEdit({ ...edit, startMin: Math.min(startMin, edit.endMin - step) })}
+                />
+                <TimeWheelPicker
+                  label="Ends"
+                  ariaLabel="Session end time"
+                  valueText={`Ends at ${minutesLabel(edit.endMin)}`}
+                  value={edit.endMin}
+                  min={Math.min(grid.max, edit.startMin + step)}
+                  max={grid.max}
+                  step={step}
+                  disabled={past || grid.max <= edit.startMin + step}
+                  note={endNote}
+                  palette={palette}
+                  onChange={(endMin) => props.setEdit({ ...edit, endMin: Math.max(endMin, edit.startMin + step) })}
+                />
+              </div>
               <div className="text-[13px] font-semibold tabular-nums">
                 {base
                   ? `${base.startTime}–${base.endTime} → ${minutesLabel(edit.startMin)}–${minutesLabel(edit.endMin)} · capacity ${oldPlaces} → ${newPlaces}${delta === 0 ? "" : ` (${delta > 0 ? "+" : "−"}${Math.abs(delta)})`}`
@@ -1241,57 +1246,6 @@ function SessionFields({ edit, base, room }: { edit: EditorState; base: ConsultS
       <input type="hidden" name="waveMinutes" value={edit.mode === "wave" && edit.waveMinutes ? edit.waveMinutes : ""} />
       <input type="hidden" name="waveCapacity" value={edit.mode === "wave" ? edit.waveCapacity : ""} />
     </>
-  );
-}
-
-function Slider({
-  label,
-  text,
-  value,
-  min,
-  max,
-  step,
-  disabled,
-  note,
-  color,
-  onChange,
-}: {
-  label: string;
-  text: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  disabled: boolean;
-  note: string;
-  color: string;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-sm font-semibold">{label}</span>
-        <span className="text-[22px] leading-none font-bold tabular-nums">{minutesLabel(value)}</span>
-      </div>
-      <input
-        type="range"
-        aria-label={label === "Starts" ? "Session start time" : "Session end time"}
-        aria-valuetext={text}
-        min={min}
-        max={max}
-        step={step}
-        value={Math.min(max, Math.max(min, value))}
-        disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="m-0 h-11 w-full"
-        style={{ accentColor: color }}
-      />
-      <div className="flex justify-between gap-2 text-xs text-[#4F605C] tabular-nums">
-        <span>{minutesLabel(min)}</span>
-        <span className="text-center font-semibold text-[#14201F]">{note}</span>
-        <span>{minutesLabel(max)}</span>
-      </div>
-    </div>
   );
 }
 
