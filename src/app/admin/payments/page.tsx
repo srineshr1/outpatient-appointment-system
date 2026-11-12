@@ -90,7 +90,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
           <Panel id="refunds-due" title="Refunds to give back" description="Cancelled visits paid at the desk. Online payments are refunded through the payment provider.">
             <ul className="grid gap-2">
               {refundsDue.slice(0, 6).map((row) => (
-                <li key={row.visit.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#f3c4c6] px-3 py-2 text-sm">
+                <li key={row.visit.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-400/30 bg-red-400/[0.05] px-3 py-2 text-sm">
                   <span>
                     <RowLink href={`/admin/appointments/${row.visit.id}`}>{row.visit.reference}</RowLink>
                     <span className="text-ink-2">
@@ -98,14 +98,14 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                       · {row.visit.patientName} · {slotLabel(row.visit.date, row.visit.time, today)}
                     </span>
                   </span>
-                  <span className="font-medium text-[#a51c22]">
+                  <span className="font-medium text-red-300">
                     <Money pence={row.money.refundDuePence} /> to give back
                   </span>
                 </li>
               ))}
             </ul>
             {refundsDue.length > 6 ? (
-              <Link href="/admin/payments/invoices?money=refund_due" className="mt-3 inline-flex min-h-9 items-center text-sm text-accent hover:underline">
+              <Link href="/admin/payments/invoices?money=refund_due" className="mt-3 inline-flex min-h-9 items-center text-sm text-cyan-300 hover:underline underline-offset-4">
                 All {refundsDue.length} refunds due
               </Link>
             ) : null}

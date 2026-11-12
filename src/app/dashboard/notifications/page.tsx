@@ -17,7 +17,7 @@ export default async function DoctorNotificationsPage({ searchParams }: { search
 
   return (
     <div className="mx-auto max-w-3xl px-5 pt-8 pb-20 md:px-8 md:pt-12">
-      <Link href="/dashboard" className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-accent hover:bg-accent-soft">
+      <Link href="/dashboard" className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-cyan-300 transition-colors hover:bg-accent-soft">
         Clinic book
       </Link>
       <PageHeading className="mt-2 text-title2 font-semibold text-ink md:text-title1">Email notifications</PageHeading>

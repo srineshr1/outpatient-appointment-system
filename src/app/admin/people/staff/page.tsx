@@ -114,13 +114,13 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
             </thead>
             <tbody className={tbodyClass}>
               {rows.map((row) => (
-                <tr key={row.user.id} className="hover:bg-[#f9fbfc]">
+                <tr key={row.user.id} className="transition-colors hover:bg-white/[0.03]">
                   <Td>
                     <RowLink href={`/admin/people/${row.user.id}`}>
                       {row.user.name}
                       {row.user.id === admin.id ? " (you)" : ""}
                     </RowLink>
-                    <span className="block text-[13px] break-all text-muted">{row.user.email}</span>
+                    <span className="block text-[13px] break-all text-zinc-400">{row.user.email}</span>
                   </Td>
                   <Td className="whitespace-nowrap">
                     {row.user.role === "admin" ? <Badge tone="info">{roleText(row.user)}</Badge> : roleText(row.user)}

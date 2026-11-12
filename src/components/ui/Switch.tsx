@@ -38,7 +38,7 @@ export function Switch({ checked, onChange, label, description }: SwitchProps) {
       <span
         aria-hidden="true"
         className={`flex h-[31px] w-[51px] shrink-0 rounded-full p-[2px] transition-colors duration-200 ${
-          checked ? "justify-end bg-success" : "justify-start bg-fill-strong"
+          checked ? "justify-end bg-emerald-400" : "justify-start bg-zinc-700"
         }`}
       >
         <motion.span

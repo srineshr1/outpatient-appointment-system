@@ -83,10 +83,10 @@ export function WeekPicker({ doctor, slots, initialWeek, signedIn = false, satur
       <section aria-labelledby={`week-title-${doctor.id}`} className="mt-10">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <Heading id={`week-title-${doctor.id}`} className="text-title3 font-semibold text-ink">
+            <Heading id={`week-title-${doctor.id}`} className="text-title3 font-semibold text-zinc-50">
               Choose a time
             </Heading>
-            <p className="tabular mt-1 text-callout text-muted" aria-live="polite">
+            <p className="tabular mt-1 text-callout text-zinc-400" aria-live="polite">
               {formatWeekRange(week, days.length)} · {pluralise(openThisWeek.length, "time")} available
             </p>
           </div>
@@ -125,7 +125,7 @@ export function WeekPicker({ doctor, slots, initialWeek, signedIn = false, satur
             >
               {openThisWeek.length === 0 ? (
                 <Notice tone="info" className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p>
+                  <p className="text-zinc-200">
                     {upcoming
                       ? `No times left with ${doctor.short} this week. The next one is ${formatWhen(upcoming, window.today)}.`
                       : `${doctor.short} has no more times online. Call the desk on ${practice.phoneDisplay}.`}
@@ -166,20 +166,26 @@ export function WeekPicker({ doctor, slots, initialWeek, signedIn = false, satur
             transition={reduce ? { duration: 0 } : spring.gentle}
             className="sticky bottom-0 z-20 mt-6 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:bottom-4 md:mx-0 md:px-0 md:pb-0"
           >
-            <div className="flex flex-col gap-3 rounded-sheet bg-surface/90 p-4 shadow-float ring-1 ring-black/[0.04] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between md:p-5">
+            <div className="flex flex-col gap-3 rounded-sheet border border-white/12 bg-zinc-900/90 p-4 shadow-float backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between md:p-5">
               <div aria-live="polite" className="flex min-w-0 items-center gap-3">
-                <DoctorPortrait doctor={doctor} size={48} className="hidden shrink-0 sm:block" />
+                <DoctorPortrait doctor={doctor} size={48} className="hidden shrink-0 ring-1 ring-white/10 sm:block" />
                 <div className="min-w-0">
-                  <p className="text-caption text-muted">Your selection</p>
-                  <p className="text-body font-semibold text-ink">{doctor.name}</p>
-                  <p className="tabular text-callout text-ink-2">
+                  <p className="text-caption text-zinc-400">Your selection</p>
+                  <p className="text-body font-semibold text-zinc-50">{doctor.name}</p>
+                  <p className="tabular text-callout text-zinc-300">
                     {weekdayLong(held.date)} {dayOfMonth(held.date)} {monthLong(held.date)} · {slotTimeLabel(held)}
                   </p>
                   <p className="tabular mt-1 flex flex-wrap gap-1.5 text-caption">
-                    <span className={`rounded-full px-2 py-px font-semibold ${held.mode === "wave" ? "bg-amber-100 text-amber-800" : "bg-accent-soft text-accent"}`}>
+                    <span
+                      className={`rounded-full border px-2 py-px font-semibold ${
+                        held.mode === "wave"
+                          ? "border-amber-400/25 bg-amber-400/12 text-amber-300"
+                          : "border-cyan-400/25 bg-cyan-400/12 text-cyan-300"
+                      }`}
+                    >
                       {held.mode === "wave" ? `Wave · ${placesLabel(held)}` : "Stream · your own slot"}
                     </span>
-                    <span className="rounded-full bg-fill px-2 py-px font-semibold text-ink-2">
+                    <span className="rounded-full border border-white/10 bg-fill px-2 py-px font-semibold text-zinc-200">
                       {typeof doctor.feePence === "number"
                         ? doctor.feePence > 0
                           ? `Fee ${formatMoney(doctor.feePence)}`
@@ -188,10 +194,10 @@ export function WeekPicker({ doctor, slots, initialWeek, signedIn = false, satur
                     </span>
                   </p>
                   {held.mode === "wave" ? (
-                    <p className="mt-1 text-caption text-muted">You’ll get a token number and be seen in arrival order.</p>
+                    <p className="mt-1 text-caption text-zinc-400">You’ll get a token number and be seen in arrival order.</p>
                   ) : null}
                   {signedIn ? null : (
-                    <p className="mt-0.5 text-caption text-muted">Next, sign in. We’ll keep this time for you.</p>
+                    <p className="mt-0.5 text-caption text-zinc-400">Next, sign in. We’ll keep this time for you.</p>
                   )}
                 </div>
               </div>
@@ -235,7 +241,7 @@ function WeekButton({
       onClick={onClick}
       whileTap={disabled ? undefined : { scale: 0.92 }}
       transition={spring.press}
-      className="grid size-11 place-items-center rounded-full bg-surface text-accent shadow-card transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:bg-fill disabled:text-control disabled:shadow-none"
+      className="grid size-11 place-items-center rounded-full border border-hairline bg-surface text-cyan-300 shadow-card transition-colors hover:border-cyan-400/30 hover:bg-cyan-400/12 disabled:cursor-not-allowed disabled:border-white/[0.05] disabled:bg-fill disabled:text-zinc-500 disabled:shadow-none"
     >
       {children}
     </motion.button>
@@ -258,21 +264,23 @@ function DayCard({ iso, today, now, items, heldId, onChoose }: DayCardProps) {
   const sameDayClosed = isToday && items.length > 0 && open === 0 && statuses.some((status) => status === "past");
 
   return (
-    <div className="rounded-card bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
+    <div className="rounded-card border border-hairline bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
       <div className="mb-3 flex items-baseline justify-between gap-3 md:mb-0 md:block md:w-52 md:shrink-0">
-        <h3 className="text-body font-semibold text-ink">
+        <h3 className="text-body font-semibold text-zinc-50">
           {weekdayLong(iso)} {dayOfMonth(iso)} {monthLong(iso)}
         </h3>
-        <p className="mt-0.5 flex items-center gap-2 text-callout text-muted">
+        <p className="mt-0.5 flex items-center gap-2 text-callout text-zinc-400">
           {isToday ? (
-            <span className="rounded-full bg-accent-soft px-2 py-px text-caption font-semibold text-accent">Today</span>
+            <span className="rounded-full border border-cyan-400/25 bg-cyan-400/12 px-2 py-px text-caption font-semibold text-cyan-300">
+              Today
+            </span>
           ) : null}
           <span className="tabular">{items.length === 0 ? "Not in clinic" : `${open} available`}</span>
         </p>
       </div>
       <div className="min-w-0 flex-1">
         {items.length === 0 ? (
-          <p className="text-callout text-muted md:pt-2">No clinic this day.</p>
+          <p className="text-callout text-zinc-400 md:pt-2">No clinic this day.</p>
         ) : (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {items.map((slot, index) => (
@@ -287,7 +295,7 @@ function DayCard({ iso, today, now, items, heldId, onChoose }: DayCardProps) {
           </div>
         )}
         {sameDayClosed ? (
-          <p className="mt-3 text-callout text-muted">
+          <p className="mt-3 text-callout text-zinc-400">
             Same-day booking closes at {practice.sameDayClose}. Call the desk for today.
           </p>
         ) : null}
@@ -322,12 +330,12 @@ function SlotPill({
       <motion.span
         whileTap={open ? { scale: 0.95 } : undefined}
         transition={spring.press}
-        className={`tabular relative isolate flex ${slot.mode === "wave" ? "min-h-14 flex-col py-1" : "h-11"} items-center justify-center rounded-field text-callout font-medium transition-colors duration-200 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55 ${
+        className={`tabular relative isolate flex ${slot.mode === "wave" ? "min-h-14 flex-col py-1" : "h-11"} items-center justify-center rounded-field text-callout transition-colors duration-200 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/65 ${
           checked
-            ? "text-white"
+            ? "font-semibold text-zinc-950"
             : open
-              ? "text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-accent-soft hover:shadow-[inset_0_0_0_1px_var(--color-accent)]"
-              : "bg-fill text-muted line-through decoration-1"
+              ? "bg-white/[0.02] font-medium text-cyan-300 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] hover:bg-cyan-400/12 hover:shadow-[inset_0_0_0_1px_var(--color-accent)]"
+              : "bg-fill/70 font-medium text-zinc-400 line-through decoration-1"
         }`}
       >
         {checked ? (
@@ -335,11 +343,13 @@ function SlotPill({
             layoutId="slot-highlight"
             transition={spring.snap}
             aria-hidden="true"
-            className="absolute inset-0 -z-10 rounded-field bg-accent"
+            className="absolute inset-0 -z-10 rounded-field bg-accent shadow-[0_0_16px_rgba(34,211,238,0.35)]"
           />
         ) : null}
         {slotTimeLabel(slot)}
-        {slot.mode === "wave" ? <span className={`text-caption font-normal ${checked ? "text-white/90" : "text-muted"}`}>{placesLabel(slot)}</span> : null}
+        {slot.mode === "wave" ? (
+          <span className={`text-caption font-normal ${checked ? "text-zinc-900/90" : "text-zinc-400"}`}>{placesLabel(slot)}</span>
+        ) : null}
         {open ? null : <span className="sr-only">, {STATUS_TEXT[status]}</span>}
       </motion.span>
     </label>

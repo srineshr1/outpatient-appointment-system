@@ -35,20 +35,20 @@ function TimeChoices({ places, chosen, name = "slot" }: { places: readonly Place
   return (
     <div className="grid gap-3">
       {days.map((date) => (
-        <fieldset key={date} className="rounded-card bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
+        <fieldset key={date} className="rounded-card border border-hairline bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
           <legend className="sr-only">
             {weekdayLong(date)} {date}
           </legend>
-          <h2 className="text-body font-semibold text-ink md:w-52 md:shrink-0">{formatShortDate(date)}</h2>
+          <h2 className="text-body font-semibold text-zinc-50 md:w-52 md:shrink-0">{formatShortDate(date)}</h2>
           <div className="mt-3 grid flex-1 grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6 md:mt-0">
             {places
               .filter((place) => place.date === date)
               .map((place) => (
                 <label key={place.slotId} className="relative block cursor-pointer">
                   <input type="radio" name={name} value={place.slotId} defaultChecked={place.slotId === chosen} className="peer sr-only" required />
-                  <span className="tabular flex min-h-11 flex-col items-center justify-center rounded-field px-1 py-1 text-callout font-medium text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-accent-soft peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+                  <span className="tabular flex min-h-11 flex-col items-center justify-center rounded-field bg-white/[0.02] px-1 py-1 text-callout font-medium text-cyan-300 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-cyan-400/10 peer-checked:bg-accent peer-checked:text-zinc-950 peer-checked:font-semibold peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
                     {place.time}
-                    {place.token ? <span className="text-caption font-normal opacity-80">token {place.token}</span> : null}
+                    {place.token ? <span className="text-caption font-normal opacity-85">token {place.token}</span> : null}
                   </span>
                 </label>
               ))}
@@ -71,10 +71,10 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
   if (view.state === "invalid") {
     return (
       <Shell>
-        <PageHeading className="text-title2 font-semibold text-ink md:text-title1">This link is not valid</PageHeading>
-        <p className="mt-2 max-w-prose text-body text-ink-2">
+        <PageHeading className="text-title2 font-semibold text-zinc-50 md:text-title1">This link is not valid</PageHeading>
+        <p className="mt-2 max-w-prose text-body text-zinc-300">
           Use the link in the latest email or text from the practice, or see your visits under{" "}
-          <Link className="text-accent underline underline-offset-4" href="/appointments">
+          <Link className="text-cyan-300 underline underline-offset-4" href="/appointments">
             Appointments
           </Link>
           .
@@ -100,13 +100,13 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
           : `The times held for you lapsed on ${formatShortDate(expiresAt.date)}, ${expiresAt.time}. Your visit ${visit.reference} is cancelled and anything you paid is refunded in full.`;
     return (
       <Shell>
-        <PageHeading className="text-title2 font-semibold text-ink md:text-title1">{heading}</PageHeading>
+        <PageHeading className="text-title2 font-semibold text-zinc-50 md:text-title1">{heading}</PageHeading>
         {notice ? (
           <Notice tone="info" className="mt-6">
             {notice}
           </Notice>
         ) : null}
-        <p className="mt-2 max-w-prose text-body text-ink-2">{body}</p>
+        <p className="mt-2 max-w-prose text-body text-zinc-300">{body}</p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/appointments" className={buttonClass("primary", "lg")}>
             View appointments
@@ -131,14 +131,14 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
 
   return (
     <Shell>
-      <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Pick a new time</PageHeading>
-      <p className="mt-2 max-w-prose text-body text-ink-2">
+      <PageHeading className="text-title2 font-semibold text-zinc-50 md:text-title1">Pick a new time</PageHeading>
+      <p className="mt-2 max-w-prose text-body text-zinc-300">
         We are sorry: {doctorName} changed their consulting hours and can no longer see you on{" "}
-        <span className="tabular text-ink">{when(visit)}</span>. {offer.reason}
+        <span className="tabular text-zinc-100">{when(visit)}</span>. {offer.reason}
       </p>
-      <p className="mt-2 max-w-prose text-body text-ink-2">
-        Your visit keeps the reference <span className="tabular text-ink">{visit.reference}</span> and any payment. If you do nothing by{" "}
-        <span className="tabular text-ink">{until}</span>, it is cancelled and refunded in full.
+      <p className="mt-2 max-w-prose text-body text-zinc-300">
+        Your visit keeps the reference <span className="tabular text-zinc-100">{visit.reference}</span> and any payment. If you do nothing by{" "}
+        <span className="tabular text-zinc-100">{until}</span>, it is cancelled and refunded in full.
       </p>
       {notice ? (
         <Notice tone="danger" role="alert" className="mt-6">
@@ -147,12 +147,12 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
       ) : null}
 
       {asking ? (
-        <form action={cancelRebookingAction} className="group mt-8 max-w-prose rounded-card bg-surface p-5 shadow-card">
+        <form action={cancelRebookingAction} className="group mt-8 max-w-prose rounded-card border border-hairline bg-surface p-5 shadow-card">
           <input type="hidden" name="token" value={token} />
-          <h2 className="text-title3 font-semibold text-ink">Cancel and get a full refund</h2>
-          <p className="mt-1 text-callout text-ink-2">The held times are released and the visit is cancelled. You can book again at any time.</p>
-          <label className="mt-4 flex min-h-11 items-center gap-3 text-body text-ink">
-            <input type="checkbox" name="confirm" value="yes" required className="size-5" />
+          <h2 className="text-title3 font-semibold text-zinc-50">Cancel and get a full refund</h2>
+          <p className="mt-1 text-callout text-zinc-300">The held times are released and the visit is cancelled. You can book again at any time.</p>
+          <label className="mt-4 flex min-h-11 items-center gap-3 text-body text-zinc-100">
+            <input type="checkbox" name="confirm" value="yes" required className="size-5 accent-accent" />
             Yes, cancel visit {visit.reference}
           </label>
           <div className="mt-4 flex flex-wrap gap-3">
@@ -170,7 +170,7 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
           {showMore ? <input type="hidden" name="more" value="1" /> : null}
           {offer.slots.length > 0 ? (
             <>
-              <h2 className="mb-3 text-title3 font-semibold text-ink">Held for you until {until}</h2>
+              <h2 className="mb-3 text-title3 font-semibold text-zinc-50">Held for you until {until}</h2>
               <TimeChoices places={offer.slots} chosen={chosen} />
             </>
           ) : (
@@ -179,8 +179,8 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
           {showMore ? (
             more.length > 0 ? (
               <>
-                <h2 className="mt-8 mb-3 text-title3 font-semibold text-ink">Other open times with {doctor?.short ?? doctorName}</h2>
-                <p className="-mt-2 mb-3 text-callout text-ink-2">These are not held: someone else may book one first.</p>
+                <h2 className="mt-8 mb-3 text-title3 font-semibold text-zinc-50">Other open times with {doctor?.short ?? doctorName}</h2>
+                <p className="-mt-2 mb-3 text-callout text-zinc-300">These are not held: someone else may book one first.</p>
                 <TimeChoices places={more} chosen={chosen} />
               </>
             ) : (
@@ -190,7 +190,7 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
             )
           ) : (
             <p className="mt-4 text-callout">
-              <Link className="text-accent hover:underline underline-offset-4" href={`${here}?more=1`}>
+              <Link className="text-cyan-300 hover:underline underline-offset-4" href={`${here}?more=1`}>
                 Show more times
               </Link>
             </p>

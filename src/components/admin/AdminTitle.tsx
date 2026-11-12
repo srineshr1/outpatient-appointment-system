@@ -24,7 +24,7 @@ export function AdminTitle({
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
         <PageHeading className="text-2xl font-semibold tracking-tight text-ink">{title}</PageHeading>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-1 text-sm text-zinc-400">
           {practice.name} · {longDate(today)} · times in IST
         </p>
         {description ? <p className="mt-2 max-w-2xl text-sm text-ink-2">{description}</p> : null}

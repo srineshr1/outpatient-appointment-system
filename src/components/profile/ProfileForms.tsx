@@ -34,7 +34,7 @@ export function PatientProfileForm({
   const v = (key: keyof typeof initial) => state?.values?.[key] ?? initial[key];
   const e = state?.errors ?? {};
   return (
-    <form action={action} className="group mt-8 grid gap-5 rounded-card bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
+    <form action={action} className="group mt-8 grid gap-5 rounded-card border border-hairline bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
       <input type="hidden" name="welcome" value={welcome ? "1" : ""} />
       <input type="hidden" name="next" value={next} />
       <Problem state={state} />
@@ -50,12 +50,12 @@ export function PatientProfileForm({
       </Field>
       <Field id="dob" label="Date of birth" optional error={e.dob}>
         {({ id, describedBy, invalid }) => (
-          <input id={id} name="dob" type="date" min="1900-01-01" max={today} defaultValue={v("dob")} aria-invalid={invalid} aria-describedby={describedBy} className="field tabular" />
+          <input id={id} name="dob" type="date" min="1900-01-01" max={today} defaultValue={v("dob")} aria-invalid={invalid} aria-describedby={describedBy} className="field tabular [color-scheme:dark]" />
         )}
       </Field>
       <Field id="gender" label="Gender" optional error={e.gender}>
         {({ id, describedBy, invalid }) => (
-          <select id={id} name="gender" defaultValue={v("gender")} aria-invalid={invalid} aria-describedby={describedBy} className="field">
+          <select id={id} name="gender" defaultValue={v("gender")} aria-invalid={invalid} aria-describedby={describedBy} className="field [color-scheme:dark]">
             <option value="">Prefer not to say</option>
             {GENDERS.filter((item) => item.id !== "prefer-not").map((item) => (
               <option key={item.id} value={item.id}>
@@ -97,7 +97,7 @@ export function DoctorProfileForm({ initial, welcome }: { initial: DoctorFormVal
     </Field>
   );
   return (
-    <form action={action} className="group mt-8 grid gap-5 rounded-card bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
+    <form action={action} className="group mt-8 grid gap-5 rounded-card border border-hairline bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
       <input type="hidden" name="welcome" value={welcome ? "1" : ""} />
       <Problem state={state} />
       {text("name", "Your name", { hint: "Patients see this as Dr followed by your name.", wide: true })}

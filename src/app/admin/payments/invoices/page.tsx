@@ -156,14 +156,14 @@ export default async function VisitFeesPage({ searchParams }: { searchParams: Pr
             </thead>
             <tbody className={tbodyClass}>
               {rows.slice(0, SHOW_AT_MOST).map((row) => (
-                <tr key={row.visit.id} className="hover:bg-[#f9fbfc]">
+                <tr key={row.visit.id} className="transition-colors hover:bg-white/[0.03]">
                   <Td className="whitespace-nowrap">
                     <RowLink href={`/admin/appointments/${row.visit.id}`}>{row.visit.reference}</RowLink>
                   </Td>
                   <Td>{row.visit.patientName}</Td>
                   <Td className="whitespace-nowrap">
                     <span className="tabular-nums">{slotLabel(row.visit.date, row.visit.time, today)}</span>
-                    <span className="block text-[13px] text-muted">{findDoctor(row.visit.doctorId)?.short}</span>
+                    <span className="block text-[13px] text-zinc-400">{findDoctor(row.visit.doctorId)?.short}</span>
                   </Td>
                   <Td align="right">{row.charge ? <Money pence={row.charge.amountPence} /> : "—"}</Td>
                   <Td align="right">
@@ -172,13 +172,13 @@ export default async function VisitFeesPage({ searchParams }: { searchParams: Pr
                   <Td align="right">
                     <Money pence={row.money.refundedPence} />
                   </Td>
-                  <Td align="right" className={row.money.duePence > 0 ? "font-medium text-[#774b06]" : ""}>
+                  <Td align="right" className={row.money.duePence > 0 ? "font-medium text-amber-300" : ""}>
                     <Money pence={row.money.duePence} />
                   </Td>
                   <Td>
                     <PaymentBadge state={row.money.state} />
                     {row.money.refundDuePence > 0 ? (
-                      <span className="block text-[13px] text-muted">
+                      <span className="block text-[13px] text-zinc-400">
                         <Money pence={row.money.refundDuePence} /> to give back
                       </span>
                     ) : null}

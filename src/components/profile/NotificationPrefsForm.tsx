@@ -17,18 +17,26 @@ const OPTIONS: Array<{ key: keyof DoctorNotifyPrefs; label: string; hint: string
 export function NotificationPrefsForm({ initial }: { initial: DoctorNotifyPrefs }) {
   const [state, action] = useActionState(saveNotificationPrefs, null);
   return (
-    <form action={action} className="mt-8 grid gap-4 rounded-card bg-surface p-5 shadow-card md:p-6">
+    <form action={action} className="mt-8 grid gap-4 rounded-card border border-hairline bg-surface p-5 shadow-card md:p-6">
       {state && !state.ok ? (
         <Notice tone="danger" role="alert">
           {state.message}
         </Notice>
       ) : null}
       {OPTIONS.map((option) => (
-        <label key={option.key} className="flex items-start gap-3">
-          <input type="checkbox" name={option.key} defaultChecked={initial[option.key]} className="mt-1 size-5 accent-accent" />
+        <label
+          key={option.key}
+          className="flex cursor-pointer items-start gap-3 rounded-field border border-hairline bg-surface-2/60 p-3.5 transition-colors hover:border-white/15 hover:bg-surface-2"
+        >
+          <input
+            type="checkbox"
+            name={option.key}
+            defaultChecked={initial[option.key]}
+            className="mt-0.5 size-5 shrink-0 cursor-pointer accent-accent [color-scheme:dark]"
+          />
           <span>
             <span className="block text-body font-semibold text-ink">{option.label}</span>
-            <span className="block text-callout text-ink-2">{option.hint}</span>
+            <span className="mt-0.5 block text-callout text-zinc-300">{option.hint}</span>
           </span>
         </label>
       ))}

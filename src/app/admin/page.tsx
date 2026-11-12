@@ -121,13 +121,13 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
                 <li key={item.key}>
                   <Link
                     href={item.href}
-                    className={`flex min-h-11 items-center gap-3 rounded-md border px-3 text-sm no-underline transition-colors hover:bg-[#f9fbfc] ${
-                      item.tone === "danger" ? "border-[#f3c4c6]" : "border-[#f1d9a8]"
+                    className={`flex min-h-11 items-center gap-3 rounded-lg border px-3 text-sm no-underline transition-colors hover:bg-white/[0.03] ${
+                      item.tone === "danger" ? "border-red-400/30 bg-red-400/[0.04]" : "border-amber-400/30 bg-amber-400/[0.04]"
                     }`}
                   >
-                    <AlertIcon size={18} className={item.tone === "danger" ? "shrink-0 text-[#a51c22]" : "shrink-0 text-[#774b06]"} />
+                    <AlertIcon size={18} className={item.tone === "danger" ? "shrink-0 text-red-300" : "shrink-0 text-amber-300"} />
                     <span className="flex-1 text-ink">{item.text}</span>
-                    <ArrowRightIcon size={16} className="shrink-0 text-ink-2" />
+                    <ArrowRightIcon size={16} className="shrink-0 text-zinc-400" />
                   </Link>
                 </li>
               ))}
@@ -174,7 +174,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
                 {load.doctors.map((doctor) => {
                   const full = percent(doctor.taken, doctor.capacity);
                   return (
-                    <tr key={doctor.doctorId}>
+                    <tr key={doctor.doctorId} className="transition-colors hover:bg-white/[0.03]">
                       <Td className="whitespace-nowrap font-medium">{doctor.name}</Td>
                       <Td align="right">{doctor.online}</Td>
                       <Td align="right">
@@ -184,7 +184,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
                         <span className="flex items-center gap-3">
                           <span aria-hidden="true" className="h-2 w-28 overflow-hidden rounded-full bg-fill">
                             <span
-                              className={`block h-full rounded-full ${full >= 90 ? "bg-[#a51c22]" : full >= 70 ? "bg-[#b26b00]" : "bg-accent"}`}
+                              className={`block h-full rounded-full ${full >= 90 ? "bg-red-500" : full >= 70 ? "bg-amber-400" : "bg-cyan-400"}`}
                               style={{ width: `${full}%` }}
                             />
                           </span>

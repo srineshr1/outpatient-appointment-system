@@ -51,14 +51,14 @@ export default async function ReschedulePage({
 
   return (
     <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
-      <Link href={returnTo} className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-accent hover:bg-accent-soft">
+      <Link href={returnTo} className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-cyan-300 transition-colors hover:bg-cyan-400/10">
         Back
       </Link>
-      <PageHeading className="mt-2 text-title2 font-semibold text-ink md:text-title1">Move this visit</PageHeading>
-      <p className="mt-2 max-w-prose text-body text-ink-2">
+      <PageHeading className="mt-2 text-title2 font-semibold text-zinc-50 md:text-title1">Move this visit</PageHeading>
+      <p className="mt-2 max-w-prose text-body text-zinc-300">
         {asPatient ? "Your" : `${visit.patientName}’s`} visit with {doctor?.name ?? "the doctor"} stays the same reference,{" "}
-        <span className="tabular text-ink">{visit.reference}</span>. Currently{" "}
-        <span className="tabular text-ink">{formatWhen(visit, today)}</span>
+        <span className="tabular text-zinc-100">{visit.reference}</span>. Currently{" "}
+        <span className="tabular text-zinc-100">{formatWhen(visit, today)}</span>
         {visit.token ? `, token ${visit.token}` : ""}. {asPatient ? "The doctor" : "The patient"} gets an email about the move.
       </p>
       {notice ? (
@@ -76,7 +76,7 @@ export default async function ReschedulePage({
           {weeks < 12 ? (
             <>
               {" "}
-              <Link className="text-accent underline underline-offset-4" href={`${here}&weeks=${Math.min(12, weeks + WEEKS_STEP)}`}>
+              <Link className="text-cyan-300 underline underline-offset-4" href={`${here}&weeks=${Math.min(12, weeks + WEEKS_STEP)}`}>
                 Look further ahead
               </Link>
               .
@@ -89,18 +89,18 @@ export default async function ReschedulePage({
           <input type="hidden" name="return" value={returnTo} />
           <div className="grid gap-3">
             {days.map((date) => (
-              <fieldset key={date} className="rounded-card bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
+              <fieldset key={date} className="rounded-card border border-hairline bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
                 <legend className="sr-only">{weekdayLong(date)} {date}</legend>
-                <h2 className="text-body font-semibold text-ink md:w-52 md:shrink-0">{placementLabel({ date, time: "" }).replace(/, $/, "")}</h2>
+                <h2 className="text-body font-semibold text-zinc-50 md:w-52 md:shrink-0">{placementLabel({ date, time: "" }).replace(/, $/, "")}</h2>
                 <div className="mt-3 grid flex-1 grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6 md:mt-0">
                   {times
                     .filter((slot) => slot.date === date)
                     .map((slot) => (
                       <label key={slot.id} className="relative block cursor-pointer">
                         <input type="radio" name="slot" value={slot.id} className="peer sr-only" required />
-                        <span className="tabular flex min-h-11 flex-col items-center justify-center rounded-field px-1 py-1 text-callout font-medium text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-accent-soft peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+                        <span className="tabular flex min-h-11 flex-col items-center justify-center rounded-field bg-white/[0.02] px-1 py-1 text-callout font-medium text-cyan-300 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-cyan-400/10 peer-checked:bg-accent peer-checked:text-zinc-950 peer-checked:font-semibold peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
                           {slotTimeLabel(slot)}
-                          {slot.mode === "wave" ? <span className="text-caption font-normal opacity-80">{placesLabel(slot)}</span> : null}
+                          {slot.mode === "wave" ? <span className="text-caption font-normal opacity-85">{placesLabel(slot)}</span> : null}
                         </span>
                       </label>
                     ))}
@@ -110,18 +110,18 @@ export default async function ReschedulePage({
           </div>
           {all.some((slot) => slot.date > lastDate) && weeks < 12 ? (
             <p className="mt-4 text-callout">
-              <Link className="text-accent hover:underline underline-offset-4" href={`${here}&weeks=${Math.min(12, weeks + WEEKS_STEP)}`}>
+              <Link className="text-cyan-300 hover:underline underline-offset-4" href={`${here}&weeks=${Math.min(12, weeks + WEEKS_STEP)}`}>
                 Show later weeks
               </Link>
             </p>
           ) : null}
-          <label className="mt-6 block max-w-prose text-callout font-medium text-ink" htmlFor="reason">
+          <label className="mt-6 block max-w-prose text-callout font-medium text-zinc-200" htmlFor="reason">
             Reason for the move (optional)
             <input
               id="reason"
               name="reason"
               maxLength={200}
-              className="mt-2 block min-h-11 w-full rounded-field bg-surface px-3 text-body shadow-[inset_0_0_0_1px_var(--color-hairline)]"
+              className="field mt-2"
             />
           </label>
           <div className="mt-6 flex flex-wrap gap-3">

@@ -28,8 +28,8 @@ export default async function InboxPage() {
     <div className="mx-auto max-w-3xl px-5 pt-8 pb-20 md:px-8 md:pt-12">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Notifications</PageHeading>
-          <p className="mt-2 text-body text-ink-2">
+          <PageHeading className="text-title2 font-semibold text-zinc-50 md:text-title1">Notifications</PageHeading>
+          <p className="mt-2 text-body text-zinc-300">
             {unread === 0 ? "You’re all caught up." : `${unread} unread`}
           </p>
         </div>
@@ -37,7 +37,7 @@ export default async function InboxPage() {
           <form action={markAllReadAction}>
             <button
               type="submit"
-              className="inline-flex min-h-11 items-center rounded-full px-4 text-callout font-medium text-accent transition-colors hover:bg-accent-soft"
+              className="inline-flex min-h-11 items-center rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 text-callout font-medium text-cyan-300 transition-colors hover:bg-cyan-400/15"
             >
               Mark all read
             </button>
@@ -46,7 +46,7 @@ export default async function InboxPage() {
       </div>
 
       {items.length === 0 ? (
-        <p className="mt-10 rounded-2xl bg-fill px-5 py-8 text-center text-body text-ink-2">
+        <p className="mt-10 rounded-2xl border border-hairline bg-surface-2 px-5 py-8 text-center text-body text-zinc-300">
           Nothing yet. When a visit is booked, moved or cancelled, it shows up here.
         </p>
       ) : (
@@ -57,21 +57,25 @@ export default async function InboxPage() {
                 <input type="hidden" name="id" value={item.id} />
                 <button
                   type="submit"
-                  className={`flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-fill ${
-                    item.readAt ? "bg-surface" : "bg-accent-soft/60"
+                  className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+                    item.readAt
+                      ? "border-hairline bg-surface hover:bg-fill"
+                      : "border-cyan-400/30 bg-cyan-400/10 hover:bg-cyan-400/15"
                   }`}
                 >
                   <span
                     aria-hidden="true"
-                    className={`mt-2 size-2.5 shrink-0 rounded-full ${item.readAt ? "bg-transparent" : "bg-accent"}`}
+                    className={`mt-2 size-2.5 shrink-0 rounded-full ${
+                      item.readAt ? "bg-transparent" : "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]"
+                    }`}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className={`block text-body text-ink ${item.readAt ? "" : "font-semibold"}`}>
+                    <span className={`block text-body text-zinc-50 ${item.readAt ? "" : "font-semibold"}`}>
                       {item.title}
                       {item.readAt ? null : <span className="sr-only"> (unread)</span>}
                     </span>
-                    {item.body ? <span className="mt-0.5 block text-callout text-ink-2">{item.body}</span> : null}
-                    <span className="mt-1 block text-caption text-muted">{WHEN.format(new Date(item.createdAt))}</span>
+                    {item.body ? <span className="mt-0.5 block text-callout text-zinc-300">{item.body}</span> : null}
+                    <span className="mt-1 block text-caption text-zinc-400">{WHEN.format(new Date(item.createdAt))}</span>
                   </span>
                 </button>
               </form>

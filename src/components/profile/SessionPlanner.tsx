@@ -178,11 +178,11 @@ export function SessionPlanner({
         >
           <div className="lg:w-[26rem] lg:pl-6">
             {showForm ? (
-              <section aria-labelledby="add-session" className="rounded-card bg-surface p-4 shadow-card md:p-5">
+              <section aria-labelledby="add-session" className="rounded-card border border-hairline bg-surface p-4 shadow-card md:p-5">
                 <h2 id="add-session" className="text-title3 font-semibold text-ink">
                   {editing ? `Editing ${editing.label || "consulting session"}` : addTitle}
                 </h2>
-                <p className="mt-1 text-callout text-muted">
+                <p className="mt-1 text-callout text-zinc-400">
                   Choose the days, the dates, and the hours. The week stays beside you and draws the new block after that.
                 </p>
                 <div className="mt-4">
@@ -198,7 +198,7 @@ export function SessionPlanner({
                 </div>
               </section>
             ) : (
-              <section aria-labelledby="pick-session" className="rounded-card bg-surface p-4 shadow-card md:p-5">
+              <section aria-labelledby="pick-session" className="rounded-card border border-hairline bg-surface p-4 shadow-card md:p-5">
                 <h2 id="pick-session" className="text-title3 font-semibold text-ink">
                   Edit a session
                 </h2>

@@ -5,7 +5,7 @@ export function DoctorCardsSkeleton({ count = 4 }: { count?: number }) {
   return (
     <ul aria-hidden="true" className="grid gap-3 md:grid-cols-2 md:gap-4">
       {Array.from({ length: count }, (_, index) => (
-        <li key={index} className="rounded-sheet bg-surface p-5 shadow-card md:p-6">
+        <li key={index} className="rounded-sheet border border-hairline bg-surface p-5 shadow-card md:p-6">
           <div className="flex items-start gap-4">
             <Skeleton className="size-20 shrink-0 rounded-[28%]" />
             <div className="min-w-0 flex-1">

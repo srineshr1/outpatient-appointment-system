@@ -25,15 +25,15 @@ export default async function PaymentsPage() {
 
   return (
     <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
-      <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Payments and refunds</PageHeading>
-      <p className="mt-2 max-w-prose text-body text-ink-2">
+      <PageHeading className="text-title2 font-semibold text-zinc-50 md:text-title1">Payments and refunds</PageHeading>
+      <p className="mt-2 max-w-prose text-body text-zinc-300">
         What you have paid online, any refunds and where they are. A refund shows as pending until your bank confirms it, which usually takes
         5 to 7 working days.
       </p>
       {items.length === 0 ? (
-        <p className="mt-8 max-w-prose text-body text-ink-2">
+        <p className="mt-8 max-w-prose text-body text-zinc-300">
           No online payments yet. Visits paid at the desk are recorded by the practice.{" "}
-          <Link href="/appointments" className="text-accent hover:underline underline-offset-4">
+          <Link href="/appointments" className="text-cyan-300 hover:underline underline-offset-4">
             Your appointments
           </Link>
         </p>
@@ -41,34 +41,34 @@ export default async function PaymentsPage() {
         <ul className="mt-8 grid max-w-2xl gap-3">
           {items.map(({ payment, visit, refunds }) => (
             <li key={payment.id}>
-              <Card className="p-5">
+              <Card className="border-white/10 p-5 backdrop-blur-md">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="text-body font-semibold text-ink">{findDoctor(visit.doctorId)?.name ?? "Your doctor"}</h2>
-                  <p className="tabular text-body font-semibold text-ink">{formatMoney(payment.amountMinor)}</p>
+                  <h2 className="text-body font-semibold text-zinc-50">{findDoctor(visit.doctorId)?.name ?? "Your doctor"}</h2>
+                  <p className="tabular text-body font-semibold text-zinc-50">{formatMoney(payment.amountMinor)}</p>
                 </div>
-                <p className="mt-1 text-callout text-ink-2">
+                <p className="mt-1 text-callout text-zinc-300">
                   <span className="tabular">
                     {formatShortDate(visit.date)}, {visit.time}
                   </span>{" "}
-                  · Reference <span className="tabular text-ink">{visit.reference}</span>
+                  · Reference <span className="tabular text-zinc-100">{visit.reference}</span>
                   {visit.status === "cancelled" ? " · Cancelled" : ""}
                 </p>
-                <p className="mt-1 text-callout text-muted">
+                <p className="mt-1 text-callout text-zinc-400">
                   Paid {paidOn(payment.paidAt)}
                   {payment.method ? ` by ${payment.method}` : ""}
                 </p>
                 {refunds.length > 0 ? (
-                  <ul className="mt-3 grid gap-1 border-t border-hairline pt-3 text-callout text-ink-2">
+                  <ul className="mt-3 grid gap-1 border-t border-hairline pt-3 text-callout text-zinc-300">
                     {refunds.map((refund) => (
                       <li key={refund.id}>
                         {refundStatusLabel(refund)}
-                        {refund.reason ? <span className="block text-muted">{refund.reason}</span> : null}
+                        {refund.reason ? <span className="block text-zinc-400">{refund.reason}</span> : null}
                       </li>
                     ))}
                   </ul>
                 ) : null}
                 <p className="mt-3 text-callout">
-                  <Link href={`/receipt/${payment.id}`} className="text-accent hover:underline underline-offset-4">
+                  <Link href={`/receipt/${payment.id}`} className="text-cyan-300 hover:underline underline-offset-4">
                     View receipt
                   </Link>
                 </p>

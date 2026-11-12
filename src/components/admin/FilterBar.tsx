@@ -23,7 +23,7 @@ export function FilterBar({
 }) {
   return (
     <search aria-label={label} className="block print:hidden">
-      <Form action={action} className="rounded-lg border border-hairline bg-[#f9fbfc] p-4">
+      <Form action={action} className="rounded-xl border border-hairline bg-surface p-4 [box-shadow:inset_0_1px_0_rgba(255,255,255,0.04)]">
         {Object.entries(hidden ?? {}).map(([name, value]) =>
           value ? <input key={name} type="hidden" name={name} value={value} /> : null,
         )}

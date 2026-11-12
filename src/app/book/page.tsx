@@ -42,20 +42,20 @@ export default async function BookPage() {
         signedIn
         labelledBy="book-title"
         heading={
-          <PageHeading id="book-title" className="text-title3 font-bold text-ink md:text-title2">
+          <PageHeading id="book-title" className="text-title3 font-bold text-zinc-50 md:text-title2">
             Hi {firstName}, who would you like to see?
           </PageHeading>
         }
         lead={
           <>
-            <p className="max-w-prose text-body text-ink-2">
+            <p className="max-w-prose text-body text-zinc-300">
               Tap a doctor to see their week, then pick a time. You can book up to four weeks ahead.
             </p>
             {nextVisit && nextDoctor ? (
-              <div className="flex flex-wrap items-center gap-4 rounded-sheet bg-surface p-4 shadow-card md:p-5">
-                <DoctorPortrait doctor={nextDoctor} size={48} />
-                <p className="min-w-0 flex-1 text-callout text-ink-2">
-                  <span className="block font-bold text-ink">Your next visit</span>
+              <div className="flex flex-wrap items-center gap-4 rounded-sheet border border-cyan-400/20 bg-surface p-4 shadow-card md:p-5 [background:linear-gradient(135deg,rgba(34,211,238,0.06)_0%,rgba(17,17,19,1)_60%)]">
+                <DoctorPortrait doctor={nextDoctor} size={48} className="ring-1 ring-white/10" />
+                <p className="min-w-0 flex-1 text-callout text-zinc-300">
+                  <span className="block font-bold text-zinc-50">Your next visit</span>
                   <span className="tabular">
                     {nextDoctor.short} · {formatWhen(nextVisit, today)} · {nextVisit.reference}
                   </span>

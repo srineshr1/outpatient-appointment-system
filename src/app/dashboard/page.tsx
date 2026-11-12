@@ -73,7 +73,7 @@ export default async function DashboardPage({
       </p>
       {user.role === "doctor" ? (
         <p className="mt-3 text-callout">
-          <Link href="/dashboard/notifications" className="text-accent hover:underline underline-offset-4">
+          <Link href="/dashboard/notifications" className="text-cyan-300 hover:underline underline-offset-4">
             Email notifications
           </Link>{" "}
           choose which emails you get about bookings, changes and your daily schedule.
@@ -81,7 +81,7 @@ export default async function DashboardPage({
       ) : null}
       {user.role === "admin" ? (
         <p className="mt-3 text-callout">
-          <Link href="/admin" className="text-accent hover:underline underline-offset-4">
+          <Link href="/admin" className="text-cyan-300 hover:underline underline-offset-4">
             Open the admin console
           </Link>{" "}
           for payments, people and activity.
@@ -116,11 +116,11 @@ function SetupChecklist({ status }: { status: DoctorStatus }) {
     return (
       <Notice tone="success" role="status" className="mt-6">
         Patients can find and book you. Change your{" "}
-        <Link href="/dashboard/profile" className="underline underline-offset-4">
+        <Link href="/dashboard/profile" className="text-cyan-300 underline underline-offset-4">
           profile
         </Link>{" "}
         or{" "}
-        <Link href="/dashboard/sessions" className="underline underline-offset-4">
+        <Link href="/dashboard/sessions" className="text-cyan-300 underline underline-offset-4">
           consulting sessions
         </Link>{" "}
         any time.
@@ -128,7 +128,7 @@ function SetupChecklist({ status }: { status: DoctorStatus }) {
     );
   }
   return (
-    <section aria-labelledby="finish-profile" className="mt-6 rounded-card bg-surface p-5 shadow-card md:p-6">
+    <section aria-labelledby="finish-profile" className="mt-6 rounded-card border border-hairline bg-surface p-5 shadow-card md:p-6">
       <h2 id="finish-profile" className="text-title3 font-semibold text-ink">
         Finish your profile to appear to patients
       </h2>
@@ -139,7 +139,7 @@ function SetupChecklist({ status }: { status: DoctorStatus }) {
             <span
               aria-hidden="true"
               className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full text-caption font-semibold ${
-                step.done ? "bg-accent text-white" : "bg-fill text-ink-2"
+                step.done ? "bg-accent text-zinc-950" : "bg-fill text-zinc-200"
               }`}
             >
               {step.done ? "✓" : index + 1}
@@ -168,8 +168,10 @@ function FilterLink({ href, current, children }: { href: string; current: boolea
     <Link
       href={href}
       aria-current={current ? "page" : undefined}
-      className={`inline-flex min-h-11 items-center rounded-full px-4 text-callout font-medium ${
-        current ? "bg-accent text-white" : "bg-fill text-ink hover:bg-fill-strong"
+      className={`inline-flex min-h-11 items-center rounded-full px-4 text-callout transition-colors ${
+        current
+          ? "bg-accent text-zinc-950 font-semibold shadow-[0_0_16px_rgba(34,211,238,0.25)]"
+          : "border border-hairline bg-surface-2 font-medium text-zinc-200 hover:bg-fill"
       }`}
     >
       {children}

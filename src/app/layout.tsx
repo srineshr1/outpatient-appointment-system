@@ -40,8 +40,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f5f5f7",
-  colorScheme: "light",
+  themeColor: "#09090b",
+  colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
 };
@@ -56,7 +56,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body className="flex min-h-dvh flex-col bg-canvas text-ink">
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-ink focus:px-5 focus:py-3 focus:text-callout focus:font-medium focus:text-white"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-cyan-400 focus:px-5 focus:py-3 focus:text-callout focus:font-semibold focus:text-zinc-950 focus:shadow-[0_0_20px_rgba(34,211,238,0.4)]"
         >
           Skip to main content
         </a>

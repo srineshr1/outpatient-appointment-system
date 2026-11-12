@@ -180,9 +180,9 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
         onBlur={(event) => {
           if (menuOpen && leftBy(event)) setMenuOpen(false);
         }}
-        className="sticky top-0 z-40 bg-surface/85 shadow-[0_1px_0_rgb(0_0_0/0.08)] backdrop-blur-xl backdrop-saturate-150"
+        className="sticky top-0 z-40 border-b border-white/[0.07] bg-zinc-950/85 shadow-[0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl backdrop-saturate-150"
       >
-        <div className="mx-auto flex h-(--header-h) max-w-page items-center gap-2 px-5 md:gap-8 md:px-8">
+        <div className="mx-auto flex h-(--header-h) max-w-page items-center gap-1.5 px-4 min-[360px]:gap-2 min-[360px]:px-5 md:gap-8 md:px-8">
           <Brand href={homeHref} />
 
           <nav aria-label="Main" className="hidden h-full md:block">
@@ -195,11 +195,11 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
             </ul>
           </nav>
 
-          <div className="ml-auto flex items-center gap-1 md:gap-2">
+          <div className="ml-auto flex items-center gap-0.5 min-[360px]:gap-1 md:gap-2">
             <a
               href={practice.phoneHref}
               aria-label={`Call the practice on ${practice.phoneDisplay}`}
-              className={`tabular min-h-11 min-w-11 items-center justify-center gap-2 rounded-full px-2.5 text-callout font-medium text-ink-2 transition-colors hover:bg-fill hover:text-ink lg:px-3 ${
+              className={`tabular min-h-11 min-w-11 items-center justify-center gap-2 rounded-full px-2.5 text-callout font-medium text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-zinc-50 lg:px-3 ${
                 user ? "inline-flex" : "hidden lg:inline-flex"
               }`}
             >
@@ -212,13 +212,13 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
                 href="/inbox"
                 aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
                 aria-current={pathname === "/inbox" ? "page" : undefined}
-                className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-fill hover:text-ink"
+                className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-zinc-50"
               >
                 <Bell size={20} />
                 {unread > 0 ? (
                   <span
                     aria-hidden="true"
-                    className="tabular absolute top-1 right-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-[#d92d20] px-1 text-[11px] leading-[18px] font-bold text-white"
+                    className="tabular absolute top-1 right-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] leading-[18px] font-bold text-white shadow-[0_0_8px_rgba(220,38,38,0.45)]"
                   >
                     {unread > 99 ? "99+" : unread}
                   </span>
@@ -238,13 +238,13 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
               <>
                 <Link
                   href={signInHref}
-                  className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-ink-2 transition-colors hover:bg-fill hover:text-ink max-[359px]:hidden"
+                  className="inline-flex min-h-11 items-center rounded-full px-3 text-callout font-medium text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-zinc-50 max-[359px]:hidden"
                 >
                   Sign in
                 </Link>
                 <Link
                   href={bookHref}
-                  className="hidden min-h-10 items-center rounded-full bg-accent px-4 text-callout font-semibold text-white transition-colors hover:bg-accent-hover active:bg-accent-press md:inline-flex"
+                  className="hidden min-h-10 items-center rounded-full bg-cyan-400 bg-gradient-to-r from-cyan-400 to-blue-500 px-4 text-callout font-semibold text-zinc-950 shadow-[0_0_16px_rgba(34,211,238,0.3)] transition-all hover:from-cyan-300 hover:to-blue-400 hover:shadow-[0_0_24px_rgba(34,211,238,0.45)] md:inline-flex"
                 >
                   Book an appointment
                 </Link>
@@ -257,7 +257,7 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
               aria-expanded={menuOpen}
               aria-controls={menuOpen ? menuId : undefined}
               onClick={() => setMenuOpen((open) => !open)}
-              className="-mr-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-callout font-medium text-ink transition-colors hover:bg-fill aria-expanded:bg-fill md:hidden"
+              className="-mr-2 inline-flex min-h-11 min-w-11 items-center justify-center gap-0 rounded-full px-2.5 text-callout font-medium text-zinc-200 transition-colors hover:bg-white/[0.06] aria-expanded:bg-white/[0.06] min-[360px]:gap-1.5 min-[360px]:px-3 md:hidden"
             >
               {menuOpen ? <Close size={20} /> : <Menu size={20} />}
               {/* Under 360px there's only room for the icon; the word stays as the button's name. */}
@@ -276,7 +276,7 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={spring.gentle}
-              className="absolute inset-x-0 top-full max-h-[calc(100dvh-var(--header-h))] overflow-y-auto border-t border-hairline/70 bg-surface shadow-raised outline-none md:hidden"
+              className="absolute inset-x-0 top-full max-h-[calc(100dvh-var(--header-h))] overflow-y-auto border-t border-white/[0.08] bg-zinc-950/95 shadow-raised backdrop-blur-xl outline-none md:hidden"
             >
               <div className="mx-auto max-w-page px-3 pt-2 pb-5">
                 <nav aria-label="Main">
@@ -290,11 +290,11 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
                             aria-current={current}
                             onClick={() => setMenuOpen(false)}
                             className={`flex min-h-12 items-center justify-between rounded-xl px-3 text-body font-medium no-underline transition-colors ${
-                              current ? "bg-accent-soft text-accent" : "text-ink hover:bg-fill"
+                              current ? "bg-cyan-400/15 text-cyan-300" : "text-zinc-200 hover:bg-white/[0.06] hover:text-zinc-50"
                             }`}
                           >
                             {link.label}
-                            <ChevronRight size={18} className={current ? "text-accent" : "text-muted"} />
+                            <ChevronRight size={18} className={current ? "text-cyan-300" : "text-zinc-400"} />
                           </Link>
                         </li>
                       );
@@ -309,16 +309,16 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
                     <div className="flex items-center gap-3">
                       <Avatar name={displayName} email={user.email} large />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-body font-semibold text-ink">{displayName}</p>
-                        <p className="truncate text-callout text-muted">{user.email}</p>
+                        <p className="truncate text-body font-semibold text-zinc-100">{displayName}</p>
+                        <p className="truncate text-callout text-zinc-400">{user.email}</p>
                       </div>
-                      <span className="shrink-0 rounded-full bg-fill px-2.5 py-0.5 text-caption font-medium text-ink-2">
+                      <span className="shrink-0 rounded-full border border-white/[0.06] bg-fill px-2.5 py-0.5 text-caption font-medium text-zinc-200">
                         {roleLabel(user)}
                       </span>
                     </div>
                     <form action={signOutAction} onSubmit={forgetBooking} className="mt-4">
                       <SignOutButton
-                        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-fill text-body font-medium text-ink transition-colors hover:bg-fill-strong"
+                        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-fill text-body font-medium text-zinc-100 transition-colors hover:bg-fill-strong"
                         icon={<SignOut size={18} />}
                       >
                         Sign out
@@ -330,30 +330,30 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
                     <Link
                       href={bookHref}
                       onClick={() => setMenuOpen(false)}
-                      className="flex min-h-12 items-center justify-center rounded-xl bg-accent text-body font-semibold text-white transition-colors hover:bg-accent-hover"
+                      className="flex min-h-12 items-center justify-center rounded-xl bg-cyan-400 bg-gradient-to-r from-cyan-400 to-blue-500 text-body font-semibold text-zinc-950 shadow-[0_0_16px_rgba(34,211,238,0.25)] transition-all"
                     >
                       Book an appointment
                     </Link>
                     <Link
                       href={signInHref}
                       onClick={() => setMenuOpen(false)}
-                      className="flex min-h-12 items-center justify-center rounded-xl bg-fill text-body font-medium text-ink transition-colors hover:bg-fill-strong"
+                      className="flex min-h-12 items-center justify-center rounded-xl border border-white/10 bg-fill text-body font-medium text-zinc-100 transition-colors hover:bg-fill-strong"
                     >
                       Sign in
                     </Link>
                   </div>
                 )}
 
-                <div className="mx-3 mt-4 flex items-center gap-3 rounded-xl bg-canvas px-4 py-2">
-                  <Phone size={20} className="shrink-0 text-muted" />
+                <div className="mx-3 mt-4 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-zinc-900/90 px-4 py-2">
+                  <Phone size={20} className="shrink-0 text-zinc-400" />
                   <div className="min-w-0">
                     <a
                       href={practice.phoneHref}
-                      className="tabular inline-flex min-h-11 items-center text-body font-semibold text-accent no-underline"
+                      className="tabular inline-flex min-h-11 items-center text-body font-semibold text-cyan-300 no-underline"
                     >
                       {practice.phoneDisplay}
                     </a>
-                    <p className="-mt-1.5 pb-1 text-caption text-muted">{practice.hours}</p>
+                    <p className="-mt-1.5 pb-1 text-caption text-zinc-400">{practice.hours}</p>
                   </div>
                 </div>
               </div>
@@ -371,7 +371,7 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-30 bg-ink/20 md:hidden"
+            className="fixed inset-0 z-30 bg-black/60 md:hidden"
           />
         ) : null}
       </AnimatePresence>
@@ -386,20 +386,20 @@ function Brand({ href }: { href: string }) {
     <Link
       href={href}
       aria-label={practice.name}
-      className="group -mx-1.5 flex shrink-0 items-center gap-2.5 rounded-xl px-1.5 py-1"
+      className="group -mx-1.5 flex shrink-0 items-center gap-2 rounded-xl px-1.5 py-1 min-[360px]:gap-2.5"
     >
       <span
         aria-hidden="true"
-        className="grid size-8 place-items-center rounded-[9px] bg-accent text-white shadow-[inset_0_-1.5px_0_rgb(0_0_0/0.18)] transition-transform duration-200 group-active:scale-95 md:size-9 md:rounded-[10px]"
+        className="grid size-8 place-items-center rounded-[9px] bg-cyan-400 bg-gradient-to-br from-cyan-400 to-blue-500 text-zinc-950 shadow-[0_0_14px_rgba(34,211,238,0.4)] transition-transform duration-200 group-active:scale-95 md:size-9 md:rounded-[10px]"
       >
         <svg width="16" height="16" viewBox="0 0 14 14" fill="currentColor">
           <path d="M5 1h4v4h4v4H9v4H5V9H1V5h4z" />
         </svg>
       </span>
       <span className="flex flex-col">
-        <span className="text-[1.0625rem] leading-[1.15] font-bold tracking-[-0.015em] text-ink">{practice.shortName}</span>
+        <span className="text-[1rem] leading-[1.15] font-bold tracking-[-0.015em] text-zinc-100 min-[360px]:text-[1.0625rem]">{practice.shortName}</span>
         {descriptor ? (
-          <span className="text-[0.6875rem] leading-[1.25] font-semibold tracking-[0.07em] text-muted uppercase">
+          <span className="text-[0.625rem] leading-[1.25] font-semibold tracking-[0.06em] text-zinc-400 uppercase min-[360px]:text-[0.6875rem] min-[360px]:tracking-[0.07em]">
             {descriptor}
           </span>
         ) : null}
@@ -414,12 +414,12 @@ function DesktopLink({ link, current }: { link: NavLink; current: "page" | "true
       href={link.href}
       aria-current={current}
       className={`group relative flex h-full items-center px-1 text-callout font-medium no-underline outline-none transition-colors ${
-        current ? "text-accent" : "text-ink-2 hover:text-ink"
+        current ? "text-cyan-300" : "text-zinc-300 hover:text-zinc-50"
       }`}
     >
       <span
-        className={`rounded-lg px-3 py-2 transition-colors group-focus-visible:outline-3 group-focus-visible:outline-accent/55 group-focus-visible:outline-solid ${
-          current ? "group-hover:bg-accent-soft" : "group-hover:bg-fill"
+        className={`rounded-lg px-3 py-2 transition-colors group-focus-visible:outline-3 group-focus-visible:outline-cyan-400/55 group-focus-visible:outline-solid ${
+          current ? "group-hover:bg-cyan-400/10" : "group-hover:bg-white/[0.06]"
         }`}
       >
         {link.label}
@@ -429,7 +429,7 @@ function DesktopLink({ link, current }: { link: NavLink; current: "page" | "true
           layoutId="nav-current"
           transition={spring.snap}
           aria-hidden="true"
-          className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent"
+          className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_12px_rgba(34,211,238,0.65)]"
         />
       ) : null}
     </Link>
@@ -440,7 +440,7 @@ function Avatar({ name, email, large = false }: { name: string; email: string; l
   return (
     <span
       aria-hidden="true"
-      className={`grid shrink-0 place-items-center rounded-full bg-ink font-semibold tracking-wide text-white ${
+      className={`grid shrink-0 place-items-center rounded-full bg-cyan-400 bg-gradient-to-br from-cyan-400 to-blue-500 font-semibold tracking-wide text-zinc-950 ${
         large ? "size-10 text-callout" : "size-8 text-caption"
       }`}
     >
@@ -489,11 +489,11 @@ function AccountMenu({
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen(!open)}
-        className="flex min-h-11 items-center gap-2 rounded-full py-1 pr-2.5 pl-1 text-callout font-medium text-ink transition-colors hover:bg-fill aria-expanded:bg-fill"
+        className="flex min-h-11 items-center gap-2 rounded-full py-1 pr-2.5 pl-1 text-callout font-medium text-zinc-200 transition-colors hover:bg-white/[0.06] aria-expanded:bg-white/[0.06]"
       >
         <Avatar name={name} email={user.email} />
         <span className="max-w-40 truncate">{name}</span>
-        <ChevronDown size={16} className={`text-muted transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={16} className={`text-zinc-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
       <AnimatePresence>
@@ -505,39 +505,39 @@ function AccountMenu({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={spring.press}
-            className="absolute top-full right-0 mt-2 w-76 origin-top-right rounded-2xl bg-surface p-1.5 shadow-raised ring-1 ring-black/[0.06] outline-none"
+            className="absolute top-full right-0 mt-2 w-76 origin-top-right rounded-2xl border border-white/10 bg-zinc-900/95 p-1.5 shadow-raised ring-1 ring-white/[0.06] backdrop-blur-xl outline-none"
           >
             <div className="flex items-center gap-3 px-2.5 pt-2.5 pb-3">
               <Avatar name={name} email={user.email} large />
               <div className="min-w-0">
-                <p className="truncate text-callout font-semibold text-ink">{name}</p>
-                <p className="truncate text-caption text-muted">{user.email}</p>
+                <p className="truncate text-callout font-semibold text-zinc-100">{name}</p>
+                <p className="truncate text-caption text-zinc-400">{user.email}</p>
                 <p className="mt-1.5">
-                  <span className="inline-flex rounded-full bg-fill px-2 py-0.5 text-caption font-medium text-ink-2">
+                  <span className="inline-flex rounded-full border border-white/[0.06] bg-fill px-2 py-0.5 text-caption font-medium text-zinc-200">
                     {roleLabel(user)}
                   </span>
                 </p>
               </div>
             </div>
-            <div aria-hidden="true" className="mx-1.5 h-px bg-hairline" />
+            <div aria-hidden="true" className="mx-1.5 h-px bg-white/[0.06]" />
             <ul className="py-1">
               {accountLinks(user).map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
                     onClick={() => setOpen(false)}
-                    className="flex min-h-11 items-center rounded-xl px-3 text-callout text-ink no-underline transition-colors hover:bg-fill"
+                    className="flex min-h-11 items-center rounded-xl px-3 text-callout text-zinc-300 no-underline transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
                   >
                     {link.label}
                   </Link>
                 </li>
               ))}
             </ul>
-            <div aria-hidden="true" className="mx-1.5 h-px bg-hairline" />
+            <div aria-hidden="true" className="mx-1.5 h-px bg-white/[0.06]" />
             <form action={signOutAction} onSubmit={onSignOut} className="pt-1">
               <SignOutButton
-                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-callout font-medium text-ink transition-colors hover:bg-fill"
-                icon={<SignOut size={18} className="text-muted" />}
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-callout font-medium text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
+                icon={<SignOut size={18} className="text-zinc-400" />}
               >
                 Sign out
               </SignOutButton>

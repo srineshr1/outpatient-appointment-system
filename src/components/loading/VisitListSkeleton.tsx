@@ -19,7 +19,7 @@ export function VisitListSkeleton({ label, filters = false }: { label: string; f
             <Skeleton className="h-6 w-32" />
             <ul className="mt-4 grid gap-3">
               {Array.from({ length: 3 }, (_, index) => (
-                <li key={index} className="rounded-card bg-surface p-5 shadow-card">
+                <li key={index} className="rounded-card border border-hairline bg-surface p-5 shadow-card">
                   <div className="flex items-baseline justify-between gap-2">
                     <Skeleton className="h-5 w-48" />
                     <Skeleton className="h-4 w-16" />

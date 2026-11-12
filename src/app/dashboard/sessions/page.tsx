@@ -57,7 +57,7 @@ export default async function SessionsPage({
     <div className="mx-auto max-w-[92rem] px-5 pt-8 pb-20 md:px-8 xl:px-10 md:pt-12">
       <Link
         href="/dashboard"
-        className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-accent hover:bg-accent-soft"
+        className="-ml-2 inline-flex min-h-11 items-center rounded-full pr-3 pl-2 text-body text-cyan-300 transition-colors hover:bg-accent-soft"
       >
         Clinic book
       </Link>
@@ -77,7 +77,7 @@ export default async function SessionsPage({
         </Notice>
       ) : null}
       {removing && count > 0 ? (
-        <section aria-labelledby="remove-displace" role="alert" className="mt-6 rounded-card bg-danger-soft px-5 py-4 text-callout text-ink">
+        <section aria-labelledby="remove-displace" role="alert" className="mt-6 rounded-card border border-red-400/25 bg-danger-soft px-5 py-4 text-callout text-ink">
           <h2 id="remove-displace" className="text-body font-semibold">
             {count === 1 ? "1 patient is" : `${count} patients are`} booked in {removing.label || "that session"}
           </h2>
@@ -116,7 +116,7 @@ export default async function SessionsPage({
       {!status.steps[0]!.done ? (
         <Notice tone="info" className="mt-6">
           Patients can&rsquo;t see you yet.{" "}
-          <Link href="/dashboard/profile" className="text-accent underline underline-offset-4">
+          <Link href="/dashboard/profile" className="text-cyan-300 underline underline-offset-4">
             Finish your profile
           </Link>{" "}
           as well as adding a session.

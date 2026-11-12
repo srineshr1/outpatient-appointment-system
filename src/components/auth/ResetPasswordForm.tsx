@@ -25,11 +25,11 @@ export function ResetPasswordForm({ email, token }: { email: string; token: stri
 
   return (
     <form onSubmit={submit} noValidate className="mt-4">
-      <p className="text-callout text-ink-2">
-        For <span className="font-semibold break-all text-ink">{email}</span>. You’ll be signed out everywhere else.
+      <p className="text-callout text-zinc-300">
+        For <span className="font-semibold break-all text-zinc-50">{email}</span>. You’ll be signed out everywhere else.
       </p>
       <input type="email" name="username" value={email} autoComplete="username" readOnly hidden />
-      <label htmlFor="password" className="mt-4 block text-callout font-medium text-ink">
+      <label htmlFor="password" className="mt-4 block text-callout font-medium text-zinc-200">
         New password
       </label>
       <input
@@ -43,10 +43,10 @@ export function ResetPasswordForm({ email, token }: { email: string; token: stri
         className="field mt-1 h-12 rounded-full! px-5"
         autoFocus
       />
-      <p id="password-hint" className="mt-1 text-caption text-muted">
+      <p id="password-hint" className="mt-1 text-caption text-zinc-400">
         At least 8 characters.
       </p>
-      <label htmlFor="confirm" className="mt-3 block text-callout font-medium text-ink">
+      <label htmlFor="confirm" className="mt-3 block text-callout font-medium text-zinc-200">
         Confirm new password
       </label>
       <input
@@ -59,7 +59,7 @@ export function ResetPasswordForm({ email, token }: { email: string; token: stri
         className="field mt-1 h-12 rounded-full! px-5"
       />
       {error ? (
-        <p role="alert" className="mt-2 flex items-start gap-1.5 text-callout text-danger">
+        <p role="alert" className="mt-2 flex items-start gap-1.5 text-callout text-red-300">
           <Alert size={18} className="mt-px shrink-0" />
           <span>{error}</span>
         </p>

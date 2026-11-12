@@ -43,30 +43,30 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
 
   return (
     <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
-      <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Your appointments</PageHeading>
-      <p className="mt-2 max-w-prose text-body text-ink-2">
+      <PageHeading className="text-title2 font-semibold text-zinc-50 md:text-title1">Your appointments</PageHeading>
+      <p className="mt-2 max-w-prose text-body text-zinc-300">
         Signed in as {user.name}. This session runs until{" "}
-        <time dateTime={user.expiresAt} className="tabular">
+        <time dateTime={user.expiresAt} className="tabular text-zinc-100">
           {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: PRACTICE_TZ }).format(
             new Date(user.expiresAt),
           )}
         </time>
         .
       </p>
-      <p className="mt-3 text-callout">
-        <Link href="/book" className="text-accent hover:underline underline-offset-4">
+      <p className="mt-3 text-callout text-zinc-400">
+        <Link href="/book" className="text-cyan-300 hover:underline underline-offset-4">
           Book a time
         </Link>
         {" "}
         ·{" "}
-        <Link href="/payments" className="text-accent hover:underline underline-offset-4">
+        <Link href="/payments" className="text-cyan-300 hover:underline underline-offset-4">
           Payments and refunds
         </Link>
         {user.role !== "patient" ? (
           <>
             {" "}
             ·{" "}
-            <Link href="/dashboard" className="text-accent hover:underline underline-offset-4">
+            <Link href="/dashboard" className="text-cyan-300 hover:underline underline-offset-4">
               Clinic book
             </Link>
           </>
@@ -80,7 +80,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
       {open.map(({ visit, offer }) => (
         <Notice key={visit.id} tone="info" className="mt-6">
           Your doctor changed their hours, so your visit on {formatShortDate(visit.date)}, {visit.time} ({visit.reference}) needs a new time.{" "}
-          <Link href={rebookPath(offer!.id)} className="font-medium text-accent underline underline-offset-4">
+          <Link href={rebookPath(offer!.id)} className="font-medium text-cyan-300 underline underline-offset-4">
             Pick a new time or cancel for a refund
           </Link>
         </Notice>
