@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useMemo, useState, type ReactNode } from "react";
+import { useActionState, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { PendingButton } from "@/components/ui/PendingButton";
 import type { ConsultSession, SessionTrim } from "@/lib/clinic-types";
@@ -30,12 +30,15 @@ import {
   CLINIC_START,
   clinicWeekday,
   firstFreeHour,
+  blockHeightCss,
   holdsPlace,
-  HOUR_PX,
+  HOUR_VAR,
+  hourHeightCss,
   minutesLabel,
   occurrenceLabel,
   sessionIsPast,
   todayTitle,
+  topCss,
   weekMonday,
   weekTag,
   weekTitle,
@@ -167,22 +170,39 @@ export function DoctorSchedule({
 
   return (
     <div className="bg-[#F4F6F5] text-[#14201F]">
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-5 px-4 py-6 md:px-6">
-        <header className="flex flex-wrap items-end justify-between gap-4">
+      <div className="mx-auto flex max-w-[1760px] flex-col gap-4 px-4 py-5 md:px-6 2xl:px-8">
+        <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div>
             <PageHeading className="text-[28px] leading-tight font-bold tracking-tight">Schedule</PageHeading>
-            <p className="mt-1.5 text-sm text-[#4F605C]">
+            <p className="mt-1 text-sm text-[#4F605C]">
               {doctorName} · Outpatient clinic · {todayTitle(today)}
             </p>
           </div>
-          {editHref ? (
-            <Link
-              href={editHref}
-              className="inline-flex min-h-11 items-center rounded-[10px] bg-[#14201F] px-4 text-sm font-semibold text-white"
+          <div className="flex flex-wrap items-center gap-3">
+            <section
+              aria-label="Week summary"
+              className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-[#E3E8E6] bg-white px-4 py-2"
             >
-              Edit schedule
-            </Link>
-          ) : null}
+              <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">Booked this week</span>
+              <span className="flex items-baseline gap-1.5">
+                <span className="text-xl leading-none font-bold tabular-nums">{week.booked}</span>
+                <span className="text-sm text-[#4F605C]">
+                  of {week.capacity} places · {util}%
+                </span>
+              </span>
+              <div className="hidden h-2 w-24 rounded-[3px] bg-[#E3E8E6] sm:block">
+                <div className="h-2 rounded-[3px] bg-[#14201F]" style={{ width: `${util}%` }} />
+              </div>
+            </section>
+            {editHref ? (
+              <Link
+                href={editHref}
+                className="inline-flex min-h-11 items-center rounded-[10px] bg-[#14201F] px-4 text-sm font-semibold text-white"
+              >
+                Edit schedule
+              </Link>
+            ) : null}
+          </div>
         </header>
 
         {banner ? (
@@ -199,23 +219,8 @@ export function DoctorSchedule({
           </div>
         ) : null}
 
-        <section aria-label="Week summary" className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col justify-center gap-2 rounded-xl border border-[#E3E8E6] bg-white p-4">
-            <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">Booked this week</span>
-            <span className="flex items-baseline gap-2">
-              <span className="text-[30px] leading-none font-bold tabular-nums">{week.booked}</span>
-              <span className="text-sm text-[#4F605C]">
-                of {week.capacity} places · {util}%
-              </span>
-            </span>
-            <div className="h-2 max-w-sm rounded-[3px] bg-[#E3E8E6]">
-              <div className="h-2 rounded-[3px] bg-[#14201F]" style={{ width: `${util}%` }} />
-            </div>
-          </div>
-        </section>
-
-        <div className="flex flex-wrap items-start gap-5">
-          <div className="flex min-w-0 flex-[999_1_640px] flex-col gap-5">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="flex min-w-0 flex-col gap-4">
             <Calendar
               week={week}
               monday={monday}
@@ -284,11 +289,17 @@ function Calendar({
 }) {
   const hours = [];
   for (let hour = 8; hour < 18; hour += 1) hours.push(minutesLabel(hour * 60));
-  const columnHeight = ((CLINIC_END - CLINIC_START) / 60) * HOUR_PX;
+  const columnHeight = topCss(CLINIC_END);
+  // One hour row, sized to the viewport (see hourHeightCss). Every top and height below scales with it.
+  const scale = { [HOUR_VAR]: hourHeightCss() } as CSSProperties;
 
   return (
-    <section aria-label="Weekly calendar" className="w-full min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
-      <div className="flex flex-wrap items-center gap-2 p-4">
+    <section
+      aria-label="Weekly calendar"
+      className="w-full min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white"
+      style={scale}
+    >
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3">
         <button type="button" aria-label="Previous week" onClick={() => onWeek(weekOffset - 1)} className={iconButton}>
           <Chevron direction="left" />
         </button>
@@ -304,11 +315,11 @@ function Calendar({
         </div>
       </div>
       <div className="overflow-x-auto border-t border-[#E3E8E6]">
-        <div className="min-w-[780px]">
-          <div className="grid grid-cols-[56px_repeat(6,minmax(0,1fr))]">
+        <div className="min-w-[760px]">
+          <div className="grid grid-cols-[52px_repeat(6,minmax(0,1fr))]">
             <div className="border-b border-[#E3E8E6]" />
             {week.days.map((day) => (
-              <div key={day.date} className="flex flex-col gap-1 border-b border-l border-[#E3E8E6] px-2 pt-2 pb-2.5">
+              <div key={day.date} className="flex flex-col gap-0.5 border-b border-l border-[#E3E8E6] px-2.5 py-2">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">{day.dow}</span>
                   <span
@@ -322,10 +333,14 @@ function Calendar({
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-[56px_repeat(6,minmax(0,1fr))]">
+          <div className="grid grid-cols-[52px_repeat(6,minmax(0,1fr))]">
             <div>
               {hours.map((label) => (
-                <div key={label} className="box-border h-16 pr-2 pt-0.5 text-right text-[11px] text-[#5B6B68] tabular-nums">
+                <div
+                  key={label}
+                  className="box-border pr-2 pt-0.5 text-right text-[11px] text-[#5B6B68] tabular-nums"
+                  style={{ height: `var(${HOUR_VAR})` }}
+                >
                   {label}
                 </div>
               ))}
@@ -337,19 +352,21 @@ function Calendar({
                 style={{
                   height: columnHeight,
                   backgroundColor: day.isToday ? "#F7FAF9" : "#FFFFFF",
-                  backgroundImage: "repeating-linear-gradient(to bottom, #E3E8E6 0, #E3E8E6 1px, transparent 1px, transparent 64px)",
+                  backgroundImage: "linear-gradient(to bottom, #E3E8E6 0, #E3E8E6 1px, transparent 1px)",
+                  backgroundSize: `100% var(${HOUR_VAR})`,
                 }}
               >
-                {day.sessions.map((item) => (
-                  <SessionBlock key={item.key} item={item} selected={item.key === selectedKey} onSelect={onSelect} />
-                ))}
+                {/* Drawn first, so session cards sit on top of the line instead of being cut by it. */}
                 {day.isToday && nowMinutes >= CLINIC_START && nowMinutes <= CLINIC_END ? (
                   <div
                     aria-hidden="true"
                     className="pointer-events-none absolute right-0 left-0 h-0.5 bg-[#14201F]"
-                    style={{ top: ((nowMinutes - CLINIC_START) * HOUR_PX) / 60 }}
+                    style={{ top: topCss(nowMinutes) }}
                   />
                 ) : null}
+                {day.sessions.map((item) => (
+                  <SessionBlock key={item.key} item={item} selected={item.key === selectedKey} onSelect={onSelect} />
+                ))}
               </div>
             ))}
           </div>
@@ -361,16 +378,18 @@ function Calendar({
 
 function SessionBlock({ item, selected, onSelect }: { item: DaySession; selected: boolean; onSelect: (item: DaySession) => void }) {
   const palette = item.session.mode === "wave" ? WAVE : STREAM;
-  const height = Math.max(44, ((item.endMin - item.startMin) * HOUR_PX) / 60 - 2);
-  const top = ((item.startMin - CLINIC_START) * HOUR_PX) / 60 + 1;
+  const height = blockHeightCss(item.startMin, item.endMin);
+  const top = topCss(item.startMin, 1);
   const many = item.lanes > 1;
+  // An hour and a half or longer has room for the name on its own line; shorter cards keep it beside the type.
+  const roomy = item.endMin - item.startMin >= 90;
   return (
     <button
       type="button"
       onClick={() => onSelect(item)}
       aria-pressed={selected}
       aria-label={`${item.session.label || (item.session.mode === "wave" ? "Wave" : "Stream")}, ${item.session.mode} session, ${minutesLabel(item.startMin)} to ${minutesLabel(item.endMin)}, ${item.booked} of ${item.capacity} booked`}
-      className="absolute box-border flex flex-col gap-1 overflow-hidden rounded-lg border px-1.5 py-1.5 text-left"
+      className="absolute box-border flex flex-col gap-1 overflow-hidden rounded-lg border px-2 py-1.5 text-left"
       style={{
         top,
         height,
@@ -383,41 +402,44 @@ function SessionBlock({ item, selected, onSelect }: { item: DaySession; selected
         boxShadow: selected ? "0 0 0 2px #14201F" : "0 1px 0 rgba(20,32,31,0.08)",
       }}
     >
-      <span className="flex items-center justify-between gap-1 text-xs font-bold">
-        <span className="inline-flex items-center gap-1">
+      <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold">
+        <span className="inline-flex shrink-0 items-center gap-1">
           {item.session.mode === "wave" ? <WaveIcon /> : <StreamIcon />}
           {item.session.mode === "wave" ? "Wave" : "Stream"}
         </span>
-        <span className="tabular-nums">
+        {item.session.label && !roomy ? <span className="min-w-0 truncate font-semibold">· {item.session.label}</span> : null}
+        <span className="ml-auto shrink-0 tabular-nums">
           {item.booked}/{item.capacity}
         </span>
       </span>
-      {height >= 100 ? <span className="truncate text-xs font-semibold">{item.session.label}</span> : null}
-      <span className="text-[11px] font-medium tabular-nums">
-        {minutesLabel(item.startMin)}–{minutesLabel(item.endMin)}
-      </span>
-      <span className="flex flex-wrap gap-[3px]">
-        {item.blocks.map((block) => (
-          <span
-            key={block.time}
-            className="flex"
-            style={{
-              gap: item.session.mode === "wave" ? 2 : 0,
-              padding: item.session.mode === "wave" ? "2px 3px" : 0,
-              borderRadius: 7,
-              background: item.session.mode === "wave" ? palette.soft : "transparent",
-              border: `1px solid ${item.session.mode === "wave" ? palette.bd : "transparent"}`,
-            }}
-          >
-            {block.seats.map((seat) => (
-              <span
-                key={seat.seat}
-                className="block size-2 rounded-full border-[1.5px]"
-                style={{ borderColor: palette.dot, background: seat.visit ? palette.dot : "transparent" }}
-              />
-            ))}
-          </span>
-        ))}
+      {item.session.label && roomy ? <span className="truncate text-xs leading-tight font-semibold">{item.session.label}</span> : null}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="shrink-0 text-[11px] leading-none font-medium tabular-nums">
+          {minutesLabel(item.startMin)}–{minutesLabel(item.endMin)}
+        </span>
+        <span className="flex flex-wrap gap-[3px]">
+          {item.blocks.map((block) => (
+            <span
+              key={block.time}
+              className="flex"
+              style={{
+                gap: item.session.mode === "wave" ? 2 : 0,
+                padding: item.session.mode === "wave" ? "2px 3px" : 0,
+                borderRadius: 7,
+                background: item.session.mode === "wave" ? palette.soft : "transparent",
+                border: `1px solid ${item.session.mode === "wave" ? palette.bd : "transparent"}`,
+              }}
+            >
+              {block.seats.map((seat) => (
+                <span
+                  key={seat.seat}
+                  className="block size-2 rounded-full border-[1.5px]"
+                  style={{ borderColor: palette.dot, background: seat.visit ? palette.dot : "transparent" }}
+                />
+              ))}
+            </span>
+          ))}
+        </span>
       </span>
     </button>
   );
@@ -451,7 +473,7 @@ function Editor(props: {
   const { edit, selected, base, editable, past, saveState } = props;
   if (!edit) {
     return (
-      <aside aria-label="Session editor" className="min-w-0 flex-[1_1_380px] overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
+      <aside aria-label="Session editor" className="min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
         <div className="flex flex-col gap-2 p-6">
           <span className="text-base font-bold">No session selected</span>
           <span className="text-sm leading-normal text-[#4F605C]">
@@ -581,7 +603,7 @@ function Editor(props: {
   const endNote = edgeNote(edit.endMin - (base ? toMinutes(base.endTime) : edit.endMin), edit, "end");
 
   return (
-    <aside aria-label="Session editor" className="min-w-0 flex-[1_1_380px] overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
+    <aside aria-label="Session editor" className="min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
       <div className="border-b border-[#E3E8E6] p-4">
         <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">Edit session</span>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -623,7 +645,7 @@ function Editor(props: {
             </form>
           ) : null}
           {editable ? (
-            <button type="button" onClick={props.onAdd} className={`${solidButton} w-[115px] shrink-0`}>
+            <button type="button" onClick={props.onAdd} className={`${solidButton} shrink-0 whitespace-nowrap`}>
               Add session
             </button>
           ) : null}
