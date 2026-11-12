@@ -30,7 +30,7 @@ import type {
 } from "./clinic-types";
 import { addDays, now, todayIso } from "./clock";
 import type { Slot } from "./data";
-import { applyReservations, holdReservations, occupiesTime, type Reservation } from "./elastic-scheduling";
+import { applyReservations, holdReservations, occupiesTime, sessionStructureChanged, stillFits, type Reservation } from "./elastic-scheduling";
 import { hashToken } from "./passwords";
 import { rebookPath, rebookToken, rebookTokenHash } from "./rebook-links";
 import { cancelReminders, rescheduleReminders } from "./notifications/service";
@@ -71,7 +71,9 @@ function displaceable(visit: AppointmentRecord): visit is AppointmentRecord & { 
  * The reservations a session change would strand. Removing the session strands every upcoming booked
  * visit and payment hold in it. Changing its hours strands the booked visits whose slot or wave no
  * longer exists at the same time; payment holds keep their original time as elastic scheduling already
- * allows (they are paid at that time or lapse within minutes). Pure: the caller passes the visits.
+ * allows (they are paid at that time or lapse within minutes). A structural change (patients per wave,
+ * slot length, wave interval, stream/wave, days or dates) strands every booked visit and hold that no
+ * longer fits. Pure: the caller passes the visits.
  */
 export function displacedBy(
   visits: readonly AppointmentRecord[],
@@ -81,11 +83,11 @@ export function displacedBy(
 ): AppointmentRecord[] {
   const upcoming = visits.filter((visit) => displaceable(visit) && visit.sessionId === existing.id && visit.date >= today);
   if (next.archivedAt) return sortByTime(upcoming);
-  const stranded = upcoming.filter((visit) => visit.status === "booked").filter((visit) => {
-    const slot = slotsForSession(next, existing.doctorId, visit.date, visit.date).find((item) => item.id === baseSlotId(visit.slotId));
-    if (!slot || slot.time !== visit.time) return true;
-    return Boolean(visit.endTime && slot.endTime && visit.endTime !== slot.endTime);
-  });
+  // An hours-only change keeps payment holds where they are (elastic scheduling). A structural change
+  // (fewer patients per wave, another slot length or wave interval, stream/wave, days or dates) must move
+  // every reservation that no longer fits, holds included.
+  const structural = sessionStructureChanged(existing, next);
+  const stranded = upcoming.filter((visit) => structural || visit.status === "booked").filter((visit) => !stillFits(visit, next));
   return sortByTime(stranded);
 }
 

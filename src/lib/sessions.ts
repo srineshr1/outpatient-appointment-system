@@ -661,6 +661,129 @@ export function planAbsorption(
   return { ok: true, trims: saved, notice: absorptionNotice(candidate, others, saved) };
 }
 
+/** A booked visit the shift may move: it is in a stream session and has not started. */
+export interface ShiftableVisit extends OccupyingVisit {
+  id: string;
+  status: string;
+}
+
+/** One patient moved later inside the same stream on the same day. */
+export interface StreamMove {
+  visitId: string;
+  sessionId: string;
+  date: string;
+  fromTime: string;
+  fromEndTime: string | null;
+  toTime: string;
+  toEndTime: string;
+}
+
+export type StreamShiftPlan =
+  | { ok: true; trims: SessionTrim[]; notice: string | null; moves: StreamMove[]; starts: { sessionId: string; date: string; time: string }[] }
+  | { ok: false; message: string };
+
+/**
+ * A session grows into the start of a neighbouring stream on the same day, and patients are booked in
+ * the slots it would take. Instead of refusing, the stream starts later (at a slot boundary) and those
+ * patients move, in order, to the earliest free later slots of the same stream that day. Returns null
+ * when this does not apply (no booked stream patient in the way, or something else still blocks the
+ * change), and a refusal when the stream has too few free later slots. Only the start of a stream is
+ * moved this way; a session growing into the end of a stream, or into a wave, keeps the plain rule.
+ *
+ * `visits` are every visit that holds a place; `canMove` says which booked ones have not started.
+ */
+export function planStreamShift(
+  candidate: ConsultSession,
+  others: readonly ConsultSession[],
+  visits: readonly ShiftableVisit[],
+  today: string,
+  existing: readonly SessionTrim[] = [],
+  canMove: (visit: ShiftableVisit) => boolean = () => true,
+  horizonDays = ABSORPTION_HORIZON_DAYS,
+): StreamShiftPlan | null {
+  const streams = new Map(
+    others.filter((session) => !session.archivedAt && session.id !== candidate.id && session.mode === "stream").map((session) => [session.id, session]),
+  );
+  const movable = visits.filter(
+    (visit) => visit.sessionId && streams.has(visit.sessionId) && visit.status === "booked" && visit.date >= today && canMove(visit),
+  );
+  if (movable.length === 0) return null;
+  const leaving = new Set(movable.map((visit) => visit.id));
+  const staying = visits.filter((visit) => !leaving.has(visit.id));
+  const plan = planAbsorption(candidate, others, staying, today, existing, horizonDays);
+  if (!plan.ok) return null;
+
+  const roster = [candidate, ...others];
+  const foreign = existing.filter((trim) => trim.absorbedBy !== candidate.id);
+  const moves: StreamMove[] = [];
+  const starts: { sessionId: string; date: string; time: string }[] = [];
+  const handled = new Set<string>();
+  for (const trim of plan.trims) {
+    const neighbour = streams.get(trim.sessionId);
+    if (!neighbour) continue;
+    const cutStart = toMinutes(trim.startTime);
+    const cutEnd = toMinutes(trim.endTime);
+    const inside = movable
+      .filter((visit) => visit.sessionId === neighbour.id && visit.date === trim.date)
+      .filter((visit) => minutesOverlap(cutStart, cutEnd, toMinutes(visit.time), visitEnd(visit)))
+      .sort((a, b) => a.time.localeCompare(b.time));
+    if (inside.length === 0) continue;
+    const key = `${neighbour.id}|${trim.date}`;
+    if (handled.has(key)) return null;
+    handled.add(key);
+    const covered = trimsCovering(neighbour.id, trim.date, foreign, roster);
+    const left = sessionBlocks(neighbour).filter(
+      (block) => !blockCovered(block, covered) && !minutesOverlap(cutStart, cutEnd, toMinutes(block.time), toMinutes(block.endTime)),
+    );
+    // Only a cut at the start of what the stream offers that day: patients move later, never earlier.
+    if (left.length === 0 || left.some((block) => toMinutes(block.time) < cutEnd)) return null;
+    const moving = new Set(inside.map((visit) => visit.id));
+    const busy = (block: Block) =>
+      visits.some(
+        (visit) =>
+          !moving.has(visit.id) &&
+          visit.date === trim.date &&
+          (!visit.sessionId || visit.sessionId === neighbour.id) &&
+          minutesOverlap(toMinutes(block.time), toMinutes(block.endTime), toMinutes(visit.time), visitEnd(visit)),
+      );
+    const free = left.filter((block) => !busy(block));
+    if (free.length < inside.length) {
+      const n = inside.length;
+      return {
+        ok: false,
+        message: `${n} ${n === 1 ? "patient is" : "patients are"} booked in the part of your ${neighbourTitle(neighbour)} session this would take on ${shortDate(trim.date)}, and that session has only ${free.length} free later ${free.length === 1 ? "slot" : "slots"} to move them to.`,
+      };
+    }
+    inside.forEach((visit, index) => {
+      const target = free[index]!;
+      moves.push({
+        visitId: visit.id,
+        sessionId: neighbour.id,
+        date: trim.date,
+        fromTime: visit.time,
+        fromEndTime: visit.endTime ?? null,
+        toTime: target.time,
+        toEndTime: target.endTime,
+      });
+    });
+    starts.push({ sessionId: neighbour.id, date: trim.date, time: left[0]!.time });
+  }
+  if (moves.length === 0) return null;
+  // Every patient the cut reaches must be moved; anything else in the way keeps the plain rule.
+  const moved = new Set(moves.map((move) => move.visitId));
+  for (const trim of plan.trims) {
+    const reached = movable.some(
+      (visit) =>
+        !moved.has(visit.id) &&
+        visit.sessionId === trim.sessionId &&
+        visit.date === trim.date &&
+        minutesOverlap(toMinutes(trim.startTime), toMinutes(trim.endTime), toMinutes(visit.time), visitEnd(visit)),
+    );
+    if (reached) return null;
+  }
+  return { ok: true, trims: plan.trims, notice: plan.notice, moves, starts };
+}
+
 /**
  * Check what a doctor typed for a session. Overlap with another session is decided by
  * `planAbsorption`: a free edge can be lent, and a booked patient is never cancelled here.

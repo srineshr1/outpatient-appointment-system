@@ -15,6 +15,24 @@ export function sessionStructureChanged(a: ConsultSession, b: ConsultSession): b
     a.slotMinutes !== b.slotMinutes || a.waveMinutes !== b.waveMinutes || a.waveCapacity !== b.waveCapacity;
 }
 
+/**
+ * Whether a reserved visit keeps a valid place in the changed session: the session still runs on its
+ * date, its slot (or wave) still starts at the same time with the same length, and a wave still has
+ * room for its token. A visit that does not fit must be moved (displaced) before a structural change.
+ */
+export function stillFits(
+  visit: Pick<AppointmentRecord, "slotId" | "date" | "time"> & { endTime?: string | null; token?: number | null },
+  next: ConsultSession,
+): boolean {
+  if (next.archivedAt) return false;
+  const slot = slotsForSession(next, next.doctorId, visit.date, visit.date).find((item) => item.id === baseSlotId(visit.slotId));
+  if (!slot || slot.time !== visit.time) return false;
+  if (visit.endTime && slot.endTime && visit.endTime !== slot.endTime) return false;
+  const token = visit.token ?? null;
+  if (next.mode === "wave") return token !== null && token >= 1 && token <= (next.waveCapacity ?? 0);
+  return token === null;
+}
+
 export type Reservation = Pick<AppointmentRecord, "id" | "doctorId" | "date" | "time" | "endTime" | "slotId" | "status" | "sessionId">;
 
 /**

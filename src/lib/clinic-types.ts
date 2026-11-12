@@ -238,6 +238,15 @@ export interface Displacement {
   offer: RebookingOffer | null;
 }
 
+/** A booked visit moved later inside the same stream because a neighbouring session took its start. */
+export interface ShiftMove {
+  appointmentId: string;
+  /** The slot the caller read: the write is refused ("stale") if the visit has moved or changed status. */
+  fromSlotId: string;
+  to: Placement;
+  history: RescheduleRecord;
+}
+
 export type ProfileKind = "patient" | "doctor";
 
 /** A stored profile: the fields depend on `kind` (see profiles.ts). */
@@ -419,6 +428,13 @@ export interface ClinicStore {
    * slot was reserved meanwhile. Nothing is written unless everything is.
    */
   saveSessionDisplacing(session: ConsultSession, trims: readonly SessionTrim[], displaced: readonly Displacement[]): Promise<"ok" | "stale" | "taken">;
+  /**
+   * Save a session and its free-edge cuts while moving the booked visits in a cut part of a stream to
+   * later slots of that stream, with a history line each, all at once. "stale" when a listed visit
+   * changed since it was read or the cut would still reach a reservation; "taken" when a target slot
+   * was reserved or held meanwhile. Nothing is written unless everything is.
+   */
+  saveSessionShifting(session: ConsultSession, trims: readonly SessionTrim[], moves: readonly ShiftMove[]): Promise<"ok" | "stale" | "taken">;
   /** Offers, newest first. */
   listRebookingOffers(filter?: { doctorId?: string; appointmentId?: string; status?: RebookingOfferStatus }): Promise<RebookingOffer[]>;
   getRebookingOfferByTokenHash(tokenHash: string): Promise<RebookingOffer | null>;

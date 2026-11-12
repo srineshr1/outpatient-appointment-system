@@ -23,6 +23,7 @@ import {
   type RescheduleRecord,
   type SessionRecord,
   type SessionTrim,
+  type ShiftMove,
   type StoredUser,
   type UserAccount,
   type UserPatch,
@@ -1051,6 +1052,22 @@ export class SupabaseClinicStore implements ClinicStore {
               slots: item.offer.slots.map(placementPayload),
             }
           : null,
+      })),
+    });
+    fail(error);
+    return data === "ok" ? "ok" : data === "taken" ? "taken" : "stale";
+  }
+
+  async saveSessionShifting(session: ConsultSession, trims: readonly SessionTrim[], moves: readonly ShiftMove[]): Promise<"ok" | "stale" | "taken"> {
+    // supabase/migrations/*_session_shift_stream.sql: save, move and check in one transaction.
+    const { data, error } = await this.db.rpc("clinic_shift_and_save_session", {
+      p_session: sessionPayload(session),
+      p_trims: trims.map((trim) => ({ session_id: trim.sessionId, on_date: trim.date, start_time: trim.startTime, end_time: trim.endTime })),
+      p_moves: moves.map((move) => ({
+        appointment_id: move.appointmentId,
+        from_slot_id: move.fromSlotId,
+        to: placementPayload(move.to),
+        history: historyPayload(move.history),
       })),
     });
     fail(error);

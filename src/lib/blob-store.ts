@@ -532,6 +532,10 @@ export class BlobClinicStore implements ClinicStore {
     throw new Error(BLOB_NO_REBOOKING);
   }
 
+  async saveSessionShifting(): Promise<"ok" | "stale" | "taken"> {
+    throw new Error(BLOB_NO_REBOOKING);
+  }
+
   async listRebookingOffers(): Promise<RebookingOffer[]> {
     return [];
   }
