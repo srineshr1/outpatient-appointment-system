@@ -13,7 +13,42 @@ import {
 /** Clinic day drawn on the schedule, matching the dashboard design (08:00–18:00). */
 export const CLINIC_START = 8 * 60;
 export const CLINIC_END = 18 * 60;
-export const HOUR_PX = 64;
+
+/**
+ * Hour row height on the week calendar. Rows share the viewport height that is left after the site
+ * header, the page heading and the calendar's own toolbar and day headings (SCHEDULE_CHROME_PX), so
+ * the whole clinic day fits on a laptop screen without scrolling the grid. Clamped so rows never
+ * get too short to read a session card, or taller than the old fixed 64px.
+ */
+export const HOUR_MIN_PX = 44;
+export const HOUR_MAX_PX = 64;
+export const SCHEDULE_CHROME_PX = 320;
+/** Shortest a session card is drawn, so its heading row and slot dots stay readable. */
+export const BLOCK_MIN_PX = 38;
+/** CSS custom property that holds the hour height, set once on the calendar. */
+export const HOUR_VAR = "--schedule-hour";
+
+export function hourHeightCss(): string {
+  const hours = (CLINIC_END - CLINIC_START) / 60;
+  return `clamp(${HOUR_MIN_PX}px, calc((100dvh - ${SCHEDULE_CHROME_PX}px) / ${hours}), ${HOUR_MAX_PX}px)`;
+}
+
+/** A length of `minutes` on the calendar, in CSS, plus a fixed pixel adjustment. */
+export function minutesCss(minutes: number, plusPx = 0): string {
+  const hours = Number((minutes / 60).toFixed(4));
+  if (plusPx === 0) return `calc(var(${HOUR_VAR}) * ${hours})`;
+  return `calc(var(${HOUR_VAR}) * ${hours} ${plusPx < 0 ? "-" : "+"} ${Math.abs(plusPx)}px)`;
+}
+
+/** Where a session or the now line sits: minutes after the clinic day starts. */
+export function topCss(startMin: number, plusPx = 0): string {
+  return minutesCss(startMin - CLINIC_START, plusPx);
+}
+
+/** A session card's height: its length on the grid, never shorter than BLOCK_MIN_PX. */
+export function blockHeightCss(startMin: number, endMin: number): string {
+  return `max(${BLOCK_MIN_PX}px, ${minutesCss(endMin - startMin, -2)})`;
+}
 
 export interface ScheduleVisit {
   id: string;

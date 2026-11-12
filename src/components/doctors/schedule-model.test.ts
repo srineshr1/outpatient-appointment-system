@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { ConsultSession } from "@/lib/clinic-types";
 import { mondayOf } from "@/lib/clock";
-import { buildWeek, firstFreeHour, type ScheduleVisit } from "./schedule-model";
+import {
+  BLOCK_MIN_PX,
+  blockHeightCss,
+  buildWeek,
+  CLINIC_END,
+  CLINIC_START,
+  firstFreeHour,
+  HOUR_MAX_PX,
+  HOUR_MIN_PX,
+  HOUR_VAR,
+  hourHeightCss,
+  minutesCss,
+  SCHEDULE_CHROME_PX,
+  topCss,
+  type ScheduleVisit,
+} from "./schedule-model";
 
 const at = "2026-10-01T00:00:00.000Z";
 
@@ -91,5 +106,27 @@ describe("buildWeek", () => {
   it("finds a free hour that does not overlap a session", () => {
     expect(firstFreeHour([session()], [], monday)).toBe(8 * 60);
     expect(firstFreeHour([session({ startTime: "08:00", endTime: "18:00", slotMinutes: 30 })], [], monday)).toBeNull();
+  });
+});
+
+describe("calendar scale", () => {
+  it("shares the viewport between the clinic hours, within a readable range", () => {
+    expect(hourHeightCss()).toBe(
+      `clamp(${HOUR_MIN_PX}px, calc((100dvh - ${SCHEDULE_CHROME_PX}px) / ${(CLINIC_END - CLINIC_START) / 60}), ${HOUR_MAX_PX}px)`,
+    );
+    expect(HOUR_MIN_PX).toBeGreaterThanOrEqual(BLOCK_MIN_PX);
+    expect(HOUR_MAX_PX).toBe(64);
+  });
+
+  it("places sessions in hour units, so cards line up with the hour rows at any height", () => {
+    expect(topCss(CLINIC_START)).toBe(`calc(var(${HOUR_VAR}) * 0)`);
+    expect(topCss(9 * 60 + 30, 1)).toBe(`calc(var(${HOUR_VAR}) * 1.5 + 1px)`);
+    expect(topCss(CLINIC_END)).toBe(`calc(var(${HOUR_VAR}) * 10)`);
+    expect(minutesCss(20, -2)).toBe(`calc(var(${HOUR_VAR}) * 0.3333 - 2px)`);
+  });
+
+  it("never draws a card shorter than its minimum", () => {
+    expect(blockHeightCss(12 * 60, 16 * 60)).toBe(`max(${BLOCK_MIN_PX}px, calc(var(${HOUR_VAR}) * 4 - 2px))`);
+    expect(blockHeightCss(12 * 60, 12 * 60 + 15)).toBe(`max(${BLOCK_MIN_PX}px, calc(var(${HOUR_VAR}) * 0.25 - 2px))`);
   });
 });
