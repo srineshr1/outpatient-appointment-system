@@ -511,6 +511,7 @@ function AccountMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const pillRef = useRef<HTMLSpanElement>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<(HTMLElement | null)[]>([]);
   const instant = useRef(false);
   const panelId = useId();
@@ -518,6 +519,7 @@ function AccountMenu({
   const links = accountLinks(user);
   const currentIndex = links.findIndex((link) => currentFor(link.href, pathname) !== undefined);
   const [active, setActive] = useState<number | null>(null);
+  const isSignOutActive = active === links.length;
 
   const close = useCallback(
     (refocus: boolean) => {
@@ -541,8 +543,15 @@ function AccountMenu({
     consumeInstant,
     measure: (i) => {
       const el = rowRefs.current[i];
+      const container = listContainerRef.current;
       if (!el) return null;
-      return { top: el.offsetTop, height: el.offsetHeight };
+      if (!container) return { top: el.offsetTop, height: el.offsetHeight };
+      const elRect = el.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const hasRect = Boolean(containerRect && (containerRect.top || containerRect.bottom || containerRect.height));
+      const top = hasRect ? Math.round(elRect.top - containerRect.top) : el.offsetTop;
+      const height = elRect.height || el.offsetHeight;
+      return { top, height };
     },
   });
 
@@ -591,6 +600,7 @@ function AccountMenu({
       ? ({
           "--gs-surface": "#27272a",
           "--gs-highlight": "#3f3f46",
+          "--gs-highlight-danger": "rgba(248, 113, 113, 0.16)",
           "--gs-text": "#f5f5f5",
           "--gs-accent": "#f5f5f5",
           "--gs-muted": "rgba(245, 245, 245, 0.72)",
@@ -600,6 +610,7 @@ function AccountMenu({
       : ({
           "--gs-surface": "#ffffff",
           "--gs-highlight": "#f4f4f5",
+          "--gs-highlight-danger": "#fee2e2",
           "--gs-text": "#18181b",
           "--gs-accent": "#18181b",
           "--gs-muted": "#52525b",
@@ -667,11 +678,20 @@ function AccountMenu({
               </div>
             </div>
             <div aria-hidden="true" className="mx-1.5 my-1 h-px [background:var(--gs-border)]" />
-            <div className="relative">
+            <div
+              ref={listContainerRef}
+              className="relative"
+              onPointerLeave={() => setActive(currentIndex >= 0 ? currentIndex : null)}
+            >
               <span
                 ref={pillRef}
                 aria-hidden="true"
-                className="pointer-events-none absolute top-0 right-0 left-0 z-0 rounded-[8px] opacity-0 [background:var(--gs-highlight)] [transition:transform_220ms_cubic-bezier(0.23,1,0.32,1),height_220ms_cubic-bezier(0.23,1,0.32,1),opacity_150ms_ease] motion-reduce:[transition:opacity_150ms_ease]"
+                style={{
+                  backgroundColor: isSignOutActive
+                    ? "var(--gs-highlight-danger)"
+                    : "var(--gs-highlight)",
+                }}
+                className="pointer-events-none absolute top-0 right-0 left-0 z-0 rounded-[8px] opacity-0 [transition:transform_220ms_cubic-bezier(0.23,1,0.32,1),height_220ms_cubic-bezier(0.23,1,0.32,1),background-color_180ms_ease,opacity_150ms_ease] motion-reduce:[transition:opacity_150ms_ease]"
               />
               <ul className="relative z-[1] grid gap-0.5">
                 {links.map((link, index) => {
@@ -715,10 +735,23 @@ function AccountMenu({
                   onPointerEnter={() => setActive(links.length)}
                   onFocus={() => setActive(links.length)}
                 >
-                  <SignOutButton className="flex min-h-9 w-full items-center justify-between gap-2 rounded-[8px] px-2.5 text-left text-[13px] font-medium outline-none select-none [color:var(--gs-text)]">
+                  <SignOutButton
+                    className={`group flex min-h-9 w-full items-center justify-between gap-2 rounded-[8px] px-2.5 text-left text-[13px] font-medium outline-none select-none transition-colors duration-150 ${
+                      isSignOutActive
+                        ? "text-danger dark:text-red-400"
+                        : "[color:var(--gs-text)] hover:text-danger dark:hover:text-red-400"
+                    }`}
+                  >
                     <span className="min-w-0 flex-1 truncate">Sign out</span>
-                    <span aria-hidden="true" className="inline-flex w-4 shrink-0 items-center justify-center">
-                      <SignOut size={14} className="[color:var(--gs-muted)]" />
+                    <span
+                      aria-hidden="true"
+                      className={`inline-flex w-4 shrink-0 items-center justify-center transition-colors duration-150 ${
+                        isSignOutActive
+                          ? "text-danger dark:text-red-400"
+                          : "[color:var(--gs-muted)] group-hover:text-danger dark:group-hover:text-red-400"
+                      }`}
+                    >
+                      <SignOut size={14} />
                     </span>
                   </SignOutButton>
                 </div>

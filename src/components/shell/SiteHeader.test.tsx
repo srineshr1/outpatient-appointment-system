@@ -157,6 +157,26 @@ describe("SiteHeader", () => {
     await waitFor(() => expect(signOutAction).toHaveBeenCalled());
     expect(JSON.parse(window.sessionStorage.getItem(STORAGE_KEY)!).held).toBeNull();
   });
+
+  it("glides to sign-out with danger styling on hover or focus", async () => {
+    renderWithProviders(<SiteHeader user={patient} />);
+    const button = screen.getByRole("button", { name: "Ann Lee, account" });
+    await userEvent.click(button);
+    const panel = panelOf(button);
+    const signOutBtn = within(panel).getByRole("button", { name: "Sign out" });
+    const firstLink = within(panel).getByRole("link", { name: /Your appointments/i });
+
+    // Initially active on first current link, sign out is not active
+    expect(signOutBtn).not.toHaveClass("text-danger");
+
+    // Hovering sign out activates danger state
+    await userEvent.hover(signOutBtn);
+    expect(signOutBtn).toHaveClass("text-danger");
+
+    // Hovering back to a normal link reverts danger state
+    await userEvent.hover(firstLink);
+    expect(signOutBtn).not.toHaveClass("text-danger");
+  });
 });
 
 describe("header helpers", () => {
