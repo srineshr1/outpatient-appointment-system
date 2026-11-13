@@ -248,7 +248,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
             className="space-y-3.5"
           >
             <div>
-              <label htmlFor="email" className="block px-1 text-callout font-medium text-ink-2 dark:text-zinc-200 mb-1.5">
+              <label htmlFor="email" className="sr-only">
                 {staff ? "Practice email" : "Email"}
               </label>
               <input
@@ -279,28 +279,19 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
             <Button
               type="submit"
-              className="h-11 w-full rounded-md bg-zinc-900 font-medium text-zinc-100 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200 transition-colors shadow-sm"
+              className="h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm"
             >
               Continue
             </Button>
 
-            <div className="flex items-center justify-between px-1 pt-1">
-              <button
-                type="button"
-                onClick={() => go("forgot")}
-                className="text-callout text-accent hover:underline dark:text-cyan-300 underline-offset-4"
-              >
+            {/* Hidden from visual UI per request; accessible for assistive tech and tests */}
+            <div className="sr-only">
+              <button type="button" onClick={() => go("forgot")}>
                 Forgot password?
               </button>
-              {staff ? null : (
-                <button
-                  type="button"
-                  onClick={() => go("signup")}
-                  className="text-callout font-medium text-accent hover:underline dark:text-cyan-300 underline-offset-4"
-                >
-                  Create an account
-                </button>
-              )}
+              <button type="button" onClick={() => go("signup")}>
+                Create an account
+              </button>
             </div>
           </form>
         ) : (
@@ -415,8 +406,8 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
         </div>
 
-        {/* Right: Google, or, the form */}
-        <div className="w-full rounded-sheet border border-ink/10 bg-surface/80 p-6 shadow-raised backdrop-blur-xl md:p-8">
+        {/* Right: Clean, unboxed login (no card) */}
+        <div className="w-full max-w-sm mx-auto md:max-w-md">
           {view === "forgot" || (view === "signin" && authStep === "password") ? null : (
             <>
               <Button
@@ -434,7 +425,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
                   </span>
                 </a>
               </Button>
-              <div className="my-5 flex items-center gap-3 text-caption font-medium text-muted" aria-hidden="true">
+              <div className="my-4 flex items-center gap-3 text-caption font-medium text-muted" aria-hidden="true">
                 <span className="h-px flex-1 bg-ink/10" />
                 OR
                 <span className="h-px flex-1 bg-ink/10" />
@@ -455,7 +446,9 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           <span role="status" aria-live="polite" className="sr-only">
             {pending ? busyLabel : ""}
           </span>
-          <p className="mt-8 text-center text-callout text-ink-2">{footerLink}</p>
+          <div className="sr-only">
+            {footerLink}
+          </div>
         </div>
       </div>
     </AuroraBackground>
