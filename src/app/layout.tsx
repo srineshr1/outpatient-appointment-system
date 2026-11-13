@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Google_Sans, Inter } from "next/font/google";
+import { Google_Sans, IBM_Plex_Sans, Inter } from "next/font/google";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
@@ -22,6 +22,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 // Bold statement headings, such as the sign-in page.
 const googleSans = Google_Sans({ subsets: ["latin"], weight: ["700"], variable: "--font-google-sans", display: "swap" });
+// The clinic assistant's conversation face (AssistantDock.css), so the dock does not read as a stock chat widget.
+const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-dock", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -61,7 +63,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html
       lang="en-GB"
-      className={`${inter.variable} ${googleSans.variable}${initialTheme === "dark" ? " dark" : ""}`}
+      className={`${inter.variable} ${googleSans.variable} ${plexSans.variable}${initialTheme === "dark" ? " dark" : ""}`}
       suppressHydrationWarning
     >
       <body className="flex min-h-dvh flex-col bg-canvas text-ink">

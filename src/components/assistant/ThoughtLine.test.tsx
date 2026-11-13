@@ -33,6 +33,18 @@ describe("ThoughtLine", () => {
   });
 
 
+  it("keeps the shimmer attribute and solid label text when the shimmer is on", () => {
+    const { container, rerender } = render(<ThoughtLine label="Checking the book…" color="#1d1d1f" fontSize={16} shimmerDuration={1.8} />);
+    const breath = container.querySelector(".thought-line__breath") as HTMLElement;
+    expect(breath).toHaveAttribute("data-shimmer");
+    expect(breath).toHaveTextContent("Checking the book…");
+    expect(breath.style.color).not.toBe("transparent");
+    expect(root(container).style.getPropertyValue("--tl-shimmer")).toBe("1.8s");
+    rerender(<ThoughtLine label="Checking the book…" color="#1d1d1f" fontSize={16} working={false} elapsed={5} />);
+    expect(container.querySelector(".thought-line__text--done[data-active]")).toHaveTextContent("Thought for");
+    expect(timer(container)).toBe("5.0s");
+  });
+
   it("announces the working label and starts its clock at zero", () => {
     const { container } = render(<ThoughtLine label="Checking the book…" />);
     expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");

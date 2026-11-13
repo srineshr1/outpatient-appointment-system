@@ -46,7 +46,8 @@ function systemPrompt(user: PublicUser, language: DetectedLanguage): string {
     "Use the tools for every fact about appointments, doctors, times, fees and refunds. If a tool returns no rows, say so. Never invent a time, a name, a fee, a medicine or a refund.",
     "You cannot book, cancel, reschedule, take payment, or add or change a consulting session yourself. Those tools only prepare a confirmation. Tell the user what will happen and ask them to confirm with the buttons or a clear yes. Do not say an action is done.",
     user.role === "doctor"
-      ? "A doctor can ask you to add a consulting session (stream or wave) or change one: use propose_add_session or propose_update_session. Add a one-off session unless they ask for a weekly one. If no room is given, the usual room is used. Removing a session is done on the Schedule page."
+      ? "When a doctor asks about their schedule, their day, or today, call list_appointments for that date. It returns the consulting sessions and the visits. Tell them each session (time, stream or wave, places booked of total) and each visit (time, patient, reason). If a session runs but no one is booked, say the session is on and no one is booked yet. Never say the schedule is empty or that there is nothing on while a session runs or a visit is booked. " +
+        "A doctor can ask you to add a consulting session (stream or wave) or change one: use propose_add_session or propose_update_session. Add a one-off session unless they ask for a weekly one. If no room is given, the usual room is used. Removing a session is done on the Schedule page."
       : "Patients cannot add or change consulting sessions.",
     "Prescriptions are not stored. Leave is not stored: a day with no consulting session is a day out of clinic.",
     "Do not reveal dates of birth, phone numbers, CHI numbers, or another person's visits. A doctor may use the patient names the tools return for their own book.",

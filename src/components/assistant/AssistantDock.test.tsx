@@ -832,10 +832,10 @@ describe("AssistantDock scrolling and thought line contrast", () => {
       expect(line.closest(".text-muted")).toBeNull();
       expect(line.style.getPropertyValue("--tl-color")).toBe("var(--color-ink, #1d1d1f)");
       expect(line.style.getPropertyValue("--tl-font")).toBe("16px");
-      // No clipped, transparent shimmer: the working label is never painted through background-clip.
-      expect(line.querySelector("[data-shimmer]")).toBeNull();
+      // The words are never painted transparent or clipped through background-clip.
       const breath = line.querySelector(".thought-line__breath") as HTMLElement;
       expect(breath.style.color).not.toBe("transparent");
+      expect(breath.style.webkitTextFillColor ?? "").not.toBe("transparent");
       expect(line.querySelector(".thought-line__timer")).not.toBeNull();
     }
 
@@ -844,6 +844,11 @@ describe("AssistantDock scrolling and thought line contrast", () => {
     expect(working).toHaveAttribute("data-working");
     expect(working.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking the book…");
     expectSolidInk(working);
+    // The animation is back while waiting: the shimmer layer is on (drawn by AssistantDock.css
+    // as a sheen behind the words and a gleam under them), and the sparkle breathes.
+    expect(working.querySelector(".thought-line__breath[data-shimmer]")).not.toBeNull();
+    expect(working.querySelector(".thought-line__glyph")).not.toBeNull();
+    expect(working.style.getPropertyValue("--tl-shimmer")).toBe("1.8s");
 
     await act(async () => {
       finish({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
@@ -867,6 +872,36 @@ describe("AssistantDock scrolling and thought line contrast", () => {
     expect(css).toMatch(/--tl-timer:\s*1;/);
     expect(css).toMatch(/font-weight:\s*600;/);
     expect(css).toMatch(/color:\s*var\(--color-ink, #1d1d1f\)/);
+  });
+
+  it("animates the waiting line on separate layers, never by clipping the words", () => {
+    const css = dockCss.replace(/\/\*[\s\S]*?\*\//g, "");
+    // The words under the shimmer keep a solid fill and are never clipped.
+    const words = css.match(/\.thought-line__breath\[data-shimmer\]\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(words).toMatch(/-webkit-text-fill-color:\s*var\(--color-ink, #1d1d1f\)\s*!important/);
+    expect(words).toMatch(/background-clip:\s*border-box\s*!important/);
+    // Motion: a sheen behind the words, a gleam under them, and a twinkling sparkle.
+    const sheen = css.match(/\[data-shimmer\]::before\s*\{[^}]*\}/)?.[0] ?? "";
+    const gleam = css.match(/\[data-shimmer\]::after\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(sheen).toMatch(/z-index:\s*-1/);
+    expect(sheen).toMatch(/animation:\s*clinic-thought-sheen/);
+    expect(gleam).toMatch(/animation:\s*clinic-thought-gleam/);
+    expect(css).toMatch(/@keyframes clinic-thought-sheen/);
+    expect(css).toMatch(/@keyframes clinic-thought-gleam/);
+    expect(css).toMatch(/\.thought-line__glyph svg\s*\{[^}]*animation:\s*clinic-thought-twinkle/);
+    // Reduced motion turns the layers off.
+    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
+  });
+
+  it("sets the conversation in the dock's own typeface, not the site's Inter", () => {
+    openDock();
+    expect(screen.getByRole("dialog")).toHaveClass("clinic-dock");
+    const css = dockCss.replace(/\/\*[\s\S]*?\*\//g, "");
+    const face = css.match(/\.clinic-dock\s*\{[^}]*font-family:\s*([^;]+);/)?.[1] ?? "";
+    expect(face).toMatch(/^var\(--font-dock\), "IBM Plex Sans"/);
+    expect(face).not.toMatch(/Inter|Geist|Roboto|system-ui/);
+    const layout = readFileSync(join(process.cwd(), "src/app/layout.tsx"), "utf8");
+    expect(layout).toMatch(/IBM_Plex_Sans\([^)]*variable: "--font-dock"/);
   });
 });
 
