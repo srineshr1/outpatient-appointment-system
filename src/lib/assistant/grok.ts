@@ -38,7 +38,7 @@ export function assistantConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.XAI_API_KEY?.trim());
 }
 
-function systemPrompt(user: PublicUser, language: DetectedLanguage): string {
+function systemPrompt(user: PublicUser, language: DetectedLanguage, locked = false): string {
   const today = todayIso(now());
   return [
     `You are the clinic assistant for ${practice.name}. Today is ${weekdayLong(today)} ${today}, clinic time Asia/Kolkata.`,
@@ -55,8 +55,14 @@ function systemPrompt(user: PublicUser, language: DetectedLanguage): string {
     user.role === "patient"
       ? "When a tool returns open times, the app lists them under your reply, grouped by day, and each time opens the booking form for it. Do not list the times yourself. Say in one short sentence which doctor and days have times and that the user can tap a time to book it, or ask you to prepare the booking."
       : "When a tool returns open times, the app lists them under your reply, grouped by day. Do not list the times yourself. Summarise in one short sentence, for example how many are open and on which days.",
-    "Automatically detect the language of the user's latest message and reply in that same language and script. Do not ask which language they want. Do not translate into English unless they wrote in English. Hinglish stays Hinglish in Latin script, Hindi stays in Devanagari, Telugu stays in Telugu script, and so on for every language. If the latest message is a short acknowledgement with no language of its own (ok, haan, जी), stay in the language already used in the conversation.",
-    `The user's latest message appears to be in ${language.name}. If the message itself clearly says otherwise, follow the message.`,
+    ...(locked
+      ? [
+          `The user chose ${language.name} in the assistant's language menu. Always reply in ${language.name}, in that script, even when they write in another language. Do not switch languages and do not ask which language they want.`,
+        ]
+      : [
+          "Automatically detect the language of the user's latest message and reply in that same language and script. Do not ask which language they want. Do not translate into English unless they wrote in English. Hinglish stays Hinglish in Latin script, Hindi stays in Devanagari, Telugu stays in Telugu script, and so on for every language. If the latest message is a short acknowledgement with no language of its own (ok, haan, जी), stay in the language already used in the conversation.",
+          `The user's latest message appears to be in ${language.name}. If the message itself clearly says otherwise, follow the message.`,
+        ]),
     "Be brief.",
   ].join(" ");
 }
@@ -197,9 +203,10 @@ async function askGemini(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
   language: DetectedLanguage,
+  locked = false,
 ): Promise<ModelAnswer> {
   const tools = toolSpecs(user);
-  const system = systemPrompt(user, language);
+  const system = systemPrompt(user, language, locked);
   let input: unknown[] = history.map((message) =>
     message.role === "user"
       ? { type: "user_input", content: [{ type: "text", text: message.content }] }
@@ -259,26 +266,32 @@ export function replyLocale(reply: string, language: DetectedLanguage): string {
   return ownLanguage(reply, language.tag)?.locale ?? language.locale;
 }
 
+/**
+ * Answer the latest message. With a language locked in the dock's menu the reply is always in
+ * that language (and spoken in its locale); otherwise the conversation's language is detected.
+ */
 export async function askClinic(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
+  locked: DetectedLanguage | null = null,
 ): Promise<ClinicAnswer> {
-  const language = detectConversation(history);
-  const result = await askModel(user, history, language);
-  return { ...result, locale: replyLocale(result.reply, language) };
+  const language = locked ?? detectConversation(history);
+  const result = await askModel(user, history, language, Boolean(locked));
+  return { ...result, locale: locked ? locked.locale : replyLocale(result.reply, language) };
 }
 
 async function askModel(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
   language: DetectedLanguage,
+  locked = false,
 ): Promise<ModelAnswer> {
   if (!assistantConfigured()) {
     throw new Error("The assistant is not configured. Set GEMINI_API_KEY or XAI_API_KEY on the server.");
   }
-  if (process.env.GEMINI_API_KEY?.trim()) return askGemini(user, history, language);
+  if (process.env.GEMINI_API_KEY?.trim()) return askGemini(user, history, language, locked);
   const tools = toolSpecs(user);
-  let input: unknown[] = [{ role: "system", content: systemPrompt(user, language) }, ...history];
+  let input: unknown[] = [{ role: "system", content: systemPrompt(user, language, locked) }, ...history];
   let pending: PendingCard | null = null;
   let slots: SlotLink[] = [];
 

@@ -9,6 +9,7 @@ import { confirmPending } from "./act";
 import { resetConfirmationsForTests, issueConfirmation } from "./confirm-token";
 import { isEcho } from "./echo";
 import { interpretReply } from "./intent";
+import { lockedLanguage } from "./language";
 import { prescriptions, searchDoctors, visitConflicts } from "./read";
 import { bookingHref, mergeSlotLinks, type SlotLink } from "./slot-links";
 import { runTool } from "./tools";
@@ -284,6 +285,20 @@ describe("assistant languages", () => {
       );
       expect(systemOf(fetchMock)).toMatch(/appears to be in Bengali/);
       expect(result.locale).toBe("bn-IN");
+    });
+  });
+
+  it("honours a language locked in the dock's menu over the language the user writes in", async () => {
+    const patient = await account("user-patient-demo");
+    await withXai([{ output_text: "You have no visits booked this week." }], async (fetchMock) => {
+      const result = await handleTurn(patient, [{ role: "user", content: "When is my appointment?" }], null, lockedLanguage("te"));
+      const system = systemOf(fetchMock);
+      expect(system).toMatch(/chose Telugu \(Telugu script\) in the assistant's language menu/);
+      expect(system).toMatch(/Always reply in Telugu/);
+      expect(system).not.toMatch(/Automatically detect the language/);
+      expect(system).toMatch(/Never invent a time/);
+      // Spoken and listened to in the picked language, even if the model slipped into English.
+      expect(result.locale).toBe("te-IN");
     });
   });
 

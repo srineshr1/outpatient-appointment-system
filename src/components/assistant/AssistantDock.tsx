@@ -5,12 +5,24 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
 import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
-import { DEFAULT_LANGUAGE, detectLanguage, nextListenLocale, pickVoiceFor, supportedLocale } from "@/lib/assistant/language";
+import {
+  AUTO_LANGUAGE,
+  DEFAULT_LANGUAGE,
+  LANGUAGE_CHOICES,
+  detectLanguage,
+  lockedLanguage,
+  nextListenLocale,
+  pickVoiceFor,
+  supportedLocale,
+} from "@/lib/assistant/language";
+import type { DetectedLanguage } from "@/lib/assistant/language";
 import type { SlotLink } from "@/lib/assistant/slot-links";
 import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
 import { Magnet } from "@/components/reactbits/Magnet";
 import { buttonClass } from "@/components/ui/button-styles";
+import GlideSelect from "./GlideSelect";
+import type { GlideSelectOption } from "./GlideSelect";
 import ThoughtLine from "./ThoughtLine";
 import VoicePill from "./VoicePill";
 import type { VoicePillSource, VoicePillStopReason } from "./VoicePill";
@@ -66,7 +78,7 @@ function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }
         className="clinic-thought-line"
         working={working}
         elapsed={elapsed}
-        label="Checking the book…"
+        label="Checking…"
         glyph="sparkle"
         fontSize={THOUGHT_FONT_SIZE}
         color={THOUGHT_INK}
@@ -108,6 +120,33 @@ function pillSource(): VoicePillSource {
 
 /** The last language the user spoke or wrote in, so the next visit listens in it. */
 export const LOCALE_KEY = "clinic-assistant-locale";
+
+/**
+ * The language picked in the dock's menu: "auto" (detect each message) or a language tag such
+ * as "te". A picked language is kept until the user picks Auto or another one.
+ */
+export const LANGUAGE_KEY = "clinic-assistant-language";
+
+/** The language menu's rows: Auto first, then each language in its own script. */
+export const LANGUAGE_OPTIONS: GlideSelectOption[] = [
+  { value: AUTO_LANGUAGE, label: "Auto", tag: "Detect" },
+  ...LANGUAGE_CHOICES.map((choice) => ({
+    value: choice.tag,
+    label: choice.native,
+    ...(choice.native !== choice.english ? { tag: choice.english } : {}),
+  })),
+];
+
+/** The saved menu choice, or Auto. */
+function initialChoice(): string {
+  if (typeof window === "undefined") return AUTO_LANGUAGE;
+  try {
+    const locked = lockedLanguage(window.localStorage.getItem(LANGUAGE_KEY));
+    return locked ? locked.tag : AUTO_LANGUAGE;
+  } catch {
+    return AUTO_LANGUAGE;
+  }
+}
 
 /** Saved locale, else the browser's language if we know it, else Indian English. */
 function initialLocale(): string {
@@ -318,6 +357,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const [pillKey, setPillKey] = useState(0);
   const [pillOpen, setPillOpen] = useState(false);
   const [pillWave, setPillWave] = useState<VoicePillSource>("simulated");
+  const [languageChoice, setLanguageChoice] = useState<string>(AUTO_LANGUAGE);
 
   const panelRef = useRef<HTMLDialogElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -334,6 +374,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const lastSpokenRef = useRef("");
   const ignoreUntilRef = useRef(0);
   const localeRef = useRef<string>(DEFAULT_LANGUAGE.locale);
+  /** The language locked in the menu, or null while Auto detects each message. */
+  const lockedRef = useRef<DetectedLanguage | null>(null);
   const pendingRef = useRef<PendingCard | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const requestingRef = useRef(false);
@@ -349,7 +391,13 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const pillOnRef = useRef(false);
   const pillDeniedRef = useRef(false);
 
-  useEffect(() => { localeRef.current = initialLocale(); }, []);
+  useEffect(() => {
+    const choice = initialChoice();
+    const locked = lockedLanguage(choice);
+    lockedRef.current = locked;
+    setLanguageChoice(choice);
+    localeRef.current = locked ? locked.locale : initialLocale();
+  }, []);
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
@@ -586,7 +634,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setInterim(partial);
       const heard = finalText.trim();
       if (!heard) return;
-      setLocale(detectLanguage(heard, localeRef.current).locale);
+      // A language picked in the menu is honoured; Auto follows what was just said.
+      if (!lockedRef.current) setLocale(detectLanguage(heard, localeRef.current).locale);
       if (Date.now() < ignoreUntilRef.current || isEcho(heard, lastSpokenRef.current)) return;
       interimRef.current = "";
       setInterim("");
@@ -726,6 +775,25 @@ export function AssistantDock({ user }: { user: DockUser }) {
     }
   }
 
+  /** The language menu changed: lock that language (or go back to Auto) and listen in it now. */
+  function chooseLanguage(choice: string) {
+    const locked = lockedLanguage(choice);
+    const next = locked ? locked.tag : AUTO_LANGUAGE;
+    lockedRef.current = locked;
+    setLanguageChoice(next);
+    try {
+      window.localStorage.setItem(LANGUAGE_KEY, next);
+    } catch {
+      // Private mode or full storage: the pick lasts for this visit only.
+    }
+    if (locked) setLocale(locked.locale);
+    // Recognition keeps the language it started with, so restart a running one in the new one.
+    if (voiceOnRef.current && recRef.current) {
+      pauseListen();
+      startListen();
+    }
+  }
+
   function pickVoice(locale: string): SpeechSynthesisVoice | null {
     const voices = voicesRef.current.length ? voicesRef.current : (window.speechSynthesis.getVoices?.() ?? []);
     if (voices.length) voicesRef.current = voices;
@@ -794,7 +862,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const userLocale = detectLanguage(trimmed, localeRef.current).locale;
+    const locked = lockedRef.current;
+    const userLocale = locked ? locked.locale : detectLanguage(trimmed, localeRef.current).locale;
     setLocale(userLocale);
     if (busyRef.current) {
       queuedRef.current = trimmed;
@@ -820,6 +889,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
         body: JSON.stringify({
           messages: history.map(({ role, content }) => ({ role, content })),
           pendingToken: pendingRef.current?.token ?? null,
+          language: lockedRef.current?.tag ?? AUTO_LANGUAGE,
         }),
       });
       if (controller.signal.aborted || abortRef.current !== controller) return;
@@ -842,8 +912,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setMessages(next);
       setPending(data.pending ?? null);
       pendingRef.current = data.pending ?? null;
-      const spoken = supportedLocale(data.locale) ?? detectLanguage(reply, userLocale).locale;
-      setLocale(nextListenLocale(userLocale, spoken));
+      const lockedNow = lockedRef.current;
+      const spoken = lockedNow ? lockedNow.locale : (supportedLocale(data.locale) ?? detectLanguage(reply, userLocale).locale);
+      setLocale(lockedNow ? lockedNow.locale : nextListenLocale(userLocale, spoken));
       if (voiceOnRef.current) await speak(reply, spoken);
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
@@ -892,8 +963,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setMessages(next);
       setPending(null);
       pendingRef.current = null;
-      const spoken = supportedLocale(data.locale) ?? detectLanguage(reply, localeRef.current).locale;
-      setLocale(nextListenLocale(localeRef.current, spoken));
+      const lockedNow = lockedRef.current;
+      const spoken = lockedNow ? lockedNow.locale : (supportedLocale(data.locale) ?? detectLanguage(reply, localeRef.current).locale);
+      setLocale(lockedNow ? lockedNow.locale : nextListenLocale(localeRef.current, spoken));
       if (voiceOnRef.current) await speak(reply, spoken);
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
@@ -1046,14 +1118,41 @@ export function AssistantDock({ user }: { user: DockUser }) {
               </button>
             </>
           ) : null}
-          <div className={`flex flex-shrink-0 items-start justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
-            <div>
+          <div className={`relative z-[5] flex flex-shrink-0 items-start justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
+            <div className="min-w-0">
               <h2 id={titleId} className="text-callout font-semibold text-ink">Clinic assistant</h2>
               <p className="text-caption text-muted">{user.role === "doctor" ? "Your book" : user.name}</p>
             </div>
-            <button type="button" className={buttonClass("plain")} onClick={closePanel}>
-              Close
-            </button>
+            <div className="flex flex-shrink-0 items-center gap-1.5">
+              {/*
+                React Bits GlideSelect. The header is at the top of the dock, so the menu opens down
+                into the conversation where the panel never clips it. The header's z-[5] keeps the
+                menu above the messages and below the resize handles (z-10 and z-20).
+              */}
+              <GlideSelect
+                className="clinic-language-select"
+                options={LANGUAGE_OPTIONS}
+                value={languageChoice}
+                onChange={(value) => chooseLanguage(value)}
+                ariaLabel="Language"
+                showTags
+                accentColor="var(--color-accent)"
+                surfaceColor="var(--color-fill)"
+                highlightColor="var(--color-fill-strong)"
+                textColor="var(--color-ink)"
+                size="sm"
+                radius={12}
+                menuWidth={196}
+                placement="bottom"
+                align="right"
+                popDuration={180}
+                glideDuration={220}
+                rememberPosition
+              />
+              <button type="button" className={buttonClass("plain")} onClick={closePanel}>
+                Close
+              </button>
+            </div>
           </div>
           {voiceNote ? <p className="flex-shrink-0 px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
           <div

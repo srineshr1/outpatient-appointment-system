@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { detectConversation, detectLanguage, languageFor, nextListenLocale, ownLanguage, pickVoiceFor, supportedLocale } from "./language";
+import {
+  AUTO_LANGUAGE,
+  LANGUAGE_CHOICES,
+  detectConversation,
+  detectLanguage,
+  languageFor,
+  lockedLanguage,
+  nextListenLocale,
+  ownLanguage,
+  pickVoiceFor,
+  supportedLocale,
+} from "./language";
 
 const locale = (text: string, previous?: string) => detectLanguage(text, previous).locale;
 
@@ -121,5 +132,28 @@ describe("locale helpers", () => {
     expect(pickVoiceFor(voices, "ta-IN")?.lang).toBe("ta-LK");
     expect(pickVoiceFor(voices, "kn-IN")).toBeNull();
     expect(pickVoiceFor([{ lang: "en-US" }, { lang: "en-IN" }], "en-IN")?.lang).toBe("en-IN");
+  });
+});
+
+describe("lockedLanguage", () => {
+  it("is null for Auto, nothing, or a language the menu does not offer", () => {
+    expect(lockedLanguage(AUTO_LANGUAGE)).toBeNull();
+    expect(lockedLanguage("AUTO")).toBeNull();
+    expect(lockedLanguage(null)).toBeNull();
+    expect(lockedLanguage("")).toBeNull();
+    expect(lockedLanguage("de")).toBeNull();
+    expect(lockedLanguage("<script>")).toBeNull();
+  });
+
+  it("returns the picked language with its speech locale", () => {
+    expect(lockedLanguage("te")).toMatchObject({ tag: "te", locale: "te-IN" });
+    expect(lockedLanguage("hi-Latn")).toMatchObject({ tag: "hi-Latn", locale: "en-IN" });
+    expect(lockedLanguage("es")).toMatchObject({ locale: "es-ES" });
+  });
+
+  it("only offers languages the detector knows, each once", () => {
+    const tags = LANGUAGE_CHOICES.map((choice) => choice.tag);
+    expect(new Set(tags).size).toBe(tags.length);
+    for (const tag of tags) expect(languageFor(tag)?.tag).toBe(tag);
   });
 });
