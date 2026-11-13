@@ -92,7 +92,7 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
                   </Link>
                 )}
               </div>
-              <ul className="mt-8 grid max-w-lg grid-cols-2 gap-x-6 gap-y-3 text-callout text-ink-2">
+              <ul className="mt-8 grid max-w-lg grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 text-callout text-ink-2">
                 <Perk>Pay online or at the desk</Perk>
                 <Perk>Book up to 4 weeks ahead</Perk>
                 <Perk>Same day until {practice.sameDayClose}</Perk>

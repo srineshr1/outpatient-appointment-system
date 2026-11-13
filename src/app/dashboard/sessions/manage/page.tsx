@@ -13,12 +13,6 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-const SAVED: Record<string, string> = {
-  created: "Session added. Patients can book the new places.",
-  updated: "Session changed. Existing visits keep their original times.",
-  removed: "Session removed.",
-};
-
 export default async function ManageSessionsPage({
   searchParams,
 }: {
@@ -54,7 +48,7 @@ export default async function ManageSessionsPage({
 
   const room = readDoctorProfile(record).room || user.doctorRoom || "Clinic";
 
-  const saved = SAVED[query.saved ?? ""];
+  const saved = Boolean(query.saved);
   const lent = query.lent ? ` ${query.lent}` : "";
   const moved = Number(query.displaced ?? 0);
   const movedNote =
@@ -77,9 +71,9 @@ export default async function ManageSessionsPage({
   let notice: string | null = null;
   let noticeTone: "info" | "success" | "danger" | "neutral" = "info";
 
-  if (saved) {
-    notice = `${saved}${lent}${movedNote}${shiftedNote}`;
-    noticeTone = "success";
+  if (movedNote || shiftedNote) {
+    notice = `${lent}${movedNote}${shiftedNote}`.trim();
+    noticeTone = "info";
   } else if (busy && !(removing && removingCount > 0)) {
     const count = Number(query.n);
     notice = Number.isInteger(count) && count > 0

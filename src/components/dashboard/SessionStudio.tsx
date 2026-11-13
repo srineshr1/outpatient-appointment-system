@@ -36,7 +36,6 @@ import {
   toMinutes,
   visitWhenLabel,
   WAVE_MINUTES,
-  WEEKDAY_NAMES,
   type SessionInput,
 } from "@/lib/sessions";
 import { archiveSession, saveSession } from "@/server/profile-actions";
@@ -634,14 +633,6 @@ export function SessionStudio({
     }));
   };
 
-  const toggleWeekday = (day: number) => {
-    setDraft((prev) => {
-      const exists = prev.weekdays.includes(day);
-      const nextDays = exists ? prev.weekdays.filter((d) => d !== day) : [...prev.weekdays, day].sort((a, b) => a - b);
-      return { ...prev, weekdays: nextDays };
-    });
-  };
-
   const slotOptions = useMemo(() => {
     const base = new Set<number>(STREAM_SLOT_MINUTES);
     if (draft.slotMinutes) base.add(draft.slotMinutes);
@@ -985,7 +976,7 @@ export function SessionStudio({
                     </label>
                     <p className="text-caption text-muted">
                       {isRecurring
-                        ? "Repeats weekly on your chosen days between From and Until dates."
+                        ? "Repeats weekly between From and Until dates."
                         : "Runs once on a single date."}
                     </p>
                   </div>
@@ -1024,7 +1015,15 @@ export function SessionStudio({
                             id={id}
                             type="date"
                             value={draft.startDate}
-                            onChange={(e) => setDraft((prev) => ({ ...prev, startDate: e.target.value }))}
+                            onChange={(e) => {
+                              const nextStart = e.target.value;
+                              const wd = clinicWeekday(nextStart);
+                              setDraft((prev) => ({
+                                ...prev,
+                                startDate: nextStart,
+                                ...(wd ? { weekdays: [wd] } : {}),
+                              }));
+                            }}
                             className="field tabular"
                           />
                         )}
@@ -1040,32 +1039,6 @@ export function SessionStudio({
                           />
                         )}
                       </Field>
-                    </div>
-
-                    <div>
-                      <span className="mb-2 block text-caption font-semibold text-ink">Days</span>
-                      <div className="flex flex-wrap gap-2">
-                        {WEEKDAY_NAMES.map((dayName, idx) => {
-                          const dayNum = idx + 1;
-                          const active = draft.weekdays.includes(dayNum);
-                          return (
-                            <button
-                              key={dayName}
-                              type="button"
-                              aria-pressed={active}
-                              onClick={() => toggleWeekday(dayNum)}
-                              className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-callout font-medium transition-colors ${
-                                active
-                                  ? "border-accent bg-accent text-accent-ink"
-                                  : "border-hairline bg-surface text-ink-2 hover:border-control hover:text-ink"
-                              }`}
-                            >
-                              {active ? <Check size={13} /> : null}
-                              {dayName}
-                            </button>
-                          );
-                        })}
-                      </div>
                     </div>
                   </div>
                 )}
