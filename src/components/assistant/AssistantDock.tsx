@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
 import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
 import type { SlotLink } from "@/lib/assistant/slot-links";
 import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
 import { buttonClass } from "@/components/ui/button-styles";
+import ThoughtLine from "./ThoughtLine";
 
 interface PendingCard {
   token: string;
@@ -23,6 +24,38 @@ interface ChatMessage {
   content: string;
   payUrl?: string;
   slots?: SlotLink[];
+  /** The request this reply answered, so its thinking line keeps its place above it. */
+  turn?: number;
+  /** Seconds the assistant took, frozen into "Thought for Xs". */
+  thoughtFor?: number;
+}
+
+/** Fits the dock's text-callout size (0.9375rem). */
+const THOUGHT_FONT_SIZE = 15;
+
+function secondsSince(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) / 100) / 10;
+}
+
+/**
+ * The React Bits thinking line. It breathes while a reply is on its way, then settles
+ * into "Thought for Xs" above that reply. There are no steps: the API does not stream them.
+ */
+function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }) {
+  return (
+    <div className="text-callout text-muted">
+      <ThoughtLine
+        working={working}
+        elapsed={elapsed}
+        label="Checking the book…"
+        glyph="sparkle"
+        fontSize={THOUGHT_FONT_SIZE}
+        collapsible
+        collapseOnSettle
+        showTimer
+      />
+    </div>
+  );
 }
 
 interface TurnResponse {
@@ -197,6 +230,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const [draft, setDraft] = useState("");
   const [interim, setInterim] = useState("");
   const [waiting, setWaiting] = useState(false);
+  const [liveTurn, setLiveTurn] = useState<number | null>(null);
   const [voiceOn, setVoiceOn] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -230,6 +264,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const finishSpeechRef = useRef<(() => void) | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  const turnSeqRef = useRef(0);
 
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -651,6 +686,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
     const history = [...messagesRef.current, { role: "user" as const, content: trimmed }];
     messagesRef.current = history;
     setMessages(history);
+    const turn = ++turnSeqRef.current;
+    const startedAt = performance.now();
+    setLiveTurn(turn);
     setWaiting(true);
     try {
       const response = await fetch("/api/assistant", {
@@ -669,6 +707,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
         {
           role: "assistant" as const,
           content: reply,
+          turn,
+          thoughtFor: secondsSince(startedAt),
           ...(data.payUrl ? { payUrl: data.payUrl } : {}),
           ...(Array.isArray(data.slots) && data.slots.length ? { slots: data.slots } : {}),
         },
@@ -680,7 +720,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
       if (voiceOnRef.current) await speak(reply);
     } catch (error) {
       const reply = error instanceof Error ? error.message : "Something went wrong.";
-      const next = [...messagesRef.current, { role: "assistant" as const, content: reply }];
+      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt) }];
       messagesRef.current = next;
       setMessages(next);
     } finally {
@@ -698,6 +738,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
     if (!card || busyRef.current) return;
     busyRef.current = true;
     pauseListen();
+    const turn = ++turnSeqRef.current;
+    const startedAt = performance.now();
+    setLiveTurn(turn);
     setWaiting(true);
     try {
       const response = await fetch("/api/assistant/confirm", {
@@ -708,7 +751,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
       const data = (await response.json()) as TurnResponse;
       if (!response.ok) throw new Error(data.message || "That confirmation didn't go through.");
       const reply = data.reply?.trim() || "Done.";
-      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, ...(data.payUrl ? { payUrl: data.payUrl } : {}) }];
+      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt), ...(data.payUrl ? { payUrl: data.payUrl } : {}) }];
       messagesRef.current = next;
       setMessages(next);
       setPending(null);
@@ -716,7 +759,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
       if (voiceOnRef.current) await speak(reply);
     } catch (error) {
       const reply = error instanceof Error ? error.message : "That confirmation didn't go through.";
-      const next = [...messagesRef.current, { role: "assistant" as const, content: reply }];
+      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt) }];
       messagesRef.current = next;
       setMessages(next);
     } finally {
@@ -832,16 +875,28 @@ export function AssistantDock({ user }: { user: DockUser }) {
           {voiceNote ? <p className="px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
           <div ref={scrollerRef} className="mt-2 flex-1 space-y-3 overflow-y-auto px-4 py-3" aria-live="polite">
             <p className="text-callout text-ink-2">{intro}</p>
-            {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-accent-soft px-3 py-2 text-callout text-ink" : "mr-6 text-callout text-ink"}>
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                {message.payUrl ? (
-                  <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
-                ) : null}
-                {message.slots?.length ? <SlotList slots={message.slots} onPick={() => setOpen(false)} /> : null}
-              </div>
-            ))}
-            {waiting ? <p className="text-callout text-muted">Checking the book…</p> : null}
+            {/* One flat keyed list, so a turn's working line is the same element that settles above its reply. */}
+            {[
+              ...messages.flatMap((message, index) => {
+                const rows: ReactElement[] = [];
+                if (message.role === "assistant" && message.turn != null && message.thoughtFor != null) {
+                  rows.push(<ThoughtRow key={`thought-${message.turn}`} working={false} elapsed={message.thoughtFor} />);
+                }
+                rows.push(
+                  <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-accent-soft px-3 py-2 text-callout text-ink" : "mr-6 text-callout text-ink"}>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    {message.payUrl ? (
+                      <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
+                    ) : null}
+                    {message.slots?.length ? <SlotList slots={message.slots} onPick={() => setOpen(false)} /> : null}
+                  </div>,
+                );
+                return rows;
+              }),
+              ...(waiting && liveTurn != null && !messages.some((message) => message.turn === liveTurn)
+                ? [<ThoughtRow key={`thought-${liveTurn}`} working />]
+                : []),
+            ]}
             {pending ? (
               <div className="rounded-2xl border border-hairline bg-canvas p-3">
                 <p className="text-callout font-semibold text-ink">{pending.title}</p>
