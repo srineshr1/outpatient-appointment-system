@@ -48,6 +48,8 @@ function openDock() {
 
 beforeEach(() => {
   Element.prototype.scrollTo = vi.fn();
+  // jsdom has no 2D canvas; the voice pill's waveform simply skips drawing.
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   FakeRecognition.instances = [];
   window.localStorage.clear();
 });
@@ -95,6 +97,207 @@ describe("AssistantDock", () => {
     fireEvent.change(box, { target: { value: "नमस्ते" } });
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("AssistantDock thinking line", () => {
+  function deferredFetch() {
+    let resolve: (value: unknown) => void = () => {};
+    const fetchMock = vi.fn().mockReturnValue(new Promise((done) => (resolve = done)));
+    vi.stubGlobal("fetch", fetchMock);
+    return { fetchMock, resolve };
+  }
+
+  function ask(text: string) {
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.keyDown(box, { key: "Enter" });
+  }
+
+  it("breathes while a reply is on its way, then settles above that reply", async () => {
+    const { resolve } = deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Checking the book…");
+    const line = status.closest(".thought-line") as HTMLElement;
+    expect(line).toHaveAttribute("data-working");
+    // The old plain paragraph is gone; the label lives inside the line.
+    expect(screen.getAllByText("Checking the book…").every((el) => el.tagName !== "P" && line.contains(el))).toBe(true);
+
+    await act(async () => {
+      resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
+    });
+
+    const reply = await screen.findByText("You have two sessions today.");
+    // Same element, so the line crossfades rather than being swapped out.
+    expect(line.isConnected).toBe(true);
+    expect(line).not.toHaveAttribute("data-working");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Thought for \d+\.\d seconds$/));
+    expect(line.querySelector(".thought-line__timer")?.textContent).toMatch(/^\d+\.\ds$/);
+    expect(line.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("settles when the request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ message: "The assistant is busy." }) }));
+    openDock();
+    ask("Hello");
+    expect(await screen.findByText("The assistant is busy.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Thought for/));
+    expect(screen.getByRole("status").closest(".thought-line")).not.toHaveAttribute("data-working");
+  });
+
+  it("starts a new line for the next question and keeps the earlier one settled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ reply: "First answer." }) })
+        .mockReturnValueOnce(new Promise(() => {})),
+    );
+    openDock();
+    ask("First?");
+    await screen.findByText("First answer.");
+    ask("Second?");
+    await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("status")[0]).toHaveTextContent(/^Thought for/));
+    const [, second] = screen.getAllByRole("status");
+    expect(second).toHaveTextContent("Checking the book…");
+    expect(second?.closest(".thought-line")).toHaveAttribute("data-working");
+  });
+});
+
+describe("AssistantDock cancel", () => {
+  function deferredFetch() {
+    let resolve: (value: unknown) => void = () => {};
+    const fetchMock = vi.fn().mockImplementation(() => new Promise((done) => {
+      resolve = done;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    return { fetchMock, resolve: (value: unknown) => resolve(value) };
+  }
+
+  function ask(text: string) {
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.keyDown(box, { key: "Enter" });
+  }
+
+  it("turns Send into an enabled Cancel while a reply is on its way", async () => {
+    deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+
+    const cancel = await screen.findByRole("button", { name: "Cancel request" });
+    expect(cancel).toHaveTextContent("Cancel");
+    expect(cancel).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+  });
+
+  it("stops the request on Cancel, leaves the user message, and does not show an error", async () => {
+    const { fetchMock, resolve } = deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+
+    const cancel = await screen.findByRole("button", { name: "Cancel request" });
+    fireEvent.click(cancel);
+
+    const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
+    expect(init.signal.aborted).toBe(true);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Checking the book/)).not.toBeInTheDocument();
+    expect(screen.getByText("How many sessions today?")).toBeInTheDocument();
+    expect(screen.queryByText(/aborted/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/The user aborted/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+
+    await act(async () => {
+      resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
+    });
+    expect(screen.queryByText("You have two sessions today.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "What about tomorrow?" } });
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("does not cancel when Enter is pressed while a reply is on its way", async () => {
+    const { fetchMock } = deferredFetch();
+    openDock();
+    ask("Hello");
+    await screen.findByRole("button", { name: "Cancel request" });
+    fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
+    expect(init.signal.aborted).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel request" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+  });
+
+  it("cancels a confirmation in flight and keeps the pending card", async () => {
+    let resolveConfirm: (value: unknown) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          reply: "I can take that visit off the book.",
+          pending: {
+            token: "tok-1",
+            title: "Cancel this visit",
+            summary: "Remove the 10:00 visit with Dr Doom.",
+            confirmLabel: "Take it off the book",
+            expiresAt: "2026-11-13T10:00:00.000Z",
+          },
+        }),
+      })
+      .mockImplementationOnce(() => new Promise((done) => {
+        resolveConfirm = done;
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    ask("Cancel my 10:00 visit");
+
+    expect(await screen.findByText("Cancel this visit")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Take it off the book" }));
+
+    const cancel = await screen.findByRole("button", { name: "Cancel request" });
+    fireEvent.click(cancel);
+
+    const confirmInit = fetchMock.mock.calls[1]?.[1] as { signal: AbortSignal };
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/assistant/confirm");
+    expect(confirmInit.signal.aborted).toBe(true);
+    expect(screen.getByText("Cancel this visit")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Take it off the book" })).toBeEnabled();
+    expect(document.querySelector(".thought-line[data-working]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+
+    await act(async () => {
+      resolveConfirm({ ok: true, json: async () => ({ reply: "Done." }) });
+    });
+    expect(screen.queryByText("Done.")).not.toBeInTheDocument();
+    expect(screen.getByText("Cancel this visit")).toBeInTheDocument();
+  });
+
+  it("aborts an in-flight request when the panel is closed", async () => {
+    const { fetchMock, resolve } = deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+    await screen.findByRole("status");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
+    expect(init.signal.aborted).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    await act(async () => {
+      resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
+    });
+    expect(screen.queryByText("You have two sessions today.")).not.toBeInTheDocument();
+    expect(screen.getByText("How many sessions today?")).toBeInTheDocument();
   });
 });
 
@@ -174,6 +377,140 @@ describe("AssistantDock voice", () => {
     await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
+  });
+});
+
+describe("AssistantDock voice pill", () => {
+  const press = (el: HTMLElement, clientX = 200) =>
+    fireEvent.pointerDown(el, { pointerId: 1, isPrimary: true, button: 0, clientX });
+  const lift = (el: HTMLElement, clientX = 200) => fireEvent.pointerUp(el, { pointerId: 1, isPrimary: true, button: 0, clientX });
+
+  function heard(rec: FakeRecognition, transcript: string, isFinal: boolean) {
+    const result = Object.assign([{ transcript }], { isFinal });
+    act(() => rec.onresult?.({ resultIndex: 0, results: [result] }));
+  }
+
+  it("replaces the old mic button with the React Bits voice pill", () => {
+    openDock();
+    const pills = screen.getAllByRole("button", { name: "Speak" });
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveClass("voice-pill", "clinic-voice-pill");
+    expect(pills[0]).toHaveAttribute("aria-pressed", "false");
+    // Themed to the clinic, not the dark React Bits defaults.
+    expect(pills[0]!.style.getPropertyValue("--vp-bg")).toBe("#ececf0");
+    expect(pills[0]!.style.getPropertyValue("--vp-accent")).toBe("#ffffff");
+    expect(pills[0]!.style.getPropertyValue("--vp-size")).toBe("32px");
+  });
+
+  it("a tap asks for the mic inside the press, starts recognition, and widens the input", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [] });
+    setMediaDevices(getUserMedia);
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    press(pill);
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    lift(pill);
+    await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Message")).toHaveClass("pr-[9.75rem]");
+
+    press(pill);
+    lift(pill);
+    expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByLabelText("Message")).toHaveClass("pr-12");
+  });
+
+  it("slide to cancel stops listening and never sends the half-heard words", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    press(pill, 200);
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
+    const rec = FakeRecognition.instances[0]!;
+    heard(rec, "cancel my four o'clock", false);
+    expect(screen.getByLabelText("Message")).toHaveValue("cancel my four o'clock");
+
+    fireEvent.pointerMove(pill, { pointerId: 1, isPrimary: true, clientX: 120 });
+    expect(rec.abort).toHaveBeenCalled();
+    act(() => rec.onend?.());
+    lift(pill, 120);
+    expect(screen.getByLabelText("Message")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(FakeRecognition.instances).toHaveLength(1);
+  });
+
+  it("stopping during the permission prompt does not turn voice on afterwards", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    let grant: (value: unknown) => void = () => {};
+    setMediaDevices(vi.fn().mockReturnValue(new Promise((done) => (grant = done))));
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    fireEvent.keyDown(pill, { key: "Enter" });
+    expect(screen.getByText("Allow the microphone if your browser asks.")).toBeInTheDocument();
+    fireEvent.keyDown(pill, { key: "Enter" });
+    await act(async () => grant({ getTracks: () => [] }));
+    expect(FakeRecognition.instances).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("while a reply is read aloud, Stop speaking interrupts and keeps listening", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
+    const synth = {
+      speaking: false,
+      pending: false,
+      paused: false,
+      speak: vi.fn(),
+      cancel: vi.fn(),
+      resume: vi.fn(),
+      getVoices: () => [],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal("speechSynthesis", synth);
+    // The barge-in level meter opens while speaking.
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        createAnalyser = () => ({ fftSize: 0, getByteTimeDomainData: vi.fn() });
+        createMediaStreamSource = () => ({ connect: vi.fn() });
+        close = vi.fn().mockResolvedValue(undefined);
+      },
+    );
+    vi.stubGlobal(
+      "SpeechSynthesisUtterance",
+      class {
+        text: string;
+        lang = "";
+        voice: unknown = null;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        constructor(text: string) {
+          this.text = text;
+        }
+      },
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "You have two sessions today." }) }));
+    openDock();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Speak" }), { key: "Enter" });
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
+    heard(FakeRecognition.instances[0]!, "How many sessions today?", true);
+
+    const stopSpeaking = await screen.findByRole("button", { name: "Stop speaking" });
+    expect(synth.speak).toHaveBeenCalled();
+    fireEvent.click(stopSpeaking);
+    expect(synth.cancel).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop speaking" })).not.toBeInTheDocument());
+    // Voice stays on and listening starts again; the pill was not reset.
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
   });
 });
 

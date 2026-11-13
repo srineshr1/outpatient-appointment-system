@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
 import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
 import { DEFAULT_LANGUAGE, detectLanguage, nextListenLocale, pickVoiceFor, supportedLocale } from "@/lib/assistant/language";
@@ -10,6 +10,10 @@ import type { SlotLink } from "@/lib/assistant/slot-links";
 import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
 import { buttonClass } from "@/components/ui/button-styles";
+import ThoughtLine from "./ThoughtLine";
+import VoicePill from "./VoicePill";
+import type { VoicePillSource, VoicePillStopReason } from "./VoicePill";
+import "./AssistantVoicePill.css";
 
 interface PendingCard {
   token: string;
@@ -24,6 +28,38 @@ interface ChatMessage {
   content: string;
   payUrl?: string;
   slots?: SlotLink[];
+  /** The request this reply answered, so its thinking line keeps its place above it. */
+  turn?: number;
+  /** Seconds the assistant took, frozen into "Thought for Xs". */
+  thoughtFor?: number;
+}
+
+/** Fits the dock's text-callout size (0.9375rem). */
+const THOUGHT_FONT_SIZE = 15;
+
+function secondsSince(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) / 100) / 10;
+}
+
+/**
+ * The React Bits thinking line. It breathes while a reply is on its way, then settles
+ * into "Thought for Xs" above that reply. There are no steps: the API does not stream them.
+ */
+function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }) {
+  return (
+    <div className="text-callout text-muted">
+      <ThoughtLine
+        working={working}
+        elapsed={elapsed}
+        label="Checking the book…"
+        glyph="sparkle"
+        fontSize={THOUGHT_FONT_SIZE}
+        collapsible
+        collapseOnSettle
+        showTimer
+      />
+    </div>
+  );
 }
 
 interface TurnResponse {
@@ -34,6 +70,21 @@ interface TurnResponse {
   /** BCP 47 locale the reply is written in, e.g. "te-IN". */
   locale?: string;
   message?: string;
+}
+
+/** The voice pill matches the old 32px mic button so it fits the 48px message box. */
+const PILL_SIZE = 32;
+
+/**
+ * A real microphone waveform needs a second capture beside speech recognition. Desktop
+ * browsers share the microphone fine; phones can refuse recognition while another stream is
+ * open, so touch screens and browsers without recognition get the simulated waveform.
+ */
+function pillSource(): VoicePillSource {
+  if (typeof window === "undefined") return "simulated";
+  const canAnalyse = typeof window.AudioContext !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+  const finePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
+  return canAnalyse && finePointer && recognitionCtor() ? "mic" : "simulated";
 }
 
 /** The last language the user spoke or wrote in, so the next visit listens in it. */
@@ -51,6 +102,13 @@ function initialLocale(): string {
   const browser = typeof navigator !== "undefined" ? supportedLocale(navigator.language) : null;
   // A browser set to en-US still gets the Indian English voice the clinic uses.
   return browser && !browser.startsWith("en") ? browser : DEFAULT_LANGUAGE.locale;
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }
 
 function expiryLabel(iso: string): string {
@@ -212,6 +270,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const [draft, setDraft] = useState("");
   const [interim, setInterim] = useState("");
   const [waiting, setWaiting] = useState(false);
+  const [liveTurn, setLiveTurn] = useState<number | null>(null);
   const [voiceOn, setVoiceOn] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -219,6 +278,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const [isDesktop, setIsDesktop] = useState(false);
   const [size, setSize] = useState<DockSize | null>(null);
   const [resizing, setResizing] = useState(false);
+  // The voice pill keeps its own listening state. A new key resets it when voice stops elsewhere.
+  const [pillKey, setPillKey] = useState(0);
+  const [pillOpen, setPillOpen] = useState(false);
+  const [pillWave, setPillWave] = useState<VoicePillSource>("simulated");
 
   const panelRef = useRef<HTMLDialogElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -245,6 +308,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const finishSpeechRef = useRef<(() => void) | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  const turnSeqRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const pillOnRef = useRef(false);
+  const pillDeniedRef = useRef(false);
 
   useEffect(() => { localeRef.current = initialLocale(); }, []);
   useEffect(() => { pendingRef.current = pending; }, [pending]);
@@ -315,10 +382,29 @@ export function AssistantDock({ user }: { user: DockUser }) {
   function openPanel() {
     const saved = readDockSize();
     setSize(saved ? clampDockSize(saved, window.innerWidth, window.innerHeight) : null);
+    setPillWave(pillSource());
     setOpen(true);
   }
 
+  function abortInFlight() {
+    const controller = abortRef.current;
+    if (controller) {
+      abortRef.current = null;
+      controller.abort();
+    }
+    setWaiting(false);
+    setLiveTurn(null);
+    busyRef.current = false;
+    queuedRef.current = null;
+  }
+
+  function cancelRequest() {
+    abortInFlight();
+    if (voiceOnRef.current) startListen();
+  }
+
   function closePanel() {
+    abortInFlight();
     voiceOff("");
     dragCleanupRef.current?.();
     setOpen(false);
@@ -425,6 +511,15 @@ export function AssistantDock({ user }: { user: DockUser }) {
     speakingRef.current = false;
     setSpeaking(false);
     if (note !== undefined) setVoiceNote(note);
+    releasePill();
+  }
+
+  /** Put the voice pill back to rest when voice stopped somewhere other than the pill. */
+  function releasePill() {
+    setPillOpen(false);
+    if (!pillOnRef.current) return;
+    pillOnRef.current = false;
+    setPillKey((key) => key + 1);
   }
 
   function startListen() {
@@ -675,17 +770,25 @@ export function AssistantDock({ user }: { user: DockUser }) {
     const history = [...messagesRef.current, { role: "user" as const, content: trimmed }];
     messagesRef.current = history;
     setMessages(history);
+    const turn = ++turnSeqRef.current;
+    const startedAt = performance.now();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLiveTurn(turn);
     setWaiting(true);
     try {
       const response = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: history.map(({ role, content }) => ({ role, content })),
           pendingToken: pendingRef.current?.token ?? null,
         }),
       });
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       const data = (await response.json()) as TurnResponse;
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       if (!response.ok) throw new Error(data.message || "The assistant couldn't answer.");
       const reply = data.reply?.trim() || "I couldn't put that into words. Please ask again.";
       const next = [
@@ -693,6 +796,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
         {
           role: "assistant" as const,
           content: reply,
+          turn,
+          thoughtFor: secondsSince(startedAt),
           ...(data.payUrl ? { payUrl: data.payUrl } : {}),
           ...(Array.isArray(data.slots) && data.slots.length ? { slots: data.slots } : {}),
         },
@@ -705,17 +810,21 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setLocale(nextListenLocale(userLocale, spoken));
       if (voiceOnRef.current) await speak(reply, spoken);
     } catch (error) {
+      if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
       const reply = error instanceof Error ? error.message : "Something went wrong.";
-      const next = [...messagesRef.current, { role: "assistant" as const, content: reply }];
+      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt) }];
       messagesRef.current = next;
       setMessages(next);
     } finally {
-      setWaiting(false);
-      busyRef.current = false;
-      const queued = queuedRef.current;
-      queuedRef.current = null;
-      if (queued && voiceOnRef.current) void send(queued);
-      else if (voiceOnRef.current) startListen();
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setWaiting(false);
+        busyRef.current = false;
+        const queued = queuedRef.current;
+        queuedRef.current = null;
+        if (queued && voiceOnRef.current) void send(queued);
+        else if (voiceOnRef.current) startListen();
+      }
     }
   }
 
@@ -724,17 +833,25 @@ export function AssistantDock({ user }: { user: DockUser }) {
     if (!card || busyRef.current) return;
     busyRef.current = true;
     pauseListen();
+    const turn = ++turnSeqRef.current;
+    const startedAt = performance.now();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLiveTurn(turn);
     setWaiting(true);
     try {
       const response = await fetch("/api/assistant/confirm", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ token: card.token, decision }),
       });
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       const data = (await response.json()) as TurnResponse;
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       if (!response.ok) throw new Error(data.message || "That confirmation didn't go through.");
       const reply = data.reply?.trim() || "Done.";
-      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, ...(data.payUrl ? { payUrl: data.payUrl } : {}) }];
+      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt), ...(data.payUrl ? { payUrl: data.payUrl } : {}) }];
       messagesRef.current = next;
       setMessages(next);
       setPending(null);
@@ -743,41 +860,72 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setLocale(nextListenLocale(localeRef.current, spoken));
       if (voiceOnRef.current) await speak(reply, spoken);
     } catch (error) {
+      if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
       const reply = error instanceof Error ? error.message : "That confirmation didn't go through.";
-      const next = [...messagesRef.current, { role: "assistant" as const, content: reply }];
+      const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt) }];
       messagesRef.current = next;
       setMessages(next);
     } finally {
-      setWaiting(false);
-      busyRef.current = false;
-      if (voiceOnRef.current) startListen();
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setWaiting(false);
+        busyRef.current = false;
+        if (voiceOnRef.current) startListen();
+      }
     }
   }
 
-  async function toggleVoice() {
-    if (voiceOnRef.current) {
-      voiceOff("");
-      return;
-    }
-    if (requestingRef.current) return;
+  /** The pill was pressed: ask for the microphone inside that press, then start listening. */
+  async function startVoice() {
+    if (voiceOnRef.current || requestingRef.current) return;
     if (!recognitionCtor()) {
       voiceOff(NO_RECOGNITION);
       return;
     }
     primeSpeech();
     requestingRef.current = true;
+    pillDeniedRef.current = false;
     setVoiceNote("Allow the microphone if your browser asks.");
-    const problem = await requestMicrophone();
+    let problem = await requestMicrophone();
     requestingRef.current = false;
+    if (!problem && pillDeniedRef.current) problem = MIC_FAILED;
+    pillDeniedRef.current = false;
     if (problem) {
       voiceOff(problem);
       return;
     }
+    // Stopped or slid to cancel while the browser was asking.
+    if (!pillOnRef.current) return;
     setVoiceNote("");
     restartsRef.current = [];
     voiceOnRef.current = true;
     setVoiceOn(true);
     startListen();
+  }
+
+  function onPillStart() {
+    pillOnRef.current = true;
+    setPillOpen(true);
+    void startVoice();
+  }
+
+  function onPillStop({ reason }: { reason: VoicePillStopReason }) {
+    // Voice already stopped elsewhere and reset the pill; this is that old pill unmounting.
+    if (!pillOnRef.current) return;
+    pillOnRef.current = false;
+    setPillOpen(false);
+    if (reason === "mic-denied") {
+      if (requestingRef.current) {
+        // The Speak permission request is still open and will explain what went wrong.
+        pillDeniedRef.current = true;
+        return;
+      }
+      void requestMicrophone().then((problem) => voiceOff(problem ?? MIC_FAILED));
+      return;
+    }
+    // Every stop turns voice off. pauseListen drops unfinished words, so a slide to cancel
+    // (or any other stop) never sends what was half heard.
+    voiceOff("");
   }
 
   function interrupt() {
@@ -860,16 +1008,28 @@ export function AssistantDock({ user }: { user: DockUser }) {
           {voiceNote ? <p className="px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
           <div ref={scrollerRef} className="mt-2 flex-1 space-y-3 overflow-y-auto px-4 py-3" aria-live="polite">
             <p className="text-callout text-ink-2">{intro}</p>
-            {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-accent-soft px-3 py-2 text-callout text-ink" : "mr-6 text-callout text-ink"}>
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                {message.payUrl ? (
-                  <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
-                ) : null}
-                {message.slots?.length ? <SlotList slots={message.slots} onPick={() => setOpen(false)} /> : null}
-              </div>
-            ))}
-            {waiting ? <p className="text-callout text-muted">Checking the book…</p> : null}
+            {/* One flat keyed list, so a turn's working line is the same element that settles above its reply. */}
+            {[
+              ...messages.flatMap((message, index) => {
+                const rows: ReactElement[] = [];
+                if (message.role === "assistant" && message.turn != null && message.thoughtFor != null) {
+                  rows.push(<ThoughtRow key={`thought-${message.turn}`} working={false} elapsed={message.thoughtFor} />);
+                }
+                rows.push(
+                  <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-accent-soft px-3 py-2 text-callout text-ink" : "mr-6 text-callout text-ink"}>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    {message.payUrl ? (
+                      <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
+                    ) : null}
+                    {message.slots?.length ? <SlotList slots={message.slots} onPick={() => setOpen(false)} /> : null}
+                  </div>,
+                );
+                return rows;
+              }),
+              ...(waiting && liveTurn != null && !messages.some((message) => message.turn === liveTurn)
+                ? [<ThoughtRow key={`thought-${liveTurn}`} working />]
+                : []),
+            ]}
             {pending ? (
               <div className="rounded-2xl border border-hairline bg-canvas p-3">
                 <p className="text-callout font-semibold text-ink">{pending.title}</p>
@@ -890,7 +1050,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
             className="flex items-center gap-2 border-t border-hairline p-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!waiting) void send(interim || draft);
+              // A leftover Enter in the box does not submit the form (see onKeyDown), so this
+              // path is the Send/Cancel button. While a reply is on its way, treat it as Cancel.
+              if (waiting) cancelRequest();
+              else void send(interim || draft);
             }}
           >
             <label className="sr-only" htmlFor={`${titleId}-input`}>Message</label>
@@ -905,33 +1068,55 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
                   event.preventDefault();
+                  // Enter does nothing while a request is in flight, so a leftover Enter cannot cancel it.
                   if (!waiting) void send(interim || draft);
                 }}
                 placeholder={listening ? "Listening…" : "Ask about a visit"}
-                className="h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pr-12 pl-4 text-callout text-ink outline-none focus:border-accent"
-              />
-              <button
-                type="button"
-                aria-label={speaking ? "Stop speaking" : voiceOn ? "Stop voice" : "Speak"}
-                aria-pressed={voiceOn}
-                onClick={() => (speaking ? interrupt() : void toggleVoice())}
-                className={`absolute top-1/2 right-1.5 grid size-8 -translate-y-1/2 place-items-center rounded-full ${
-                  voiceOn || speaking ? "bg-accent text-white" : "bg-fill text-ink hover:bg-fill-strong"
+                className={`h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pl-4 text-callout text-ink outline-none focus:border-accent ${
+                  pillOpen || voiceOn ? "pr-[9.75rem]" : "pr-12"
                 }`}
-              >
+              />
+              <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2">
+                <VoicePill
+                  key={pillKey}
+                  className="clinic-voice-pill"
+                  ariaLabel={voiceOn ? "Stop voice" : "Speak"}
+                  background="#ececf0"
+                  iconColor="#1d1d1f"
+                  accentColor="#ffffff"
+                  size={PILL_SIZE}
+                  shape="pill"
+                  reach={8}
+                  showTime
+                  waveform
+                  slideToCancel
+                  cancelDistance={64}
+                  mode="auto"
+                  holdAfter={300}
+                  reactive={pillWave}
+                  onStart={onPillStart}
+                  onStop={onPillStop}
+                />
                 {speaking ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="2" fill="currentColor" /></svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                    <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
-                    <path d="M7 11a5 5 0 0 0 10 0M12 16v3M9 19h6" />
-                  </svg>
-                )}
-              </button>
+                  // While a reply is read aloud, a press stops the reading and listens again.
+                  <button
+                    type="button"
+                    aria-label="Stop speaking"
+                    className="absolute inset-0 z-10 rounded-full"
+                    onClick={interrupt}
+                  />
+                ) : null}
+              </span>
             </div>
-            <button type="submit" className={`${buttonClass("primary")} h-12`} disabled={waiting || !(interim || draft).trim()}>
-              Send
-            </button>
+            {waiting ? (
+              <button type="button" className={`${buttonClass("secondary")} h-12`} aria-label="Cancel request" onClick={cancelRequest}>
+                Cancel
+              </button>
+            ) : (
+              <button type="submit" className={`${buttonClass("primary")} h-12`} disabled={!(interim || draft).trim()}>
+                Send
+              </button>
+            )}
           </form>
         </dialog>
       ) : null}
