@@ -1,25 +1,20 @@
-/* Dock-only contrast for the thinking line. The animation itself is unchanged. */
+/* Dock-only contrast for the thinking line. */
 .clinic-thought-line {
   --tl-done: 1;
-  --tl-timer: 0.92;
+  --tl-timer: 1;
+  font-weight: 600;
 }
 
 /*
- * The published shimmer trough is a 50% mix with transparent, which washes out on
- * a white surface. Keep the same sweep; just keep more ink in the trough.
+ * The published working shimmer paints the label with background-clip and a
+ * transparent fill, which washes the words out on a white surface. Keep the
+ * ink solid and readable the whole time the assistant is thinking.
  */
-.clinic-thought-line[data-working] .thought-line__breath[data-shimmer] {
-  background: linear-gradient(
-    100deg,
-    color-mix(in srgb, var(--tl-color) 82%, transparent) 30%,
-    var(--tl-color) 50%,
-    color-mix(in srgb, var(--tl-color) 82%, transparent) 70%
-  );
-  background-size: 250% 100%;
-  background-position: 125% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  animation: thought-line-shimmer var(--tl-shimmer) linear infinite;
+.clinic-thought-line.thought-line[data-working] .thought-line__breath[data-shimmer] {
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: #1d1d1f;
+  -webkit-text-fill-color: #1d1d1f;
+  animation: none;
 }

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AssistantDock, DOCK_SIZE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, clampDockSize } from "./AssistantDock";
+import { AssistantDock, DOCK_SIZE_KEY, LISTEN_SILENCE_MS, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, clampDockSize } from "./AssistantDock";
 
 const doctor = { name: "Dr Doom", role: "doctor" as const };
 const realMatchMedia = window.matchMedia;
@@ -55,6 +55,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   window.matchMedia = realMatchMedia;
@@ -390,6 +391,10 @@ describe("AssistantDock voice pill", () => {
     act(() => rec.onresult?.({ resultIndex: 0, results: [result] }));
   }
 
+  function endListen(rec: FakeRecognition) {
+    act(() => rec.onend?.());
+  }
+
   it("replaces the old mic button with the React Bits voice pill", () => {
     openDock();
     const pills = screen.getAllByRole("button", { name: "Speak" });
@@ -432,7 +437,8 @@ describe("AssistantDock voice pill", () => {
     press(pill, 200);
     await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
     const rec = FakeRecognition.instances[0]!;
-    heard(rec, "cancel my four o'clock", false);
+    heard(rec, "cancel my", true);
+    heard(rec, " four o'clock", false);
     expect(screen.getByLabelText("Message")).toHaveValue("cancel my four o'clock");
 
     fireEvent.pointerMove(pill, { pointerId: 1, isPrimary: true, clientX: 120 });
@@ -501,7 +507,9 @@ describe("AssistantDock voice pill", () => {
     openDock();
     fireEvent.keyDown(screen.getByRole("button", { name: "Speak" }), { key: "Enter" });
     await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
-    heard(FakeRecognition.instances[0]!, "How many sessions today?", true);
+    const rec = FakeRecognition.instances[0]!;
+    heard(rec, "How many sessions today?", true);
+    endListen(rec);
 
     const stopSpeaking = await screen.findByRole("button", { name: "Stop speaking" });
     expect(synth.speak).toHaveBeenCalled();
@@ -514,7 +522,8 @@ describe("AssistantDock voice pill", () => {
     expect(FakeRecognition.instances).toHaveLength(1);
   });
 
-  it("stops the mic after a final spoken utterance and does not start it again after the reply", async () => {
+  it("stops the mic after a pause in speech and does not start it again after the reply", async () => {
+    vi.useFakeTimers();
     vi.stubGlobal("SpeechRecognition", FakeRecognition);
     setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
     const spoken = stubSpeech([]);
@@ -524,15 +533,22 @@ describe("AssistantDock voice pill", () => {
     const pill = screen.getByRole("button", { name: "Speak" });
     press(pill);
     lift(pill);
-    await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
-    expect(FakeRecognition.instances[0]?.continuous).toBe(false);
-    heard(FakeRecognition.instances[0]!, "How many sessions today?", true);
+    await act(async () => {});
+    expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled();
+    const rec = FakeRecognition.instances[0]!;
+    expect(rec.continuous).toBe(true);
+    heard(rec, "How many sessions today?", true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(LISTEN_SILENCE_MS - 1));
+    expect(fetchMock).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
+    expect(rec.abort).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
-    await waitFor(() => expect(spoken).toHaveLength(1));
+    await act(async () => {});
+    expect(spoken).toHaveLength(1);
     expect(screen.getByText("You have two sessions today.")).toBeInTheDocument();
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    act(() => vi.advanceTimersByTime(300));
     expect(FakeRecognition.instances).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
   });
@@ -560,6 +576,57 @@ describe("AssistantDock voice pill", () => {
     expect(FakeRecognition.instances).toHaveLength(1);
   });
 
+  it("accumulates finals and trailing interim, and only sends after a silence", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "I can cancel that." }) });
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    press(pill);
+    lift(pill);
+    await act(async () => {});
+    expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled();
+    const rec = FakeRecognition.instances[0]!;
+    heard(rec, "cancel my", true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Message")).toHaveValue("cancel my");
+    act(() => vi.advanceTimersByTime(LISTEN_SILENCE_MS - 200));
+    heard(rec, " four o'clock", false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(LISTEN_SILENCE_MS - 1));
+    expect(fetchMock).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body).messages.at(-1).content).toBe("cancel my four o'clock");
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    endListen(rec);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+    expect(screen.getByText("I can cancel that.")).toBeInTheDocument();
+    expect(FakeRecognition.instances).toHaveLength(1);
+  });
+
+  it("turns the mic off after silence with nothing heard, and does not send", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    press(pill);
+    lift(pill);
+    await act(async () => {});
+    expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(LISTEN_SILENCE_MS));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
+    expect(FakeRecognition.instances).toHaveLength(1);
+  });
+
   it("can start a new listen after the mic stops on its own", async () => {
     vi.stubGlobal("SpeechRecognition", FakeRecognition);
     setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
@@ -569,7 +636,9 @@ describe("AssistantDock voice pill", () => {
     press(first);
     lift(first);
     await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
-    heard(FakeRecognition.instances[0]!, "How many sessions today?", true);
+    const rec = FakeRecognition.instances[0]!;
+    heard(rec, "How many sessions today?", true);
+    endListen(rec);
     await waitFor(() => expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false"));
     const again = screen.getByRole("button", { name: "Speak" });
     press(again);
@@ -676,6 +745,7 @@ describe("AssistantDock languages", () => {
     const first = FakeRecognition.instances[0]!;
     act(() => {
       first.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: "నా అపాయింట్‌మెంట్ ఎప్పుడు" }], { isFinal: true })] });
+      first.onend?.();
     });
     await waitFor(() => expect(spoken).toHaveLength(1));
     expect(spoken[0]!.lang).toBe("te-IN");
@@ -719,7 +789,9 @@ describe("AssistantDock languages", () => {
     openDock();
     await startVoice();
     act(() => {
-      FakeRecognition.instances[0]!.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: "వద్దు" }], { isFinal: true })] });
+      const rec = FakeRecognition.instances[0]!;
+      rec.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: "వద్దు" }], { isFinal: true })] });
+      rec.onend?.();
     });
     await waitFor(() => expect(spoken).toHaveLength(1));
     expect(spoken[0]!.lang).toBe("en-IN");
@@ -826,14 +898,18 @@ describe("AssistantDock scrolling and thought line contrast", () => {
 
     const working = (await screen.findByRole("status")).closest(".thought-line") as HTMLElement;
     expect(working).toHaveClass("clinic-thought-line");
-    expect(working.closest(".text-ink-2")).not.toBeNull();
+    expect(working.closest(".text-ink")).not.toBeNull();
+    expect(working.closest(".text-ink-2")).toBeNull();
+    expect(working.closest(".font-semibold")).not.toBeNull();
     expect(working.closest(".text-muted")).toBeNull();
 
     await screen.findByText("You have two sessions today.");
     const settled = screen.getByRole("status").closest(".thought-line") as HTMLElement;
     expect(settled).toHaveClass("clinic-thought-line");
     expect(settled).not.toHaveAttribute("data-working");
-    expect(settled.closest(".text-ink-2")).not.toBeNull();
+    expect(settled.closest(".text-ink")).not.toBeNull();
+    expect(settled.closest(".text-ink-2")).toBeNull();
+    expect(settled.closest(".font-semibold")).not.toBeNull();
     expect(settled.closest(".text-muted")).toBeNull();
   });
 });
