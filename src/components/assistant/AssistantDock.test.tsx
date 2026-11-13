@@ -48,6 +48,8 @@ function openDock() {
 
 beforeEach(() => {
   Element.prototype.scrollTo = vi.fn();
+  // jsdom has no 2D canvas; the voice pill's waveform simply skips drawing.
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   FakeRecognition.instances = [];
   window.localStorage.clear();
 });
@@ -375,6 +377,140 @@ describe("AssistantDock voice", () => {
     await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
+  });
+});
+
+describe("AssistantDock voice pill", () => {
+  const press = (el: HTMLElement, clientX = 200) =>
+    fireEvent.pointerDown(el, { pointerId: 1, isPrimary: true, button: 0, clientX });
+  const lift = (el: HTMLElement, clientX = 200) => fireEvent.pointerUp(el, { pointerId: 1, isPrimary: true, button: 0, clientX });
+
+  function heard(rec: FakeRecognition, transcript: string, isFinal: boolean) {
+    const result = Object.assign([{ transcript }], { isFinal });
+    act(() => rec.onresult?.({ resultIndex: 0, results: [result] }));
+  }
+
+  it("replaces the old mic button with the React Bits voice pill", () => {
+    openDock();
+    const pills = screen.getAllByRole("button", { name: "Speak" });
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveClass("voice-pill", "clinic-voice-pill");
+    expect(pills[0]).toHaveAttribute("aria-pressed", "false");
+    // Themed to the clinic, not the dark React Bits defaults.
+    expect(pills[0]!.style.getPropertyValue("--vp-bg")).toBe("#ececf0");
+    expect(pills[0]!.style.getPropertyValue("--vp-accent")).toBe("#ffffff");
+    expect(pills[0]!.style.getPropertyValue("--vp-size")).toBe("32px");
+  });
+
+  it("a tap asks for the mic inside the press, starts recognition, and widens the input", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [] });
+    setMediaDevices(getUserMedia);
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    press(pill);
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    lift(pill);
+    await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Message")).toHaveClass("pr-[9.75rem]");
+
+    press(pill);
+    lift(pill);
+    expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByLabelText("Message")).toHaveClass("pr-12");
+  });
+
+  it("slide to cancel stops listening and never sends the half-heard words", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    press(pill, 200);
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
+    const rec = FakeRecognition.instances[0]!;
+    heard(rec, "cancel my four o'clock", false);
+    expect(screen.getByLabelText("Message")).toHaveValue("cancel my four o'clock");
+
+    fireEvent.pointerMove(pill, { pointerId: 1, isPrimary: true, clientX: 120 });
+    expect(rec.abort).toHaveBeenCalled();
+    act(() => rec.onend?.());
+    lift(pill, 120);
+    expect(screen.getByLabelText("Message")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(FakeRecognition.instances).toHaveLength(1);
+  });
+
+  it("stopping during the permission prompt does not turn voice on afterwards", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    let grant: (value: unknown) => void = () => {};
+    setMediaDevices(vi.fn().mockReturnValue(new Promise((done) => (grant = done))));
+    openDock();
+    const pill = screen.getByRole("button", { name: "Speak" });
+    fireEvent.keyDown(pill, { key: "Enter" });
+    expect(screen.getByText("Allow the microphone if your browser asks.")).toBeInTheDocument();
+    fireEvent.keyDown(pill, { key: "Enter" });
+    await act(async () => grant({ getTracks: () => [] }));
+    expect(FakeRecognition.instances).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("while a reply is read aloud, Stop speaking interrupts and keeps listening", async () => {
+    vi.stubGlobal("SpeechRecognition", FakeRecognition);
+    setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
+    const synth = {
+      speaking: false,
+      pending: false,
+      paused: false,
+      speak: vi.fn(),
+      cancel: vi.fn(),
+      resume: vi.fn(),
+      getVoices: () => [],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal("speechSynthesis", synth);
+    // The barge-in level meter opens while speaking.
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        createAnalyser = () => ({ fftSize: 0, getByteTimeDomainData: vi.fn() });
+        createMediaStreamSource = () => ({ connect: vi.fn() });
+        close = vi.fn().mockResolvedValue(undefined);
+      },
+    );
+    vi.stubGlobal(
+      "SpeechSynthesisUtterance",
+      class {
+        text: string;
+        lang = "";
+        voice: unknown = null;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        constructor(text: string) {
+          this.text = text;
+        }
+      },
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "You have two sessions today." }) }));
+    openDock();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Speak" }), { key: "Enter" });
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
+    heard(FakeRecognition.instances[0]!, "How many sessions today?", true);
+
+    const stopSpeaking = await screen.findByRole("button", { name: "Stop speaking" });
+    expect(synth.speak).toHaveBeenCalled();
+    fireEvent.click(stopSpeaking);
+    expect(synth.cancel).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop speaking" })).not.toBeInTheDocument());
+    // Voice stays on and listening starts again; the pill was not reset.
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
   });
 });
 

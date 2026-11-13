@@ -1,0 +1,12 @@
+/* Clinic theme for the React Bits VoicePill in the assistant dock. VoicePill.css stays as published. */
+
+/* Listening: the capsule turns accent blue, so the white waveform, clock and stop mark read on it. */
+.clinic-voice-pill[data-state='listening'] .voice-pill__capsule {
+  background: var(--color-accent);
+}
+
+/* The published pill removes the outline; keep a visible keyboard focus ring in the clinic. */
+.clinic-voice-pill:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
