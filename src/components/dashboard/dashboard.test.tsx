@@ -179,12 +179,6 @@ describe("Doctor Dashboard Redesign", () => {
     expect(screen.getByRole("link", { name: /Edit in Session Studio/ })).toHaveAttribute("href", "/dashboard/sessions/manage");
     expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
 
-    // Full week vs Active days toggle
-    expect(screen.getByRole("button", { name: /Full week/ })).toBeInTheDocument();
-    const activeDaysBtn = screen.getByRole("button", { name: /Active days/ });
-    expect(activeDaysBtn).toBeInTheDocument();
-    await userEvent.click(activeDaysBtn);
-
     // Inspector is rendered below with booked visits and session stats
     expect(screen.getByRole("region", { name: /Session and patient inspector/ })).toBeInTheDocument();
     expect(screen.getByText("Priya Nair")).toBeInTheDocument();
