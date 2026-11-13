@@ -402,6 +402,9 @@ describe("Doctor Dashboard Redesign", () => {
       />,
     );
 
+    expect(screen.queryByText("Live on patient directory")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Your profile" })).not.toBeInTheDocument();
+
     const roomInput = screen.getByLabelText("Room or clinic");
     await userEvent.clear(roomInput);
     await userEvent.type(roomInput, "Suite 12");

@@ -5,7 +5,8 @@ import CustomRangeSelectDemo, { CalendarRangeSelect } from "./calendar-range-sel
 
 describe("CalendarRangeSelect", () => {
   it("renders CustomRangeSelectDemo correctly", () => {
-    render(<CustomRangeSelectDemo />);
+    const { container } = render(<CustomRangeSelectDemo />);
+    console.log("RENDERED_HTML:\n" + container.innerHTML);
     expect(screen.getByRole("grid")).toBeInTheDocument();
   });
 

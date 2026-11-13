@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Bell, Check, ClipboardList, Eye, Pin } from "@/components/icons";
+import { Bell, Check, Eye, Pin } from "@/components/icons";
 import { CountUp } from "@/components/reactbits/CountUp";
 import { Stepper } from "@/components/reactbits/Stepper";
 import { ButtonLink } from "@/components/ui/Button";
@@ -64,9 +64,9 @@ export function DoctorProfileWorkspace({
   initial,
   welcome,
   saved,
-  visible,
-  missingCount,
-  sessionsCount,
+  visible: _visible,
+  missingCount: _missingCount,
+  sessionsCount: _sessionsCount,
 }: DoctorProfileWorkspaceProps) {
   const [state, action] = useActionState(saveDoctorProfile, null);
   const [draft, setDraft] = useState<DoctorFormValues>(initial);
@@ -88,56 +88,8 @@ export function DoctorProfileWorkspace({
   const feePence = parseFee(draft.fee);
   const languages = parseLanguages(draft.languages);
 
-  const statusBadgeText = welcome
-    ? "Onboarding · Step 1 of 2"
-    : visible
-      ? "Live on patient directory"
-      : missingCount > 0
-        ? `Draft · ${missingCount} ${missingCount === 1 ? "field" : "fields"} needed`
-        : sessionsCount === 0
-          ? "Profile complete · Add a session"
-          : "Profile active";
-
   return (
     <div className="mx-auto max-w-[92rem] space-y-6 px-5 pt-6 pb-20 md:px-8 md:pt-10 xl:px-10">
-      {/* Hero header */}
-      <Card className="rounded-sheet p-6 md:p-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface-2 px-3.5 py-1.5 text-caption font-semibold text-ink">
-              <span
-                className={`size-2 rounded-full ${
-                  visible ? "bg-success" : "bg-accent"
-                }`}
-                aria-hidden="true"
-              />
-              <span>{statusBadgeText}</span>
-            </span>
-
-            <h1 className="mt-4 text-title2 font-semibold tracking-tight text-ink md:text-title1">
-              {welcome ? "Welcome. Tell patients about you" : "Your profile"}
-            </h1>
-
-            <p className="mt-2.5 max-w-prose text-body text-ink-2">
-              {welcome
-                ? "Step 1 of 2. Patients see this when they choose a doctor. Next you set up your consulting sessions."
-                : "Patients see this on your doctor page. Changes update your directory card immediately."}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <ButtonLink href="/dashboard" variant="secondary" size="md">
-              <ClipboardList size={18} />
-              <span>Clinic book</span>
-            </ButtonLink>
-            <ButtonLink href="/dashboard/notifications" variant="secondary" size="md">
-              <Bell size={18} />
-              <span>Email alerts</span>
-            </ButtonLink>
-          </div>
-        </div>
-      </Card>
-
       {/* Welcome Stepper */}
       {welcome ? (
         <Card className="rounded-sheet p-4 sm:p-5">
