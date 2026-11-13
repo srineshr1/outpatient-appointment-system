@@ -8,6 +8,7 @@ import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { useClock } from "@/components/providers/ClockProvider";
 import { Button } from "@/components/ui/Button";
 import { ChipGroup } from "@/components/ui/ChipGroup";
+import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { practice, type Doctor, type Slot } from "@/lib/data";
 import { formatWhen, pluralise, yearsLabel } from "@/lib/format";
 import { spring } from "@/lib/motion";
@@ -107,7 +108,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
     >
       {heading ? null : (
         <div className="mx-auto max-w-page px-5 md:px-8">
-          <p className="text-callout font-bold tracking-wide text-accent uppercase">Our team</p>
+          <p className="text-callout font-bold tracking-wide text-accent dark:text-cyan-300 uppercase">Our team</p>
           <h2 id="doctors-title" className="mt-2 text-title1 font-bold text-ink">
             Meet our doctors
           </h2>
@@ -128,7 +129,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
         data-stuck={stuck ? "" : undefined}
         className={`top-(--header-h) z-20 border-b transition-[background-color,border-color,box-shadow] duration-200 tall:sticky ${
           stuck
-            ? "border-hairline/80 bg-canvas/85 shadow-[0_12px_24px_-20px_rgb(0_0_0/0.4)] backdrop-blur-xl backdrop-saturate-150"
+            ? "border-ink/[0.08] bg-canvas/85 shadow-[0_12px_32px_-16px_rgb(0_0_0/0.8)] backdrop-blur-xl backdrop-saturate-150"
             : "border-transparent bg-canvas"
         }`}
       >
@@ -149,7 +150,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
                 placeholder="Name, specialty or language"
                 autoComplete="off"
                 enterKeyHint="search"
-                className={`field h-12 rounded-full! border-hairline! bg-surface! pl-11 text-ellipsis hover:border-control! focus-visible:border-accent! ${
+                className={`field h-12 rounded-full! border-ink/12! bg-surface-2! pl-11 text-ink text-ellipsis placeholder:text-muted hover:border-ink/25! focus-visible:border-accent! ${
                   query ? "pr-12" : "pr-4"
                 }`}
               />
@@ -166,7 +167,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.6 }}
                     transition={spring.press}
-                    className="absolute top-1/2 right-1 grid size-11 -translate-y-1/2 place-items-center text-muted hover:text-ink-2"
+                    className="absolute top-1/2 right-1 grid size-11 -translate-y-1/2 place-items-center text-muted transition-colors hover:text-ink-2 dark:hover:text-zinc-200"
                   >
                     <XCircle size={20} />
                   </motion.button>
@@ -241,16 +242,18 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="rounded-card bg-surface px-6 py-10 text-center shadow-card"
+              transition={reduceMotion ? { duration: 0 } : { duration: 0.25 }}
             >
-              <p className="text-title3 font-semibold text-ink">No doctors found</p>
-              <p className="mx-auto mt-2 max-w-sm text-callout text-muted">
-                {emptyCopy(query, specialty)} Or call the desk on{" "}
-                <a href={practice.phoneHref} className="tabular text-accent">
-                  {practice.phoneDisplay}
-                </a>
-                .
-              </p>
+              <SpotlightCard className="rounded-card px-6 py-10 text-center">
+                <p className="relative z-10 text-title3 font-semibold text-ink">No doctors found</p>
+                <p className="relative z-10 mx-auto mt-2 max-w-sm text-callout text-muted">
+                  {emptyCopy(query, specialty)} Or call the desk on{" "}
+                  <a href={practice.phoneHref} className="tabular text-accent dark:text-cyan-300 hover:text-accent dark:hover:text-cyan-200">
+                    {practice.phoneDisplay}
+                  </a>
+                  .
+                </p>
+              </SpotlightCard>
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -319,21 +322,21 @@ function CardBody({ doctor, next, today, action }: { doctor: Doctor; next: Slot 
           doctor={doctor}
           size={80}
           shape="rounded"
-          className="transition-transform duration-300 ease-out-quint group-hover:scale-105 group-hover:-rotate-2"
+          className="ring-1 ring-ink/10 transition-transform duration-300 ease-out-quint group-hover:scale-105 group-hover:-rotate-2"
         />
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2 text-title3 font-bold text-ink">
             {doctor.name}
             {doctor.verified ? (
               <span
-                className="inline-flex items-center gap-1 rounded-full bg-[#e2f1e6] px-2 py-0.5 text-caption font-bold text-[#215631]"
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/12 px-2 py-0.5 text-caption font-bold text-emerald-700 dark:text-emerald-300"
                 title="Verified by the practice"
               >
                 ✓ Verified
               </span>
             ) : null}
           </span>
-          <span className="mt-1.5 inline-flex rounded-full bg-accent-soft px-2.5 py-0.5 text-caption font-bold text-accent">
+          <span className="mt-1.5 inline-flex rounded-full border border-accent/25 dark:border-cyan-400/25 bg-accent/12 dark:bg-cyan-400/12 px-2.5 py-0.5 text-caption font-bold text-accent dark:text-cyan-300">
             {doctor.interest}
           </span>
           <span className="mt-1.5 block text-callout text-muted">
@@ -344,22 +347,22 @@ function CardBody({ doctor, next, today, action }: { doctor: Doctor; next: Slot 
       <span className="mt-4 block text-callout text-ink-2">{doctor.bio}</span>
       <span className="mt-3 mb-4 grid gap-1 text-caption text-muted">
         <span>
-          <span className="font-semibold text-ink-2">Speaks</span> {doctor.languages.join(", ")}
+          <span className="font-semibold text-ink-2 dark:text-zinc-200">Speaks</span> {doctor.languages.join(", ")}
         </span>
         <span>
-          <span className="font-semibold text-ink-2">In clinic</span> {doctor.days} · {doctor.room}
+          <span className="font-semibold text-ink-2 dark:text-zinc-200">In clinic</span> {doctor.days} · {doctor.room}
         </span>
       </span>
-      <span className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-hairline pt-4">
+      <span className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-ink/[0.08] pt-4">
         {next ? (
           <span id={`next-${doctor.id}`} className="tabular inline-flex items-center gap-2 text-callout text-ink">
             <span aria-hidden="true" className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
-              <span className="relative inline-flex size-2 rounded-full bg-success" />
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
             </span>
             <span>
               <span className="text-muted">Next available </span>
-              <span className="font-semibold">{formatWhen(next, today)}</span>
+              <span className="font-semibold text-ink">{formatWhen(next, today)}</span>
             </span>
           </span>
         ) : (
@@ -373,28 +376,30 @@ function CardBody({ doctor, next, today, action }: { doctor: Doctor; next: Slot 
   );
 }
 
-const CARD = "group flex h-full w-full flex-col rounded-sheet bg-surface p-5 text-left no-underline shadow-card md:p-6";
+const CARD = "group relative z-10 flex h-full w-full flex-col p-5 text-left no-underline md:p-6";
 
 function DoctorCard({ doctor, next, today }: { doctor: Doctor; next: Slot | null; today: string }) {
   return (
-    <Link
-      href={`/doctors/${doctor.id}`}
-      aria-label={`${doctor.name}, ${doctor.interest}. See times`}
-      aria-describedby={`next-${doctor.id}`}
-      className={`${CARD} transition-[box-shadow,transform] duration-300 ease-out-quint hover:-translate-y-0.5 hover:shadow-raised active:scale-[0.99]`}
-    >
-      <CardBody
-        doctor={doctor}
-        next={next}
-        today={today}
-        action={
-          <span className="inline-flex items-center gap-0.5 text-callout font-bold text-accent">
-            See times
-            <ChevronRight size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
-          </span>
-        }
-      />
-    </Link>
+    <SpotlightCard className="h-full transition-[box-shadow,transform] duration-300 ease-out-quint hover:-translate-y-0.5 active:scale-[0.99]">
+      <Link
+        href={`/doctors/${doctor.id}`}
+        aria-label={`${doctor.name}, ${doctor.interest}. See times`}
+        aria-describedby={`next-${doctor.id}`}
+        className={`${CARD} rounded-sheet focus-visible:outline-3 focus-visible:-outline-offset-3 focus-visible:outline-accent/65`}
+      >
+        <CardBody
+          doctor={doctor}
+          next={next}
+          today={today}
+          action={
+            <span className="inline-flex items-center gap-0.5 text-callout font-bold text-accent dark:text-cyan-300">
+              See times
+              <ChevronRight size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+            </span>
+          }
+        />
+      </Link>
+    </SpotlightCard>
   );
 }
 
@@ -423,8 +428,8 @@ function ExpandableDoctorCard({
   const firstOpen = slots.find((slot) => slotStatus(slot, [], now) === "open");
   const initialWeek = clampWeek(null, window, firstOpen?.date);
   return (
-    <div
-      className={`rounded-sheet bg-surface shadow-card transition-shadow duration-300 ${open ? "shadow-raised ring-1 ring-accent/25" : "hover:shadow-raised"}`}
+    <SpotlightCard
+      className={`overflow-clip! transition-shadow duration-300 ${open ? "shadow-raised ring-1 ring-accent/35 dark:ring-cyan-400/35" : ""}`}
       data-expanded={open ? "true" : undefined}
     >
       <button
@@ -434,14 +439,16 @@ function ExpandableDoctorCard({
         aria-controls={panelId}
         aria-describedby={`next-${doctor.id}`}
         onClick={onToggle}
-        className={`${CARD} shadow-none! focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-accent/55 ${open ? "" : "active:scale-[0.995]"}`}
+        className={`${CARD} focus-visible:outline-3 focus-visible:-outline-offset-3 focus-visible:outline-accent/65 ${
+          open ? "rounded-t-sheet" : "rounded-sheet active:scale-[0.995]"
+        }`}
       >
         <CardBody
           doctor={doctor}
           next={next}
           today={today}
           action={
-            <span className="inline-flex items-center gap-1 text-callout font-bold text-accent">
+            <span className="inline-flex items-center gap-1 text-callout font-bold text-accent dark:text-cyan-300">
               {open ? "Hide times" : "See times"}
               <motion.span
                 aria-hidden="true"
@@ -471,12 +478,15 @@ function ExpandableDoctorCard({
             transition={
               reduce
                 ? { duration: 0 }
-                : { height: { type: "spring", stiffness: 260, damping: 32 }, opacity: { duration: 0.25 } }
+                : { height: { type: "spring", stiffness: 320, damping: 32 }, opacity: { duration: 0.2 } }
             }
           >
-            <div className="border-t border-hairline px-5 pt-5 pb-5 md:px-6 md:pb-6">
+            <div className="relative z-10 border-t border-ink/[0.08] px-5 pt-5 pb-5 md:px-6 md:pb-6">
               <WeekPicker doctor={doctor} slots={slots} initialWeek={initialWeek} signedIn={signedIn} headingLevel={3} />
-              <Link href={`/doctors/${doctor.id}`} className="mt-4 inline-flex min-h-11 items-center gap-0.5 text-callout text-accent">
+              <Link
+                href={`/doctors/${doctor.id}`}
+                className="mt-4 inline-flex min-h-11 items-center gap-0.5 text-callout font-medium text-accent dark:text-cyan-300 hover:text-accent dark:hover:text-cyan-200"
+              >
                 Open {doctor.short}’s full page
                 <ChevronRight size={18} />
               </Link>
@@ -484,6 +494,6 @@ function ExpandableDoctorCard({
           </motion.section>
         ) : null}
       </AnimatePresence>
-    </div>
+    </SpotlightCard>
   );
 }

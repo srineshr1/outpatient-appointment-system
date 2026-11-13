@@ -35,7 +35,7 @@ function TimeChoices({ places, chosen, name = "slot" }: { places: readonly Place
   return (
     <div className="grid gap-3">
       {days.map((date) => (
-        <fieldset key={date} className="rounded-card bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
+        <fieldset key={date} className="rounded-card border border-hairline bg-surface p-4 shadow-card md:flex md:gap-6 md:p-5">
           <legend className="sr-only">
             {weekdayLong(date)} {date}
           </legend>
@@ -46,9 +46,9 @@ function TimeChoices({ places, chosen, name = "slot" }: { places: readonly Place
               .map((place) => (
                 <label key={place.slotId} className="relative block cursor-pointer">
                   <input type="radio" name={name} value={place.slotId} defaultChecked={place.slotId === chosen} className="peer sr-only" required />
-                  <span className="tabular flex min-h-11 flex-col items-center justify-center rounded-field px-1 py-1 text-callout font-medium text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-accent-soft peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+                  <span className="tabular flex min-h-11 flex-col items-center justify-center rounded-field bg-ink/[0.02] px-1 py-1 text-callout font-medium text-accent dark:text-cyan-300 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-accent/10 dark:hover:bg-cyan-400/10 peer-checked:bg-accent peer-checked:text-accent-ink peer-checked:font-semibold peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
                     {place.time}
-                    {place.token ? <span className="text-caption font-normal opacity-80">token {place.token}</span> : null}
+                    {place.token ? <span className="text-caption font-normal opacity-85">token {place.token}</span> : null}
                   </span>
                 </label>
               ))}
@@ -74,7 +74,7 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
         <PageHeading className="text-title2 font-semibold text-ink md:text-title1">This link is not valid</PageHeading>
         <p className="mt-2 max-w-prose text-body text-ink-2">
           Use the link in the latest email or text from the practice, or see your visits under{" "}
-          <Link className="text-accent underline underline-offset-4" href="/appointments">
+          <Link className="text-accent dark:text-cyan-300 underline underline-offset-4" href="/appointments">
             Appointments
           </Link>
           .
@@ -147,12 +147,12 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
       ) : null}
 
       {asking ? (
-        <form action={cancelRebookingAction} className="group mt-8 max-w-prose rounded-card bg-surface p-5 shadow-card">
+        <form action={cancelRebookingAction} className="group mt-8 max-w-prose rounded-card border border-hairline bg-surface p-5 shadow-card">
           <input type="hidden" name="token" value={token} />
           <h2 className="text-title3 font-semibold text-ink">Cancel and get a full refund</h2>
           <p className="mt-1 text-callout text-ink-2">The held times are released and the visit is cancelled. You can book again at any time.</p>
           <label className="mt-4 flex min-h-11 items-center gap-3 text-body text-ink">
-            <input type="checkbox" name="confirm" value="yes" required className="size-5" />
+            <input type="checkbox" name="confirm" value="yes" required className="size-5 accent-accent" />
             Yes, cancel visit {visit.reference}
           </label>
           <div className="mt-4 flex flex-wrap gap-3">
@@ -190,7 +190,7 @@ export default async function RebookPage({ params, searchParams }: { params: Pro
             )
           ) : (
             <p className="mt-4 text-callout">
-              <Link className="text-accent hover:underline underline-offset-4" href={`${here}?more=1`}>
+              <Link className="text-accent dark:text-cyan-300 hover:underline underline-offset-4" href={`${here}?more=1`}>
                 Show more times
               </Link>
             </p>

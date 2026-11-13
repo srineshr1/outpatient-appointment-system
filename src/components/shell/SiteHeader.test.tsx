@@ -177,6 +177,18 @@ describe("header helpers", () => {
     expect(navLinks({ role: "locum" as never }).map((link) => link.href)).toEqual(["/dashboard"]);
   });
 
+  it("separates clinic book, viewing sessions, and editing sessions for own-book doctors without Profile in the main bar", () => {
+    const ownDoctor = { role: "doctor" as const, id: "doc-1", doctorId: "doc-1" };
+    expect(navLinks(ownDoctor)).toEqual([
+      { href: "/dashboard", label: "Clinic book" },
+      { href: "/dashboard/sessions", label: "View sessions" },
+      { href: "/dashboard/sessions/manage", label: "Edit sessions" },
+    ]);
+    expect(currentFor("/dashboard/sessions", "/dashboard/sessions")).toBe("page");
+    expect(currentFor("/dashboard/sessions", "/dashboard/sessions/manage")).toBeUndefined();
+    expect(currentFor("/dashboard/sessions/manage", "/dashboard/sessions/manage")).toBe("page");
+  });
+
   it("treats choosing a time and the form as part of booking", () => {
     expect(currentFor("/book", "/book")).toBe("page");
     expect(currentFor("/book", "/doctors/cho")).toBe("true");

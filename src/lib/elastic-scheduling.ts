@@ -1,10 +1,18 @@
 /** Booking snapshots are immutable when a session's availability is resized. */
 import type { AppointmentRecord, ConsultSession, Placement, RebookingOffer, SessionTrim } from "./clinic-types";
 import type { Slot } from "./data";
-import { applyHeld, baseSlotId, fromMinutes, heldId, overriddenDates, slotsForSession, toMinutes } from "./sessions";
+import { applyHeld, baseSlotId, canonicalWholeWaveHeld, fromMinutes, heldId, overriddenDates, slotsForSession, toMinutes } from "./sessions";
 
 export function occupiesTime(visit: Pick<AppointmentRecord, "status">): boolean {
   return visit.status === "booked" || visit.status === "pending_payment" || visit.status === "completed";
+}
+
+/**
+ * A visit still to come in its session: booked or held for payment. A completed visit keeps its time
+ * on the calendar (occupiesTime) but no longer blocks removing the session or counts as upcoming.
+ */
+export function isUpcomingVisit(visit: Pick<AppointmentRecord, "status">): boolean {
+  return visit.status === "booked" || visit.status === "pending_payment";
 }
 
 /** Hours, name and room may change; a booked session's recurrence/mode/step/capacity may not. */
@@ -74,6 +82,11 @@ export function applyReservations(slots: readonly Slot[], visits: readonly Reser
     const session = sessions.find(s => s.id === visit.sessionId && s.doctorId === visit.doctorId);
     const step = session?.mode === "stream" ? session.slotMinutes : session?.waveMinutes;
     return step ? { ...visit, endTime: fromMinutes(toMinutes(visit.time) + step) } : visit;
+  }).map(visit => {
+    // A whole-session wave has one id per date; older ids that carried a moved start still count.
+    const session = sessions.find(s => s.id === visit.sessionId && s.doctorId === visit.doctorId);
+    const slotId = canonicalWholeWaveHeld(visit.slotId, session, visit.date);
+    return slotId === visit.slotId ? visit : { ...visit, slotId };
   });
   return applyHeld(slots, active.map((visit) => visit.slotId)).map((slot) => {
     const conflict = active.some((visit) => {

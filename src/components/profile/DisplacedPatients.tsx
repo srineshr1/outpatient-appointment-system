@@ -30,7 +30,7 @@ function detail(entry: DisplacedEntry): string {
 export function DisplacedPatients({ entries }: { entries: readonly DisplacedEntry[] }) {
   if (entries.length === 0) return null;
   return (
-    <section aria-labelledby="displaced-patients" className="mt-8 rounded-card bg-surface p-5 shadow-card md:p-6">
+    <section aria-labelledby="displaced-patients" className="mt-8 rounded-card border border-hairline bg-surface p-5 shadow-card md:p-6">
       <h2 id="displaced-patients" className="text-title3 font-semibold text-ink">
         Displaced patients
       </h2>
@@ -44,7 +44,7 @@ export function DisplacedPatients({ entries }: { entries: readonly DisplacedEntr
             <li key={entry.visit.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-3">
               <div className="min-w-0">
                 <p className="text-body font-medium text-ink">
-                  {entry.visit.patientName} <span className="text-callout font-normal text-ink-2">· {entry.visit.reference}</span>
+                  {entry.visit.patientName} <span className="text-callout font-normal text-muted">· {entry.visit.reference}</span>
                 </p>
                 <p className="text-callout text-ink-2 tabular">
                   {original ? `Was ${original} · ` : ""}

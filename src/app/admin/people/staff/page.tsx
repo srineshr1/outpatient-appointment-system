@@ -114,7 +114,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
             </thead>
             <tbody className={tbodyClass}>
               {rows.map((row) => (
-                <tr key={row.user.id} className="hover:bg-[#f9fbfc]">
+                <tr key={row.user.id} className="transition-colors hover:bg-ink/[0.03]">
                   <Td>
                     <RowLink href={`/admin/people/${row.user.id}`}>
                       {row.user.name}

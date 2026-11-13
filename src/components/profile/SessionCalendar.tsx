@@ -273,7 +273,7 @@ function SessionCalendarBase({
         : "A one-off session takes the place of the weekly session on that date.";
 
   return (
-    <section aria-labelledby="session-calendar" className="rounded-card bg-surface p-4 shadow-card md:p-6">
+    <section aria-labelledby="session-calendar" className="rounded-card border border-hairline bg-surface p-4 shadow-card md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 id="session-calendar" className="text-title3 font-semibold text-ink">
@@ -304,7 +304,7 @@ function SessionCalendarBase({
           type="button"
           aria-label="Previous week"
           onClick={() => setWeekOffset((value) => value - 1)}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-field border border-hairline px-2 text-body text-ink hover:bg-fill"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-field border border-hairline bg-surface-2 px-2 text-body text-ink-2 transition-colors hover:bg-fill hover:text-ink"
         >
           ‹
         </button>
@@ -312,8 +312,8 @@ function SessionCalendarBase({
           type="button"
           aria-current={weekOffset === 0 ? "date" : undefined}
           onClick={() => setWeekOffset(0)}
-          className={`inline-flex min-h-11 items-center justify-center rounded-field border px-3 text-callout font-medium ${
-            weekOffset === 0 ? "border-accent/40 bg-accent-soft text-accent" : "border-hairline text-ink hover:bg-fill"
+          className={`inline-flex min-h-11 items-center justify-center rounded-field border px-3 text-callout font-medium transition-colors ${
+            weekOffset === 0 ? "border-accent/40 bg-accent-soft text-accent font-semibold" : "border-hairline bg-surface-2 text-ink-2 hover:bg-fill hover:text-ink"
           }`}
         >
           This week
@@ -322,7 +322,7 @@ function SessionCalendarBase({
           type="button"
           aria-label="Next week"
           onClick={() => setWeekOffset((value) => value + 1)}
-          className="inline-flex min-h-11 items-center justify-center rounded-field border border-hairline px-3 text-callout text-ink hover:bg-fill"
+          className="inline-flex min-h-11 items-center justify-center rounded-field border border-hairline bg-surface-2 px-3 text-callout text-ink-2 transition-colors hover:bg-fill hover:text-ink"
         >
           Next week ›
         </button>
@@ -359,17 +359,24 @@ function SessionCalendarBase({
                 <span className={`text-caption font-semibold uppercase tracking-wide ${isToday ? "text-accent" : "text-muted"}`}>{WEEKDAYS[index]}</span>
                 <span
                   className={`grid size-8 place-items-center rounded-full text-body font-semibold tabular ${
-                    isToday ? "bg-accent text-white" : "text-ink"
+                    isToday ? "bg-accent text-accent-ink font-semibold" : "text-ink"
                   }`}
                 >
                   {Number(day.slice(8))}
                 </span>
               </div>
               <div
-                className={`relative rounded-xl border ${isToday ? "border-accent/25 bg-accent-soft/35" : drawn.length === 0 ? "border-hairline/40 bg-fill/40" : "border-hairline/50 bg-white"}`}
+                className={`relative rounded-xl border ${
+                  isToday
+                    ? "border-accent/35"
+                    : drawn.length === 0
+                      ? "border-hairline bg-surface"
+                      : "border-hairline bg-surface-2"
+                }`}
                 style={{
                   height: trackHeight,
-                  backgroundImage: `linear-gradient(to bottom, rgba(210, 210, 215, 0.85) 1px, transparent 1px)`,
+                  backgroundColor: isToday ? "color-mix(in srgb, var(--v-accent) 5%, var(--v-surface))" : undefined,
+                  backgroundImage: `linear-gradient(to bottom, var(--v-hairline) 1px, transparent 1px)`,
                   backgroundSize: `100% ${HOUR_PX}px`,
                 }}
               >
@@ -387,15 +394,15 @@ function SessionCalendarBase({
                   const crowded = laneCount >= 3 || box.height < 46;
                   const tone = isDraft
                     ? wave
-                      ? "pointer-events-none z-[3] border-2 border-dashed border-amber-600 bg-amber-50 text-amber-950"
-                      : "pointer-events-none z-[3] border-2 border-dashed border-accent bg-white text-accent"
+                      ? "pointer-events-none z-[3] border-2 border-dashed border-warn bg-warn-soft text-ink"
+                      : "pointer-events-none z-[3] border-2 border-dashed border-accent bg-accent-soft text-ink"
                     : wave
-                      ? "z-[2] border border-amber-200 border-l-[3px] border-l-amber-600 bg-amber-50 text-amber-950"
-                      : "z-[2] border border-[#d3e4f7] border-l-[3px] border-l-accent bg-[#e7f1fb] text-ink";
-                  const mark = selected || editable ? "shadow-[inset_0_0_0_3px_#0066cc] bg-white" : "shadow-sm";
+                      ? "z-[2] border border-warn/30 border-l-[3px] border-l-warn bg-warn-soft text-ink"
+                      : "z-[2] border border-accent/30 border-l-[3px] border-l-accent bg-accent-soft text-ink";
+                  const mark = selected || editable ? "ring-2 ring-inset ring-accent" : "shadow-card";
                   const classes = `absolute overflow-hidden rounded-lg px-2 py-1 text-left text-[12px] leading-tight ${tone} ${mark} ${
                     replaced ? "z-[1] opacity-60 line-through" : ""
-                  } ${clickable ? "cursor-pointer hover:brightness-[0.98] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-accent/55" : ""}`;
+                  } ${clickable ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-accent/55" : ""}`;
                   const inner = (
                     <>
                       <span className="block truncate font-semibold tabular">
@@ -408,7 +415,7 @@ function SessionCalendarBase({
                         </span>
                       )}
                       {editable && !crowded ? (
-                        <span className="mt-1 inline-flex w-fit rounded-full bg-accent px-1.5 text-[10px] font-semibold leading-4 text-white">Edit</span>
+                        <span className="mt-1 inline-flex w-fit rounded-full bg-accent px-1.5 text-[10px] font-semibold leading-4 text-accent-ink">Edit</span>
                       ) : null}
                     </>
                   );
@@ -451,14 +458,14 @@ function SessionCalendarBase({
 
       <ul className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted" aria-label="Key">
         <li className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded border-l-[3px] border-accent bg-[#e7f1fb]" aria-hidden="true" /> Stream
+          <span className="h-3 w-3 rounded border-l-[3px] border-accent bg-accent-soft" aria-hidden="true" /> Stream
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded border-l-[3px] border-amber-600 bg-amber-50" aria-hidden="true" /> Wave
+          <span className="h-3 w-3 rounded border-l-[3px] border-warn bg-warn-soft" aria-hidden="true" /> Wave
         </li>
         {shownDraft ? (
           <li className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded border-2 border-dashed border-accent bg-white" aria-hidden="true" /> Not saved yet
+            <span className="h-3 w-3 rounded border-2 border-dashed border-accent bg-surface-2" aria-hidden="true" /> Not saved yet
           </li>
         ) : null}
         <li className="line-through">Replaced by a one-off</li>

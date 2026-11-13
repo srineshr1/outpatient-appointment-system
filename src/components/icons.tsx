@@ -57,7 +57,7 @@ export const Search = (props: IconProps) => (
 export const XCircle = (props: IconProps) => (
   <Icon {...props}>
     <circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" />
-    <path d="m9.5 9.5 5 5m0-5-5 5" stroke="white" strokeWidth={1.8} />
+    <path d="m9.5 9.5 5 5m0-5-5 5" stroke="var(--color-surface)" strokeWidth={1.8} />
   </Icon>
 );
 
@@ -139,5 +139,69 @@ export const SignOut = (props: IconProps) => (
   <Icon {...props}>
     <path d="M14 4h3.5A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5H14" />
     <path d="M10 16.5 5.5 12 10 7.5M5.5 12H15" />
+  </Icon>
+);
+
+export const Sun = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 3v2M12 19v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M3 12h2M19 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+  </Icon>
+);
+
+export const Moon = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M20.354 15.354A9 9 0 0 1 8.646 3.646 9.003 9.003 0 0 0 12 21a9.003 9.003 0 0 0 8.354-5.646Z" />
+  </Icon>
+);
+
+export const ClipboardList = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="6" y="4" width="12" height="16" rx="2" />
+    <path d="M9.5 4h5a1 1 0 0 1 1 1v1h-7V5a1 1 0 0 1 1-1Z" />
+    <path d="M9.5 10h5M9.5 14h5" />
+  </Icon>
+);
+
+export const Sliders = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M4 7h16M4 17h16M9 4v6M15 14v6" />
+  </Icon>
+);
+
+export const UserCircle = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="9.5" r="2.75" />
+    <path d="M7 18.2a6 6 0 0 1 10 0" />
+  </Icon>
+);
+
+export const Eye = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+    <circle cx="12" cy="12" r="2.5" />
+  </Icon>
+);
+
+export const Edit = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M4 20h4l10.5-10.5a2 2 0 0 0-2.8-2.8L5.2 17.2 4 20Z" />
+    <path d="m13.5 6.5 4 4" />
+  </Icon>
+);
+
+export const Plus = (props: IconProps) => (
+  <Icon {...props}>
+    <path d="M12 5v14M5 12h14" />
+  </Icon>
+);
+
+export const Users = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="9.5" cy="8.5" r="3" />
+    <path d="M3.5 19a6 6 0 0 1 12 0" />
+    <circle cx="16.5" cy="9.5" r="2.2" />
+    <path d="M16 14a5 5 0 0 1 4.5 5" />
   </Icon>
 );

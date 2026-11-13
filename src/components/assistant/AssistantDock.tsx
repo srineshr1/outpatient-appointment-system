@@ -9,6 +9,7 @@ import { DEFAULT_LANGUAGE, detectLanguage, nextListenLocale, pickVoiceFor, suppo
 import type { SlotLink } from "@/lib/assistant/slot-links";
 import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
+import { Magnet } from "@/components/reactbits/Magnet";
 import { buttonClass } from "@/components/ui/button-styles";
 import ThoughtLine from "./ThoughtLine";
 import VoicePill from "./VoicePill";
@@ -37,6 +38,12 @@ interface ChatMessage {
 
 /** Fits the dock's text-callout size (0.9375rem). */
 const THOUGHT_FONT_SIZE = 15;
+
+/** Suggestion chips shown before the first message, by role. Each one is a real assistant task. */
+export const QUICK_PROMPTS = {
+  doctor: ["What's on my schedule today?", "Add a consulting session", "How many places are left today?"],
+  patient: ["Book a visit", "Show my appointments", "What times are free tomorrow?"],
+} as const;
 
 function secondsSince(startedAt: number): number {
   return Math.round((performance.now() - startedAt) / 100) / 10;
@@ -268,6 +275,23 @@ function desktopQuery(): MediaQueryList | null {
 export function AssistantDock({ user }: { user: DockUser }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
+  // On a phone the floating launcher sits over the page's right edge (toggles, Submit buttons).
+  // It tucks away while the page scrolls down and comes back on the way up or at the very bottom.
+  const [tucked, setTucked] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const narrow = window.innerWidth < 768;
+      const atBottom = window.innerHeight + y >= document.documentElement.scrollHeight - 4;
+      if (!narrow || atBottom || y < 24) setTucked(false);
+      else if (y > last + 6) setTucked(true);
+      else if (y < last - 6) setTucked(false);
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingCard | null>(null);
   const [draft, setDraft] = useState("");
@@ -933,23 +957,37 @@ export function AssistantDock({ user }: { user: DockUser }) {
       ? "Ask about today's book, your hours, or a clash. I prepare a cancellation, a move, or a new or changed session, and I wait for you to confirm before anything changes."
       : "Ask about your visits, a doctor, or a free time. I prepare a booking, a move, a cancellation or a payment, and I wait for you to confirm before anything changes.";
 
+  // Quick prompts for an empty conversation. A tap sends the prompt, just like typing it.
+  const quickPrompts = QUICK_PROMPTS[user.role === "doctor" ? "doctor" : "patient"];
+  const showQuickPrompts = messages.length === 0 && !waiting && !pending;
+
   const dockStyle: CSSProperties | undefined =
     isDesktop && size ? { width: size.width, height: size.height, maxHeight: "none" } : undefined;
 
   return (
     <>
       {open ? null : (
-        <button
-          ref={launcherRef}
-          type="button"
-          aria-label="Ask the clinic assistant"
-          className="fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 grid size-14 place-items-center rounded-full bg-accent text-white shadow-float hover:bg-accent-hover active:bg-accent-press"
-          onClick={openPanel}
+        <Magnet
+          padding={24}
+          magnetStrength={2}
+          maxOffset={5}
+          wrapperClassName={`fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 transition-[transform,opacity] duration-200 ${
+            tucked ? "pointer-events-none translate-y-24 opacity-0" : ""
+          }`}
+          style={{ position: "fixed" }}
         >
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
-            <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
-          </svg>
-        </button>
+          <button
+            ref={launcherRef}
+            type="button"
+            aria-label="Ask the clinic assistant"
+            className="grid size-14 place-items-center rounded-full bg-ink text-canvas shadow-raised transition-all hover:opacity-90 active:scale-95"
+            onClick={openPanel}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
+            </svg>
+          </button>
+        </Magnet>
       )}
       {open ? (
         <dialog
@@ -958,7 +996,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
           aria-labelledby={titleId}
           style={dockStyle}
           data-resizing={resizing ? "true" : undefined}
-          className="fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] min-h-0 w-auto max-w-none flex-col overflow-hidden rounded-t-3xl border border-hairline bg-surface p-0 shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
+          className="fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] min-h-0 w-auto max-w-none flex-col overflow-hidden rounded-t-3xl border border-hairline bg-surface p-0 text-ink shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
         >
           {isDesktop ? (
             <>
@@ -987,7 +1025,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
               </button>
             </>
           ) : null}
-          <div className={`flex flex-shrink-0 items-start justify-between gap-3 border-b border-hairline px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
+          <div className={`flex flex-shrink-0 items-start justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
             <div>
               <h2 id={titleId} className="text-callout font-semibold text-ink">Clinic assistant</h2>
               <p className="text-caption text-muted">{user.role === "doctor" ? "Your book" : user.name}</p>
@@ -1003,6 +1041,21 @@ export function AssistantDock({ user }: { user: DockUser }) {
             aria-live="polite"
           >
             <p className="text-callout text-ink-2">{intro}</p>
+            {showQuickPrompts ? (
+              <ul className="clinic-quick-prompts flex flex-wrap gap-2 pt-1" aria-label="Suggested questions">
+                {quickPrompts.map((prompt) => (
+                  <li key={prompt}>
+                    <button
+                      type="button"
+                      className="clinic-quick-prompt rounded-full border border-hairline bg-fill px-3 py-1.5 text-left text-caption font-medium text-ink transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      onClick={() => void send(prompt)}
+                    >
+                      {prompt}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {/* One flat keyed list, so a turn's working line is the same element that settles above its reply. */}
             {[
               ...messages.flatMap((message, index) => {
@@ -1011,7 +1064,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
                   rows.push(<ThoughtRow key={`thought-${message.turn}`} working={false} elapsed={message.thoughtFor} />);
                 }
                 rows.push(
-                  <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-accent-soft px-3 py-2 text-callout text-ink" : "mr-6 text-callout text-ink"}>
+                  <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-ink px-3.5 py-2.5 text-callout text-canvas" : "mr-6 text-callout text-ink"}>
                     <p className="whitespace-pre-wrap">{message.content}</p>
                     {message.payUrl ? (
                       <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
@@ -1026,7 +1079,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 : []),
             ]}
             {pending ? (
-              <div className="rounded-2xl border border-hairline bg-canvas p-3">
+              <div className="rounded-2xl border border-hairline bg-surface-2 p-3.5 shadow-card">
                 <p className="text-callout font-semibold text-ink">{pending.title}</p>
                 <p className="mt-1 text-callout text-ink-2">{pending.summary}</p>
                 <p className="mt-1 text-caption text-muted">Nothing changes until you confirm. This offer expires {expiryLabel(pending.expiresAt)}.</p>

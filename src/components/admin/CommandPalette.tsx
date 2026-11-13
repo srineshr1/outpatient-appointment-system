@@ -114,11 +114,11 @@ export function CommandPalette() {
         onClick={open}
         aria-haspopup="dialog"
         aria-keyshortcuts="Control+K Meta+K /"
-        className="inline-flex min-h-9 items-center gap-2 rounded-md border border-hairline bg-surface px-2.5 text-sm text-ink-2 transition-colors hover:bg-fill sm:min-w-56 sm:px-3"
+        className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-ink/12 bg-surface-2 px-2.5 text-sm text-ink-2 transition-colors hover:bg-ink/[0.06] hover:text-ink sm:min-w-56 sm:px-3"
       >
         <SearchIcon size={16} />
         <span className="sr-only sm:not-sr-only">Search or jump to…</span>
-        <kbd className="ml-auto hidden rounded border border-hairline bg-canvas px-1.5 font-sans text-xs text-muted sm:inline">
+        <kbd className="ml-auto hidden rounded border border-ink/12 bg-surface dark:bg-zinc-900 px-1.5 font-sans text-xs text-ink-2 sm:inline">
           {mac ? "⌘K" : "Ctrl K"}
         </kbd>
       </button>
@@ -130,9 +130,9 @@ export function CommandPalette() {
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
-        className="mx-auto mt-[12vh] w-[min(36rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-hairline bg-surface p-0 text-ink shadow-raised backdrop:bg-black/30"
+        className="mx-auto mt-[12vh] w-[min(36rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-ink/12 bg-surface/95 dark:bg-zinc-900/95 p-0 text-ink shadow-raised backdrop-blur-xl backdrop:bg-black/70"
       >
-        <div className="flex items-center gap-2 border-b border-hairline px-3">
+        <div className="flex items-center gap-2 border-b border-ink/[0.08] px-3">
           <SearchIcon size={18} className="shrink-0 text-muted" />
           <input
             ref={inputRef}
@@ -151,12 +151,12 @@ export function CommandPalette() {
             }}
             onKeyDown={onInputKey}
             placeholder="A page, a patient’s name, a reference or an email"
-            className="h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
+            className="h-12 min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted"
           />
           <button
             type="button"
             onClick={close}
-            className="inline-flex min-h-7 items-center rounded border border-hairline px-1.5 text-xs text-muted hover:bg-fill"
+            className="inline-flex min-h-7 items-center rounded border border-ink/12 px-1.5 text-xs text-ink-2 transition-colors hover:bg-ink/[0.06] hover:text-ink"
           >
             Esc<span className="sr-only">, close</span>
           </button>
@@ -175,16 +175,16 @@ export function CommandPalette() {
               aria-selected={index === active}
               onMouseMove={() => setActive(index)}
               onClick={() => go(item)}
-              className={`flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-3 text-sm ${
-                index === active ? "bg-accent-soft text-ink" : "text-ink"
+              className={`flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-lg px-3 text-sm transition-colors ${
+                index === active ? "bg-accent/15 dark:bg-cyan-400/15 text-accent dark:text-cyan-200" : "text-ink hover:bg-ink/[0.04]"
               }`}
             >
               <span className="truncate">{item.label}</span>
-              <span className="shrink-0 text-xs text-muted">{item.hint}</span>
+              <span className={`shrink-0 text-xs ${index === active ? "text-accent dark:text-cyan-300" : "text-muted"}`}>{item.hint}</span>
             </div>
           ))}
         </div>
-        <p className="border-t border-hairline px-4 py-2 text-xs text-muted">
+        <p className="border-t border-ink/[0.08] px-4 py-2 text-xs text-muted">
           <kbd className="font-sans">↑</kbd> <kbd className="font-sans">↓</kbd> to choose, <kbd className="font-sans">Enter</kbd> to open
         </p>
       </dialog>

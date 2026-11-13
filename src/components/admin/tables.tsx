@@ -55,7 +55,7 @@ export function VisitTable({
         </thead>
         <tbody className={tbodyClass}>
           {rows.map((row) => (
-            <tr key={row.visit.id} className="hover:bg-[#f9fbfc]">
+            <tr key={row.visit.id} className="transition-colors hover:bg-ink/[0.03]">
               <Td className="whitespace-nowrap tabular-nums">
                 {showDate ? slotLabel(row.visit.date, row.visit.time, today) : row.visit.time}
               </Td>
@@ -108,7 +108,7 @@ export function LedgerTable({ rows, today, label, empty }: { rows: readonly Ledg
         </thead>
         <tbody className={tbodyClass}>
           {rows.map(({ entry, charge, visit }) => (
-            <tr key={entry.id} className="hover:bg-[#f9fbfc]">
+            <tr key={entry.id} className="transition-colors hover:bg-ink/[0.03]">
               <Td className="whitespace-nowrap tabular-nums">{instantLabel(entry.at, today)}</Td>
               <Td className="whitespace-nowrap">
                 <RowLink href={`/admin/appointments/${charge.appointmentId}`}>{charge.reference}</RowLink>
@@ -119,7 +119,7 @@ export function LedgerTable({ rows, today, label, empty }: { rows: readonly Ledg
                 {entry.note ? <span className="mt-1 block max-w-64 text-[13px] text-muted">{entry.note}</span> : null}
               </Td>
               <Td className="whitespace-nowrap">{METHOD_LABELS[entry.method]}</Td>
-              <Td align="right" className={entry.kind === "refund" ? "text-[#a51c22]" : ""}>
+              <Td align="right" className={entry.kind === "refund" ? "text-red-700 dark:text-red-300" : ""}>
                 <Money pence={entry.kind === "refund" ? -entry.amountPence : entry.amountPence} />
               </Td>
               <Td className="whitespace-nowrap">{entry.byName || "—"}</Td>
@@ -155,14 +155,14 @@ export function EventTable({ events, today, label, empty }: { events: readonly A
           {events.map((event) => {
             const href = subjectHref(event);
             return (
-              <tr key={event.id} className="hover:bg-[#f9fbfc]">
+              <tr key={event.id} className="transition-colors hover:bg-ink/[0.03]">
                 <Td className="whitespace-nowrap tabular-nums">{instantLabel(event.at, today)}</Td>
                 <Td>
                   <span className="font-medium text-ink">{actionLabel(event.action)}</span>
                   <code className="ml-2 font-mono text-xs text-muted">{event.action}</code>
                   <span className="mt-0.5 block text-ink-2">
                     {href ? (
-                      <Link href={href} className="hover:underline underline-offset-4">
+                      <Link href={href} className="hover:text-accent dark:hover:text-cyan-300 hover:underline underline-offset-4">
                         {event.summary}
                       </Link>
                     ) : (
@@ -177,7 +177,7 @@ export function EventTable({ events, today, label, empty }: { events: readonly A
                 </Td>
                 <Td>
                   {event.actorId ? (
-                    <Link href={`/admin/people/${event.actorId}`} className="font-medium text-ink hover:underline underline-offset-4">
+                    <Link href={`/admin/people/${event.actorId}`} className="font-medium text-ink hover:text-accent dark:hover:text-cyan-300 hover:underline underline-offset-4">
                       {event.actorName}
                     </Link>
                   ) : (

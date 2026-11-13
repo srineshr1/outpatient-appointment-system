@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { PendingButton } from "@/components/ui/PendingButton";
 import type { ConsultSession, SessionTrim } from "@/lib/clinic-types";
@@ -47,8 +48,17 @@ import {
   type ScheduleVisit,
 } from "./schedule-model";
 
-const STREAM = { bg: "#E3F0F8", bd: "#0B6E99", fg: "#083F59", dot: "#0B6E99", soft: "#F7FBFD" };
-const WAVE = { bg: "#FDF0E0", bd: "#B45309", fg: "#64300A", dot: "#B45309", soft: "#FFFAF3" };
+type Palette = { bg: string; bd: string; fg: string; dot: string; soft: string };
+type Palettes = { stream: Palette; wave: Palette };
+
+const LIGHT_PALETTES: Palettes = {
+  stream: { bg: "#e0f2fe", bd: "#0369a1", fg: "#0c4a6e", dot: "#0369a1", soft: "#f0f9ff" },
+  wave: { bg: "#fef3c7", bd: "#b45309", fg: "#78350f", dot: "#b45309", soft: "#fffbeb" },
+};
+const DARK_PALETTES: Palettes = {
+  stream: { bg: "rgba(56, 189, 248, 0.14)", bd: "#38bdf8", fg: "#e0f2fe", dot: "#38bdf8", soft: "rgba(56, 189, 248, 0.08)" },
+  wave: { bg: "rgba(251, 191, 36, 0.14)", bd: "#fbbf24", fg: "#fef3c7", dot: "#fbbf24", soft: "rgba(251, 191, 36, 0.08)" },
+};
 
 interface EditorState {
   key: string;
@@ -98,6 +108,8 @@ export function DoctorSchedule({
   /** Where a read-only schedule sends the doctor to edit. */
   editHref?: string | null;
 }) {
+  const { theme } = useTheme();
+  const palettes = theme === "dark" ? DARK_PALETTES : LIGHT_PALETTES;
   const [weekOffset, setWeekOffset] = useState(0);
   const [edit, setEdit] = useState<EditorState | null>(() => openingEditor(sessions, visits, trims, today));
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -132,10 +144,9 @@ export function DoctorSchedule({
     setHint(null);
   }
 
-  function addNew() {
-    const date = week.days.map((day) => day.date).find((day) => day >= today) ?? null;
-    if (!date || !clinicWeekday(date)) {
-      setHint("This week is over. Move to a later week to add a session.");
+  function addNewOn(date: string) {
+    if (!clinicWeekday(date)) {
+      setHint("Choose Monday through Saturday to add a session.");
       return;
     }
     const start = firstFreeHour(sessions, trims, date);
@@ -162,19 +173,30 @@ export function DoctorSchedule({
     });
     setConfirmDelete(false);
     setOpenVisitId(null);
-    setHint(`A one-hour stream is ready at ${minutesLabel(start)}. Set when it ends, switch it to a wave, or rename it, then apply.`);
+    setHint(
+      `New 1-hour stream ready for ${formatShortDate(date)} at ${minutesLabel(start)}. Adjust hours or style on the right, then click Apply change.`,
+    );
+  }
+
+  function addNew() {
+    const date = week.days.map((day) => day.date).find((day) => day >= today) ?? null;
+    if (!date || !clinicWeekday(date)) {
+      setHint("This week is over. Move to a later week to add a session.");
+      return;
+    }
+    addNewOn(date);
   }
 
   const banner = saveState && !saveState.ok ? saveState.message : (hint ?? notice);
   const bannerWarn = Boolean((saveState && !saveState.ok) || hint);
 
   return (
-    <div className="bg-[#F4F6F5] text-[#14201F]">
+    <div className="bg-canvas text-ink">
       <div className="flex flex-col gap-3.5 px-4 py-4 md:px-6 xl:px-7 xl:pt-[18px] xl:pb-6">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
-            <PageHeading className="text-[26px] leading-tight font-bold tracking-tight">Schedule</PageHeading>
-            <p className="text-sm text-[#4F605C]">
+            <PageHeading className="text-[26px] leading-tight font-bold tracking-tight text-ink">Schedule</PageHeading>
+            <p className="text-sm text-muted">
               {doctorName} · Outpatient clinic · {todayTitle(today)}
             </p>
           </div>
@@ -182,24 +204,25 @@ export function DoctorSchedule({
             {editHref ? (
               <Link
                 href={editHref}
-                className="inline-flex min-h-11 items-center rounded-[10px] bg-[#14201F] px-4 text-sm font-semibold text-white"
+                className="inline-flex min-h-11 items-center rounded-[10px] bg-ink px-4 text-sm font-semibold text-canvas transition-opacity hover:opacity-90"
               >
                 Edit schedule
               </Link>
             ) : null}
             <WeekNav monday={monday} weekOffset={weekOffset} onWeek={setWeekOffset} />
+            {editable ? (
+              <button type="button" onClick={addNew} className={`${solidButton} shrink-0 gap-1.5 whitespace-nowrap`}>
+                <PlusIcon />
+                Add session
+              </button>
+            ) : null}
           </div>
         </header>
 
         {banner ? (
           <div
             role={bannerWarn ? "alert" : "status"}
-            className="rounded-[10px] border px-3 py-2.5 text-[13px] leading-snug"
-            style={
-              bannerWarn
-                ? { background: "#FFF1DC", color: "#5E2C05", borderColor: "#E3B079" }
-                : { background: "#E3F0F8", color: "#083F59", borderColor: "#9CC9DE" }
-            }
+            className={`rounded-[10px] border px-3 py-2.5 text-[13px] leading-snug ${bannerToneClass(bannerWarn ? "warn" : "info")}`}
           >
             {banner}
           </div>
@@ -211,13 +234,17 @@ export function DoctorSchedule({
           fill that height and scroll on their own. Narrower screens keep the calendar first, with the
           appointments under it and the editor beside (xl) or below them.
         */}
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start min-[87.5rem]:grid-cols-[256px_minmax(0,1fr)_352px] min-[87.5rem]:items-stretch min-[100rem]:grid-cols-[284px_minmax(0,1fr)_384px]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_370px] xl:items-start min-[87.5rem]:grid-cols-[276px_minmax(0,1fr)_396px] min-[87.5rem]:items-stretch min-[100rem]:grid-cols-[300px_minmax(0,1fr)_420px]">
           <div className="min-w-0 xl:col-start-1 xl:row-start-1 min-[87.5rem]:col-start-2">
             <Calendar
               week={week}
+              today={today}
+              editable={editable}
               nowMinutes={nowMinutes}
               selectedKey={edit?.key ?? null}
+              palettes={palettes}
               onSelect={choose}
+              onAddOnDate={addNewOn}
             />
           </div>
           <div
@@ -231,13 +258,16 @@ export function DoctorSchedule({
                   returnTo={returnTo}
                   openVisitId={openVisitId}
                   setOpenVisitId={setOpenVisitId}
+                  wavePalette={palettes.wave}
                 />
               ) : (
-                <section aria-labelledby="schedule-appointments" className="rounded-[14px] border border-[#E3E8E6] bg-white p-4 min-[87.5rem]:h-full">
-                  <h2 id="schedule-appointments" className="text-base font-bold">
+                <section aria-labelledby="schedule-appointments" className="rounded-[14px] border border-hairline bg-surface p-4 shadow-card min-[87.5rem]:h-full">
+                  <h2 id="schedule-appointments" className="text-base font-bold text-ink">
                     Appointments
                   </h2>
-                  <p className="mt-1 text-[13px] leading-normal text-[#4F605C]">Pick a session in the calendar to see its appointments.</p>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
+                    Pick a session in the calendar to see its appointments.
+                  </p>
                 </section>
               )}
             </div>
@@ -267,6 +297,7 @@ export function DoctorSchedule({
                 nowMinutes={nowMinutes}
                 saveAction={saveAction}
                 saveState={saveState}
+                palettes={palettes}
               />
             </div>
           </div>
@@ -278,7 +309,7 @@ export function DoctorSchedule({
 
 /** A side pane on the three-pane layout: as tall as the calendar, scrolling inside when its content is taller. */
 const paneScroll =
-  "min-[87.5rem]:absolute min-[87.5rem]:inset-0 min-[87.5rem]:overflow-y-auto min-[87.5rem]:overscroll-contain min-[87.5rem]:rounded-[14px] min-[87.5rem]:[scrollbar-width:thin]";
+  "min-[87.5rem]:absolute min-[87.5rem]:inset-0 min-[87.5rem]:overflow-y-auto min-[87.5rem]:overscroll-contain min-[87.5rem]:rounded-[14px] min-[87.5rem]:pb-16 min-[87.5rem]:[scrollbar-width:thin]";
 
 function WeekNav({ monday, weekOffset, onWeek }: { monday: string; weekOffset: number; onWeek: (offset: number) => void }) {
   return (
@@ -293,8 +324,8 @@ function WeekNav({ monday, weekOffset, onWeek }: { monday: string; weekOffset: n
         Today
       </button>
       <div className="ml-1 flex flex-col">
-        <span className="text-base font-bold tabular-nums">{weekTitle(monday)}</span>
-        <span className="text-xs text-[#4F605C]">{weekTag(weekOffset)}</span>
+        <span className="text-base font-bold text-ink tabular-nums">{weekTitle(monday)}</span>
+        <span className="text-xs text-muted">{weekTag(weekOffset)}</span>
       </div>
     </nav>
   );
@@ -302,14 +333,22 @@ function WeekNav({ monday, weekOffset, onWeek }: { monday: string; weekOffset: n
 
 function Calendar({
   week,
+  today,
+  editable,
   nowMinutes,
   selectedKey,
+  palettes,
   onSelect,
+  onAddOnDate,
 }: {
   week: ReturnType<typeof buildWeek>;
+  today: string;
+  editable: boolean;
   nowMinutes: number;
   selectedKey: string | null;
+  palettes: Palettes;
   onSelect: (item: DaySession) => void;
+  onAddOnDate: (date: string) => void;
 }) {
   const hours = [];
   for (let hour = 8; hour < 18; hour += 1) hours.push(minutesLabel(hour * 60));
@@ -320,25 +359,61 @@ function Calendar({
   return (
     <section
       aria-label="Weekly calendar"
-      className="w-full min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white"
+      className="w-full min-w-0 overflow-hidden rounded-[14px] border border-hairline bg-surface shadow-card"
       style={scale}
     >
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-hairline bg-surface-2/60 px-3.5 py-2 text-xs text-muted">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="size-2.5 rounded-full" style={{ background: palettes.stream.dot }} />
+            <span className="font-semibold text-ink-2">Stream</span> Fixed 1-to-1 slots
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="size-2.5 rounded-full" style={{ background: palettes.wave.dot }} />
+            <span className="font-semibold text-ink-2">Wave</span> Hourly arrival queue
+          </span>
+        </div>
+        <div aria-hidden="true" className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1">
+            <span className="size-2 rounded-full bg-ink-2" /> Booked
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="size-2 rounded-full border border-ink-2" /> Open
+          </span>
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <div className="min-w-[600px]">
           <div className="grid grid-cols-[52px_repeat(6,minmax(0,1fr))]">
-            <div className="border-b border-[#E3E8E6]" />
+            <div className="border-b border-hairline" />
             {week.days.map((day) => (
-              <div key={day.date} className="flex flex-col gap-0.5 border-b border-l border-[#E3E8E6] px-2.5 py-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">{day.dow}</span>
-                  <span
-                    className="inline-flex h-[26px] min-w-[26px] items-center justify-center rounded-[13px] text-sm font-bold"
-                    style={{ background: day.isToday ? "#14201F" : "transparent", color: day.isToday ? "#FFFFFF" : "#14201F" }}
-                  >
-                    {day.num}
-                  </span>
+              <div key={day.date} className="flex flex-col gap-0.5 border-b border-l border-hairline px-2.5 py-2">
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold tracking-wider text-muted uppercase">{day.dow}</span>
+                    <span
+                      className={`inline-flex h-[26px] min-w-[26px] items-center justify-center rounded-[13px] text-sm font-bold ${
+                        day.isToday ? "bg-accent text-accent-ink" : "text-ink"
+                      }`}
+                    >
+                      {day.num}
+                    </span>
+                  </div>
+                  {editable && day.date >= today ? (
+                    <button
+                      type="button"
+                      onClick={() => onAddOnDate(day.date)}
+                      aria-label={`New session on ${day.dow} ${day.num}`}
+                      title={`New session on ${day.dow} ${day.num}`}
+                      className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-transparent text-muted transition-colors hover:border-hairline hover:bg-surface-2 hover:text-ink"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  ) : null}
                 </div>
-                <span className="text-xs text-[#4F605C] tabular-nums">{day.summary}</span>
+                <span className="text-xs text-muted tabular-nums">{day.summary}</span>
               </div>
             ))}
           </div>
@@ -347,7 +422,7 @@ function Calendar({
               {hours.map((label) => (
                 <div
                   key={label}
-                  className="box-border pr-2 pt-0.5 text-right text-[11px] text-[#5B6B68] tabular-nums"
+                  className="box-border pr-2 pt-0.5 text-right text-[11px] text-muted tabular-nums"
                   style={{ height: `var(${HOUR_VAR})` }}
                 >
                   {label}
@@ -357,11 +432,11 @@ function Calendar({
             {week.days.map((day) => (
               <div
                 key={day.date}
-                className="relative border-l border-[#E3E8E6]"
+                className="relative border-l border-hairline"
                 style={{
                   height: columnHeight,
-                  backgroundColor: day.isToday ? "#F7FAF9" : "#FFFFFF",
-                  backgroundImage: "linear-gradient(to bottom, #E3E8E6 0, #E3E8E6 1px, transparent 1px)",
+                  backgroundColor: day.isToday ? "color-mix(in srgb, var(--v-accent) 5%, var(--v-surface))" : "var(--v-surface)",
+                  backgroundImage: "linear-gradient(to bottom, var(--v-hairline) 0, var(--v-hairline) 1px, transparent 1px)",
                   backgroundSize: `100% var(${HOUR_VAR})`,
                 }}
               >
@@ -369,12 +444,12 @@ function Calendar({
                 {day.isToday && nowMinutes >= CLINIC_START && nowMinutes <= CLINIC_END ? (
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute right-0 left-0 h-0.5 bg-[#14201F]"
+                    className="pointer-events-none absolute right-0 left-0 h-0.5 bg-accent"
                     style={{ top: topCss(nowMinutes) }}
                   />
                 ) : null}
                 {day.sessions.map((item) => (
-                  <SessionBlock key={item.key} item={item} selected={item.key === selectedKey} onSelect={onSelect} />
+                  <SessionBlock key={item.key} item={item} selected={item.key === selectedKey} palettes={palettes} onSelect={onSelect} />
                 ))}
               </div>
             ))}
@@ -385,8 +460,18 @@ function Calendar({
   );
 }
 
-function SessionBlock({ item, selected, onSelect }: { item: DaySession; selected: boolean; onSelect: (item: DaySession) => void }) {
-  const palette = item.session.mode === "wave" ? WAVE : STREAM;
+function SessionBlock({
+  item,
+  selected,
+  palettes,
+  onSelect,
+}: {
+  item: DaySession;
+  selected: boolean;
+  palettes: Palettes;
+  onSelect: (item: DaySession) => void;
+}) {
+  const palette = item.session.mode === "wave" ? palettes.wave : palettes.stream;
   const height = blockHeightCss(item.startMin, item.endMin);
   const top = topCss(item.startMin, 1);
   const many = item.lanes > 1;
@@ -398,7 +483,7 @@ function SessionBlock({ item, selected, onSelect }: { item: DaySession; selected
       onClick={() => onSelect(item)}
       aria-pressed={selected}
       aria-label={`${item.session.label || (item.session.mode === "wave" ? "Wave" : "Stream")}, ${item.session.mode} session, ${minutesLabel(item.startMin)} to ${minutesLabel(item.endMin)}, ${item.booked} of ${item.capacity} booked`}
-      className="absolute box-border flex flex-col gap-1 overflow-hidden rounded-lg border px-2 py-1.5 text-left"
+      className="absolute box-border flex flex-col gap-1 overflow-hidden rounded-lg border px-1.5 py-1.5 text-left transition-shadow"
       style={{
         top,
         height,
@@ -408,13 +493,13 @@ function SessionBlock({ item, selected, onSelect }: { item: DaySession; selected
         background: palette.bg,
         borderColor: palette.bd,
         color: palette.fg,
-        boxShadow: selected ? "0 0 0 2px #14201F" : "0 1px 0 rgba(20,32,31,0.08)",
+        boxShadow: selected ? `0 0 0 2px ${palette.bd}` : "var(--v-shadow-card)",
       }}
     >
-      <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold">
-        <span className="inline-flex shrink-0 items-center gap-1">
-          {item.session.mode === "wave" ? <WaveIcon /> : <StreamIcon />}
-          {item.session.mode === "wave" ? "Wave" : "Stream"}
+      <span className="flex w-full min-w-0 items-center gap-1 text-[11px] font-bold">
+        <span className="inline-flex min-w-0 items-center gap-1 truncate">
+          <span className="shrink-0">{item.session.mode === "wave" ? <WaveIcon /> : <StreamIcon />}</span>
+          <span className="truncate">{item.session.mode === "wave" ? "Wave" : "Stream"}</span>
         </span>
         {item.session.label && !roomy ? <span className="min-w-0 truncate font-semibold">· {item.session.label}</span> : null}
         <span className="ml-auto shrink-0 tabular-nums">
@@ -436,7 +521,7 @@ function SessionBlock({ item, selected, onSelect }: { item: DaySession; selected
                 padding: item.session.mode === "wave" ? "2px 3px" : 0,
                 borderRadius: 7,
                 background: item.session.mode === "wave" ? palette.soft : "transparent",
-                border: `1px solid ${item.session.mode === "wave" ? palette.bd : "transparent"}`,
+                border: `1px solid ${item.session.mode === "wave" ? `${palette.bd}66` : "transparent"}`,
               }}
             >
               {block.seats.map((seat) => (
@@ -478,28 +563,24 @@ function Editor(props: {
   nowMinutes: number;
   saveAction: (formData: FormData) => void;
   saveState: FormState;
+  palettes: Palettes;
 }) {
   const { edit, selected, base, editable, past, saveState } = props;
   if (!edit) {
     return (
-      <aside aria-label="Session editor" className="min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
-        <div className="flex flex-col gap-2 p-6">
-          <span className="text-base font-bold">No session selected</span>
-          <span className="text-sm leading-normal text-[#4F605C]">
-            Pick a session in the calendar to see its type, capacity and appointments
-            {editable ? ", or add a new one" : ""}.
+      <aside aria-label="Session editor" className="min-w-0 overflow-hidden rounded-[14px] border border-hairline bg-surface shadow-card">
+        <div className="flex flex-col gap-2 p-5">
+          <span className="text-base font-bold text-ink">No session selected</span>
+          <span className="text-sm leading-relaxed text-muted">
+            Pick a session in the calendar to adjust its hours, style, or capacity
+            {editable ? ", or click + Add session above." : "."}
           </span>
-          {editable ? (
-            <button type="button" onClick={props.onAdd} className={`${solidButton} mt-2 self-start`}>
-              Add session
-            </button>
-          ) : null}
         </div>
       </aside>
     );
   }
 
-  const palette = edit.mode === "wave" ? WAVE : STREAM;
+  const palette = edit.mode === "wave" ? props.palettes.wave : props.palettes.stream;
   const step = edit.mode === "stream" ? edit.slotMinutes : (edit.waveMinutes ?? 5);
   const grid = sliderGrid(edit.startMin, step);
   const reserved = props.visits.filter(
@@ -611,111 +692,189 @@ function Editor(props: {
   const startNote = edgeNote(edit.startMin - (base ? toMinutes(base.startTime) : edit.startMin), edit, "start");
   const endNote = edgeNote(edit.endMin - (base ? toMinutes(base.endTime) : edit.endMin), edit, "end");
 
+  const durationMinutes = Math.max(0, edit.endMin - edit.startMin);
+  const durationText =
+    durationMinutes % 60 === 0
+      ? `${durationMinutes / 60}h`
+      : durationMinutes > 60
+        ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
+        : `${durationMinutes}m`;
+
+  const applyPreset = (startTarget: number, endTarget: number) => {
+    const startMin = Math.max(grid.min, Math.min(grid.max - step, startTarget));
+    const units = Math.max(1, Math.round((endTarget - startMin) / step));
+    const endMin = Math.min(grid.max, Math.max(startMin + step, startMin + units * step));
+    props.setEdit({ ...edit, startMin, endMin });
+  };
+
   return (
-    <aside aria-label="Session editor" className="min-w-0 overflow-hidden rounded-[14px] border border-[#E3E8E6] bg-white">
-      <div className="border-b border-[#E3E8E6] p-4 min-[87.5rem]:py-3">
-        <span className="text-xs font-semibold tracking-wider text-[#4F605C] uppercase">Edit session</span>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input
-            aria-label="Session name"
-            value={edit.label}
-            disabled={!editable || past}
-            onChange={(event) => props.setEdit({ ...edit, label: event.target.value.slice(0, 60) })}
-            className="h-11 w-full rounded-[10px] border border-[#C9D2CF] bg-white px-3 text-base font-semibold text-[#14201F]"
-          />
-          {editable && base ? (
-            <form action={archiveSession}>
-              <input type="hidden" name="id" value={base.id} />
-              <button
-                type="submit"
-                onClick={(event) => {
-                  if (past) {
-                    event.preventDefault();
-                    props.onHint("Past sessions are read-only.");
-                    return;
-                  }
-                  if (reserved.length > 0 && !props.confirmDelete) {
-                    event.preventDefault();
-                    props.setConfirmDelete(true);
-                    props.onHint(
-                      `${reserved.length} booked ${reserved.length === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${reserved.length === 1 ? "it" : "them"} from the appointments list, or press "Delete anyway" to choose whether to notify ${reserved.length === 1 ? "that patient" : "those patients"} and offer new times.`,
-                    );
-                    return;
-                  }
-                  if (!props.confirmDelete) {
-                    event.preventDefault();
-                    props.setConfirmDelete(true);
-                  }
-                }}
-                className="min-h-11 max-w-[140px] rounded-[10px] border border-[#8C1D18] bg-[#8C1D18] px-3 text-[13px] font-semibold text-white"
-              >
-                {props.confirmDelete ? (reserved.length === 0 ? "Confirm delete" : "Delete anyway…") : "Delete session"}
-              </button>
-            </form>
-          ) : null}
-          {editable ? (
-            <button type="button" onClick={props.onAdd} className={`${solidButton} shrink-0 whitespace-nowrap`}>
-              Add session
-            </button>
-          ) : null}
+    <aside aria-label="Session editor" className="min-w-0 overflow-hidden rounded-[14px] border border-hairline bg-surface shadow-card">
+      <div className="border-b border-hairline p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${
+              base ? "border border-hairline bg-surface-2 text-muted" : "bg-accent-soft text-accent"
+            }`}
+          >
+            {base ? "Editing session" : "New session"}
+          </span>
+          <span className="text-xs text-muted tabular-nums">
+            {selected ? occurrenceLabel(selected.session, selected.date) : edit.date ? occurrenceLabel(proposed, edit.date) : "Choose a date"} ·{" "}
+            {minutesLabel(edit.startMin)}–{minutesLabel(edit.endMin)}
+          </span>
         </div>
-        <div className="mt-2 text-[13px] text-[#4F605C] tabular-nums">
-          {selected ? occurrenceLabel(selected.session, selected.date) : edit.date ? occurrenceLabel(proposed, edit.date) : "Choose a date"} ·{" "}
-          {minutesLabel(edit.startMin)}–{minutesLabel(edit.endMin)}
-        </div>
+
+        <label htmlFor="schedule-session-name" className="sr-only">
+          Session name
+        </label>
+        <input
+          id="schedule-session-name"
+          aria-label="Session name"
+          placeholder="e.g. Morning surgery"
+          value={edit.label}
+          disabled={!editable || past}
+          onChange={(event) => props.setEdit({ ...edit, label: event.target.value.slice(0, 60) })}
+          className="mt-2.5 h-11 w-full rounded-[10px] border border-hairline bg-surface-2 px-3 text-base font-semibold text-ink placeholder:text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+        />
+
         {!selected ? (
-          <p className="mt-2 rounded-[10px] border border-[#9CC9DE] bg-[#E3F0F8] px-3 py-2 text-[13px] leading-snug text-[#083F59]">
+          <p className={`mt-2.5 rounded-[10px] border px-3 py-2 text-[13px] leading-snug ${bannerToneClass("info")}`}>
             {checked.ok ? "This session isn’t on the calendar for these dates yet. Check its days and dates." : checked.message}
           </p>
         ) : null}
-        {editable ? <RepeatFields edit={edit} setEdit={props.setEdit} disabled={past} undated={keepOpenRange} today={props.today} /> : null}
-        <fieldset className="mt-3 border-0 p-0">
-          <legend className="sr-only">Scheduling type</legend>
-          <div className="flex gap-2">
-          <TypeButton
-            label="Stream"
-            pressed={edit.mode === "stream"}
-            palette={STREAM}
-            disabled={!editable || past}
-            onClick={() => props.setEdit({ ...edit, mode: "stream", waveMinutes: null })}
-          >
-            <StreamIcon />
-          </TypeButton>
-          <TypeButton
-            label="Wave"
-            pressed={edit.mode === "wave"}
-            palette={WAVE}
-            disabled={!editable || past}
-            onClick={() => props.setEdit({ ...edit, mode: "wave", waveCapacity: edit.waveCapacity || 3 })}
-          >
-            <WaveIcon />
-          </TypeButton>
+
+        {editable ? (
+          <div className="mt-3 rounded-[12px] border border-hairline bg-surface-2/60 p-3">
+            <RepeatFields edit={edit} setEdit={props.setEdit} disabled={past} undated={keepOpenRange} today={props.today} />
           </div>
-        </fieldset>
-        <p className="mt-2.5 text-[13px] leading-normal text-[#4F605C]">
-          {edit.mode === "wave"
-            ? "Several patients share a start time and are seen in token order. Scroll the Starts or Ends time to lengthen or shorten the wave."
-            : "One patient per slot, evenly spaced. Scroll the Starts or Ends time to add or remove slots."}
-        </p>
+        ) : null}
+
+        <div className="mt-3.5">
+          <fieldset className="border-0 p-0">
+            <legend className="text-xs font-semibold tracking-wider text-muted uppercase">Appointment style</legend>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <TypeButton
+                label="Stream"
+                hint="Fixed 1-to-1 slots"
+                pressed={edit.mode === "stream"}
+                palette={props.palettes.stream}
+                disabled={!editable || past}
+                onClick={() => props.setEdit({ ...edit, mode: "stream", waveMinutes: null })}
+              >
+                <StreamIcon />
+              </TypeButton>
+              <TypeButton
+                label="Wave"
+                hint="Hourly arrival queue"
+                pressed={edit.mode === "wave"}
+                palette={props.palettes.wave}
+                disabled={!editable || past}
+                onClick={() => props.setEdit({ ...edit, mode: "wave", waveCapacity: edit.waveCapacity || 3 })}
+              >
+                <WaveIcon />
+              </TypeButton>
+            </div>
+          </fieldset>
+
+          {editable ? (
+            <div className="mt-3 flex flex-col gap-3">
+              <fieldset className="border-0 p-0">
+                <legend className="text-xs font-semibold text-ink-2">
+                  {edit.mode === "wave" ? "Wave interval" : "Slot length"}
+                </legend>
+                <div className="mt-1.5 flex gap-1.5">
+                  {(edit.mode === "wave" ? waveChoices(edit.waveMinutes) : streamChoices(edit.slotMinutes)).map((choice) => {
+                    const on = edit.mode === "wave" ? edit.waveMinutes === choice.value : edit.slotMinutes === choice.value;
+                    return (
+                      <button
+                        key={choice.label}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={past}
+                        onClick={() => props.setEdit(snapInterval(edit, choice.value))}
+                        className={`min-h-10 flex-1 rounded-[10px] border text-xs font-semibold transition-colors disabled:opacity-40 ${choiceButton(on)}`}
+                      >
+                        {choice.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              {edit.mode === "wave" ? (
+                <div className="flex items-center justify-between gap-3 rounded-[10px] border border-hairline bg-surface-2/60 px-3 py-2">
+                  <span className="text-[13px] font-semibold text-ink">Patients per wave</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      aria-label="One fewer patient per wave"
+                      disabled={past || edit.waveCapacity <= 1}
+                      onClick={() => props.setEdit({ ...edit, waveCapacity: Math.max(1, edit.waveCapacity - 1) })}
+                      className={iconButton}
+                    >
+                      <MinusIcon />
+                    </button>
+                    <span className="min-w-10 text-center text-base font-bold text-ink tabular-nums">{edit.waveCapacity}</span>
+                    <button
+                      type="button"
+                      aria-label="One more patient per wave"
+                      disabled={past || edit.waveCapacity >= MAX_WAVE_CAPACITY}
+                      onClick={() => props.setEdit({ ...edit, waveCapacity: Math.min(MAX_WAVE_CAPACITY, edit.waveCapacity + 1) })}
+                      className={iconButton}
+                    >
+                      <PlusIcon />
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <form id="schedule-save" action={props.saveAction} className="contents">
         <SessionFields edit={edit} base={base} room={props.room} />
-        <div className="border-b border-[#E3E8E6] p-4 min-[87.5rem]:py-3">
-          <div className="flex items-end gap-6">
+        <div className="p-4">
+          <div className="grid grid-cols-3 gap-2 rounded-[12px] border border-hairline bg-surface-2/60 p-3">
             <Stat label="Booked" value={shownBooked} />
             <Stat label="Capacity" value={shownCapacity} />
             <Stat label="Open" value={Math.max(0, shownCapacity - shownBooked)} />
           </div>
-          <div className="mt-3 h-2 rounded bg-[#E3E8E6]">
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-fill-strong">
             <div
-              className="h-2 rounded"
+              className="h-full rounded-full transition-all duration-200"
               style={{ width: `${shownCapacity ? Math.round((100 * shownBooked) / shownCapacity) : 0}%`, background: palette.dot }}
             />
           </div>
 
           {editable ? (
-            <div className="mt-4 flex flex-col gap-4 min-[87.5rem]:mt-3 min-[87.5rem]:gap-3">
+            <div className="mt-4 flex flex-col gap-3.5">
+              {!past ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-1 text-xs font-medium text-muted">Quick set:</span>
+                  {[
+                    { label: "09–12", start: 9 * 60, end: 12 * 60 },
+                    { label: "14–17", start: 14 * 60, end: 17 * 60 },
+                    { label: "09–17", start: 9 * 60, end: 17 * 60 },
+                  ].map((preset) => {
+                    const active = edit.startMin === preset.start && edit.endMin === preset.end;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => applyPreset(preset.start, preset.end)}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums transition-colors ${
+                          active
+                            ? "border-ink bg-ink text-canvas"
+                            : "border-hairline bg-surface-2 text-ink-2 hover:border-control hover:text-ink"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-2 gap-3">
                 <TimeWheelPicker
                   label="Starts"
@@ -744,62 +903,89 @@ function Editor(props: {
                   onChange={(endMin) => props.setEdit({ ...edit, endMin: Math.max(endMin, edit.startMin + step) })}
                 />
               </div>
-              <div className="text-[13px] font-semibold tabular-nums">
-                {base
-                  ? `${base.startTime}–${base.endTime} → ${minutesLabel(edit.startMin)}–${minutesLabel(edit.endMin)} · capacity ${oldPlaces} → ${newPlaces}${delta === 0 ? "" : ` (${delta > 0 ? "+" : "−"}${Math.abs(delta)})`}`
-                  : `Window ${minutesLabel(edit.startMin)}–${minutesLabel(edit.endMin)} · capacity ${newPlaces}`}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline bg-surface-2/60 px-3 py-2 text-xs text-ink-2 tabular-nums">
+                <span className="font-semibold">
+                  {minutesLabel(edit.startMin)}–{minutesLabel(edit.endMin)} · {durationText}
+                </span>
+                <span>
+                  {placesWord(newPlaces)}
+                  {base && dirty && delta !== 0 ? (
+                    <span className={`ml-1.5 font-semibold ${delta > 0 ? "text-success" : "text-warn"}`}>
+                      ({delta > 0 ? `+${delta}` : `−${Math.abs(delta)}`})
+                    </span>
+                  ) : null}
+                </span>
               </div>
-              <div className="rounded-[10px] border px-3 py-2.5 text-[13px] leading-snug" style={planStyle(planTone)}>
-                <p className="font-bold">{planTitle}</p>
-                {planLines.map((line) => (
-                  <p key={line} className="mt-1">
-                    {line}
-                  </p>
-                ))}
-              </div>
+
+              {dirty || blocked || past || displacing || shifting ? (
+                <div className={`rounded-[10px] border px-3 py-2.5 text-[13px] leading-snug ${bannerToneClass(planTone)}`}>
+                  <p className="font-bold">{planTitle}</p>
+                  {planLines.map((line) => (
+                    <p key={line} className="mt-1">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <details className="rounded-[10px] border border-hairline px-3 py-2 text-xs text-muted">
+                  <summary className="cursor-pointer font-medium text-ink-2 select-none">How schedule changes handle bookings</summary>
+                  <div className="mt-1.5 flex flex-col gap-1 leading-relaxed">
+                    {planLines.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
+                </details>
+              )}
+
               {displacing ? (
-                <div className="flex flex-col gap-2 rounded-[10px] border border-[#E3B079] bg-[#FFF1DC] p-3 text-[13px] text-[#5E2C05]">
+                <div className="flex flex-col gap-2 rounded-[10px] border border-warn/35 bg-warn-soft p-3 text-[13px] text-ink">
                   <label htmlFor="schedule-displace-reason" className="font-semibold">
-                    Message for the patients <span className="font-normal">(optional)</span>
+                    Message for the patients <span className="font-normal text-ink-2">(optional)</span>
                   </label>
                   <input
                     id="schedule-displace-reason"
                     name="displaceReason"
                     maxLength={200}
                     placeholder="For example: I am needed in theatre that morning."
-                    className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-3 text-sm text-[#14201F]"
+                    className="h-11 rounded-[10px] border border-hairline bg-surface px-3 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                   />
                   <input type="hidden" name="displaceCount" value={displaceCount} />
                   <PendingButton
                     name="displace"
                     value="confirm"
                     pendingLabel="Notifying…"
-                    className="min-h-11 rounded-[10px] bg-[#8C1D18] px-3.5 text-sm font-semibold text-white"
+                    className="min-h-11 rounded-[10px] border border-danger/45 bg-surface px-3.5 text-sm font-semibold text-danger transition-colors hover:bg-danger-soft"
                   >
                     {`Apply and notify ${displaceCount === 1 ? "1 patient" : `${displaceCount} patients`} with new times`}
                   </PendingButton>
                 </div>
               ) : null}
+
               {shifting ? (
-                <div className="flex flex-col gap-2 rounded-[10px] border border-[#E3B079] bg-[#FFF1DC] p-3 text-[13px] text-[#5E2C05]">
+                <div className="flex flex-col gap-2 rounded-[10px] border border-warn/35 bg-warn-soft p-3 text-[13px] text-ink">
                   <input type="hidden" name="shiftCount" value={shiftCount} />
                   <PendingButton
                     name="shift"
                     value="confirm"
                     pendingLabel="Moving…"
-                    className="min-h-11 rounded-[10px] bg-[#14201F] px-3.5 text-sm font-semibold text-white"
+                    className="min-h-11 rounded-[10px] bg-ink px-3.5 text-sm font-semibold text-canvas transition-opacity hover:opacity-90"
                   >
                     {`Apply and move ${shiftCount === 1 ? "1 patient" : `${shiftCount} patients`} to later slots`}
                   </PendingButton>
                 </div>
               ) : null}
+
               {dirty ? (
                 <div className="flex flex-wrap gap-2">
                   <PendingButton
                     pendingLabel="Applying…"
                     disabled={!canApply}
-                    className="min-h-11 flex-[1_1_180px] rounded-[10px] px-3.5 text-sm font-semibold text-white disabled:opacity-50"
-                    style={{ background: canApply ? "#14201F" : "#8A938F", border: "1px solid transparent" }}
+                    className={`min-h-11 flex-[1_1_180px] rounded-[10px] border px-3.5 text-sm font-semibold transition-all disabled:cursor-not-allowed ${
+                      canApply
+                        ? "border-transparent bg-ink text-canvas hover:opacity-90"
+                        : "border-hairline bg-fill text-muted opacity-70"
+                    }`}
                   >
                     Apply change
                   </PendingButton>
@@ -810,7 +996,7 @@ function Editor(props: {
                       else props.onAdd();
                       props.onHint(null);
                     }}
-                    className={`${textButton} border-[#14201F] px-4`}
+                    className={`${textButton} px-4`}
                   >
                     Reset
                   </button>
@@ -818,68 +1004,46 @@ function Editor(props: {
               ) : null}
             </div>
           ) : (
-            <p className="mt-3 text-[13px] leading-normal text-[#4F605C]">
+            <p className="mt-3 text-[13px] leading-normal text-muted">
               {base ? `${base.startTime}–${base.endTime} · ${base.room}` : null}
             </p>
           )}
         </div>
-
-        {editable ? (
-          <div className="flex flex-col gap-3.5 border-b border-[#E3E8E6] p-4 min-[87.5rem]:py-3">
-            <fieldset className="border-0 p-0">
-              <legend className="text-sm font-semibold">{edit.mode === "wave" ? "Wave interval" : "Slot length"}</legend>
-              <div className="mt-2 flex gap-1.5">
-                {(edit.mode === "wave" ? waveChoices(edit.waveMinutes) : streamChoices(edit.slotMinutes)).map((choice) => {
-                  const on = edit.mode === "wave" ? edit.waveMinutes === choice.value : edit.slotMinutes === choice.value;
-                  return (
-                    <button
-                      key={choice.label}
-                      type="button"
-                      aria-pressed={on}
-                      disabled={past}
-                      onClick={() => props.setEdit(snapInterval(edit, choice.value))}
-                      className="min-h-11 flex-1 rounded-[10px] border text-[13px] font-semibold disabled:opacity-40"
-                      style={{
-                        borderColor: "#14201F",
-                        background: on ? "#14201F" : "#FFFFFF",
-                        color: on ? "#FFFFFF" : "#14201F",
-                      }}
-                    >
-                      {choice.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-            {edit.mode === "wave" ? (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-semibold">Patients per wave</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    aria-label="One fewer patient per wave"
-                    disabled={past || edit.waveCapacity <= 1}
-                    onClick={() => props.setEdit({ ...edit, waveCapacity: Math.max(1, edit.waveCapacity - 1) })}
-                    className={iconButton}
-                  >
-                    <MinusIcon />
-                  </button>
-                  <span className="min-w-14 text-center text-base font-bold tabular-nums">{edit.waveCapacity}</span>
-                  <button
-                    type="button"
-                    aria-label="One more patient per wave"
-                    disabled={past || edit.waveCapacity >= MAX_WAVE_CAPACITY}
-                    onClick={() => props.setEdit({ ...edit, waveCapacity: Math.min(MAX_WAVE_CAPACITY, edit.waveCapacity + 1) })}
-                    className={iconButton}
-                  >
-                    <PlusIcon />
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </form>
+
+      {editable && base ? (
+        <div className="flex items-center justify-between gap-3 border-t border-hairline bg-surface-2/40 px-4 py-3">
+          <span className="text-xs text-muted">No longer needed?</span>
+          <form action={archiveSession}>
+            <input type="hidden" name="id" value={base.id} />
+            <button
+              type="submit"
+              onClick={(event) => {
+                if (past) {
+                  event.preventDefault();
+                  props.onHint("Past sessions are read-only.");
+                  return;
+                }
+                if (reserved.length > 0 && !props.confirmDelete) {
+                  event.preventDefault();
+                  props.setConfirmDelete(true);
+                  props.onHint(
+                    `${reserved.length} booked ${reserved.length === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${reserved.length === 1 ? "it" : "them"} from the appointments list, or press "Delete anyway" to choose whether to notify ${reserved.length === 1 ? "that patient" : "those patients"} and offer new times.`,
+                  );
+                  return;
+                }
+                if (!props.confirmDelete) {
+                  event.preventDefault();
+                  props.setConfirmDelete(true);
+                }
+              }}
+              className="inline-flex min-h-9 items-center rounded-lg border border-danger/35 bg-danger-soft px-3 text-xs font-semibold text-danger transition-colors hover:bg-danger/15"
+            >
+              {props.confirmDelete ? (reserved.length === 0 ? "Confirm delete" : "Delete anyway…") : "Delete session"}
+            </button>
+          </form>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -890,12 +1054,14 @@ function Appointments({
   returnTo,
   openVisitId,
   setOpenVisitId,
+  wavePalette,
 }: {
   selected: DaySession;
   today: string;
   returnTo: string;
   openVisitId: string | null;
   setOpenVisitId: (id: string | null) => void;
+  wavePalette: Palette;
 }) {
   const open = Math.max(0, selected.capacity - selected.booked);
   const wave = selected.session.mode === "wave";
@@ -913,26 +1079,26 @@ function Appointments({
   );
   const label = selected.session.label || "Session";
   return (
-    <section aria-labelledby="schedule-appointments" className="w-full rounded-[14px] border border-[#E3E8E6] bg-white min-[87.5rem]:min-h-full">
+    <section aria-labelledby="schedule-appointments" className="w-full rounded-[14px] border border-hairline bg-surface shadow-card min-[87.5rem]:min-h-full">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 pt-4 pb-3 min-[87.5rem]:flex-col">
-        <h2 id="schedule-appointments" className="text-base font-bold">
+        <h2 id="schedule-appointments" className="text-base font-bold text-ink">
           Appointments
           <span className="sr-only">
             {" "}
             · {label} · {occurrenceLabel(selected.session, selected.date)}
           </span>
         </h2>
-        <p aria-hidden="true" className="text-[13px] text-[#4F605C] min-[87.5rem]:-mt-0.5">
+        <p aria-hidden="true" className="text-[13px] text-muted min-[87.5rem]:-mt-0.5">
           {label} · {occurrenceLabel(selected.session, selected.date)}
         </p>
-        <span className="text-[13px] text-[#4F605C] tabular-nums">
+        <span className="text-[13px] text-muted tabular-nums">
           {selected.booked} booked · {open} open
         </span>
       </div>
       <div className="flex flex-col gap-3 px-4 pb-4">
         {selected.outside.length > 0 ? (
           <div className="flex flex-col gap-1.5">
-            <p className="rounded-[10px] border border-[#E3B079] bg-[#FFF1DC] px-3 py-2 text-[13px] leading-snug text-[#5E2C05]">
+            <p className={`rounded-[10px] border px-3 py-2 text-[13px] leading-snug ${bannerToneClass("warn")}`}>
               {selected.outside.length === 1 ? "1 visit sits" : `${selected.outside.length} visits sit`} outside these hours and{" "}
               {selected.outside.length === 1 ? "keeps its" : "keep their"} original time.
             </p>
@@ -944,8 +1110,8 @@ function Appointments({
               const taken = block.seats.filter((seat) => seat.visit);
               const free = block.seats.filter((seat) => !seat.visit);
               return (
-                <div key={block.time} className="flex flex-col gap-2.5 rounded-[12px] border border-[#F0D9BE] bg-[#FFFAF3] p-3">
-                  <div className="flex items-center justify-between px-0.5 text-xs font-bold tracking-wide text-[#64300A] uppercase tabular-nums">
+                <div key={block.time} className="flex flex-col gap-2.5 rounded-[12px] border border-warn/30 bg-warn-soft p-3">
+                  <div className="flex items-center justify-between px-0.5 text-xs font-bold tracking-wide text-warn uppercase tabular-nums">
                     <span>
                       Wave {index + 1} · {block.time}
                     </span>
@@ -958,12 +1124,12 @@ function Appointments({
                     <ul aria-label={`Open seats in wave ${index + 1}`} className={visitGrid}>
                       {free.map((seat) => (
                         <li key={`${block.time}-${seat.seat}`} className={openRow}>
-                          <span aria-hidden="true" className={seatNumber} style={{ borderColor: WAVE.bd, color: WAVE.fg }}>
+                          <span aria-hidden="true" className={seatNumber} style={{ borderColor: wavePalette.bd, color: wavePalette.fg }}>
                             {seat.seat}
                           </span>
                           <span className="flex flex-col leading-snug">
-                            <span className="text-[13.5px] font-semibold text-[#14201F]">Seat {seat.seat}</span>
-                            <span className="text-xs text-[#4F605C] tabular-nums">{block.time} · open</span>
+                            <span className="text-[13.5px] font-semibold text-ink">Seat {seat.seat}</span>
+                            <span className="text-xs text-muted tabular-nums">{block.time} · open</span>
                           </span>
                         </li>
                       ))}
@@ -973,21 +1139,29 @@ function Appointments({
               );
             })
           : null}
-        {!wave && selected.blocks.some((block) => block.seats.some((seat) => seat.visit)) ? (
+        {!wave && selected.booked === 0 && selected.blocks.some((block) => block.seats.some((seat) => !seat.visit)) ? (
+          <p className="rounded-[10px] border border-hairline bg-surface-2/60 px-3 py-2 text-xs text-muted">
+            No patients booked yet — patients can pick any open time below.
+          </p>
+        ) : null}
+        {!wave && selected.blocks.some((block) => block.seats.some((seat) => block.seats.length > 0 && seat.visit)) ? (
           <div className={visitGrid}>
             {selected.blocks.flatMap((block) => block.seats.filter((seat) => seat.visit).map((seat) => row(seat.visit!, block.time)))}
           </div>
         ) : null}
         {!wave && selected.blocks.some((block) => block.seats.some((seat) => !seat.visit)) ? (
-          <div className="flex flex-col gap-1.5">
-            <span className="px-0.5 text-xs font-bold tracking-wide text-[#4F605C] uppercase">Open slots</span>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between px-0.5 text-xs">
+              <span className="font-bold tracking-wide text-muted uppercase">Open slots</span>
+              <span className="text-muted tabular-nums">{selected.session.slotMinutes ?? 15} min each</span>
+            </div>
             <ul aria-label="Open slots" className="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5">
               {selected.blocks
                 .filter((block) => block.seats.some((seat) => !seat.visit))
                 .map((block) => (
                   <li
                     key={block.time}
-                    className="inline-flex min-h-8 items-center justify-center rounded-full border border-dashed border-[#9AA8A4] text-xs text-[#4F605C] tabular-nums"
+                    className="inline-flex min-h-8 items-center justify-center rounded-lg border border-hairline bg-surface-2 text-xs font-medium text-ink-2 tabular-nums"
                   >
                     {block.time}
                   </li>
@@ -996,7 +1170,7 @@ function Appointments({
           </div>
         ) : null}
         {selected.blocks.length === 0 && selected.outside.length === 0 ? (
-          <p className="text-[13px] text-[#4F605C]">No places in this session.</p>
+          <p className="text-[13px] text-muted">No places in this session.</p>
         ) : null}
       </div>
     </section>
@@ -1006,9 +1180,9 @@ function Appointments({
 /** Visits and open seats: one column in the narrow left pane, more where the list sits under the calendar. */
 const visitGrid = "grid gap-2 sm:grid-cols-2 xl:grid-cols-3 min-[87.5rem]:grid-cols-1";
 const openRow =
-  "flex min-h-[60px] items-center gap-3 rounded-[12px] border border-dashed border-[#9AA8A4] bg-white px-3.5 py-2";
+  "flex min-h-[60px] items-center gap-3 rounded-[12px] border border-dashed border-control/50 bg-surface-2 px-3.5 py-2";
 const seatNumber =
-  "inline-flex size-[30px] shrink-0 items-center justify-center rounded-full border-[1.5px] bg-white text-[13px] font-bold tabular-nums";
+  "inline-flex size-[30px] shrink-0 items-center justify-center rounded-full border-[1.5px] bg-surface text-[13px] font-bold tabular-nums";
 
 function VisitRow({
   visit,
@@ -1030,17 +1204,21 @@ function VisitRow({
   const upcoming = visit.date >= today && visit.status === "booked";
   const [confirmCancel, setConfirmCancel] = useState(false);
   return (
-    <div className="overflow-hidden rounded-[10px] border" style={{ borderColor: open ? "#14201F" : "#E3E8E6", background: open ? "#F7F9F8" : "#FFFFFF" }}>
+    <div
+      className={`overflow-hidden rounded-[10px] border transition-colors ${
+        open ? "border-accent bg-surface-2" : "border-hairline bg-surface-2 hover:border-control"
+      }`}
+    >
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
         className="flex min-h-12 w-full items-center gap-2.5 bg-transparent px-3 py-1.5 text-left"
       >
-        <span className="min-w-[52px] text-[13px] text-[#4F605C] tabular-nums">{lead}</span>
+        <span className="min-w-[52px] text-[13px] text-muted tabular-nums">{lead}</span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-semibold">{visit.patientName}</span>
-          <span className="text-xs text-[#4F605C]">
+          <span className="truncate text-sm font-semibold text-ink">{visit.patientName}</span>
+          <span className="text-xs text-muted">
             {visit.reason}
             {visit.status === "completed" ? " · Completed" : visit.status === "pending_payment" ? " · Awaiting payment" : ""}
           </span>
@@ -1048,13 +1226,13 @@ function VisitRow({
         <PencilIcon />
       </button>
       {open ? (
-        <div className="flex flex-col gap-3 border-t border-[#E3E8E6] bg-white p-3">
-          <p className="text-[13px] text-[#4F605C]">
-            Reference <span className="font-semibold text-[#14201F] tabular-nums">{visit.reference}</span>
+        <div className="flex flex-col gap-3 border-t border-hairline bg-surface p-3">
+          <p className="text-[13px] text-muted">
+            Reference <span className="font-semibold text-ink tabular-nums">{visit.reference}</span>
             {visit.token ? (
               <>
                 {" "}
-                · Token <span className="font-semibold text-[#14201F] tabular-nums">{visit.token}</span>
+                · Token <span className="font-semibold text-ink tabular-nums">{visit.token}</span>
               </>
             ) : null}
           </p>
@@ -1063,23 +1241,26 @@ function VisitRow({
               action={updateVisit}
               role="alert"
               aria-labelledby={`cancel-${visit.id}`}
-              className="flex flex-col gap-2 rounded-[10px] border border-[#B3261E] bg-[#FDECEA] p-3 text-[13px] text-[#8C1D18]"
+              className="flex flex-col gap-2 rounded-[10px] border border-danger/35 bg-danger-soft p-3 text-[13px] text-ink"
             >
               <p id={`cancel-${visit.id}`} className="font-semibold">
                 Cancel {visit.patientName}&rsquo;s appointment on {formatShortDate(visit.date)} at {visit.time}?
               </p>
-              <p>The place opens for others and the patient is told. A paid visit is refunded.</p>
+              <p className="text-ink-2">The place opens for others and the patient is told. A paid visit is refunded.</p>
               <input type="hidden" name="id" value={visit.id} />
               <input type="hidden" name="status" value="cancelled" />
               <input type="hidden" name="return" value={returnTo} />
               <div className="flex gap-2">
-                <PendingButton pendingLabel="Cancelling…" className="min-h-11 flex-1 rounded-[10px] bg-[#8C1D18] text-[13px] font-semibold text-white">
+                <PendingButton
+                  pendingLabel="Cancelling…"
+                  className="min-h-11 flex-1 rounded-[10px] border border-transparent bg-danger text-[13px] font-semibold text-canvas transition-opacity hover:opacity-90"
+                >
                   Yes, cancel it
                 </PendingButton>
                 <button
                   type="button"
                   onClick={() => setConfirmCancel(false)}
-                  className="min-h-11 flex-1 rounded-[10px] border border-[#14201F] bg-white text-[13px] font-semibold text-[#14201F]"
+                  className="min-h-11 flex-1 rounded-[10px] border border-hairline bg-surface text-[13px] font-semibold text-ink transition-colors hover:bg-fill"
                 >
                   Keep appointment
                 </button>
@@ -1091,7 +1272,7 @@ function VisitRow({
               <button
                 type="button"
                 onClick={() => setConfirmCancel(true)}
-                className="min-h-11 flex-1 rounded-[10px] border border-[#B3261E] bg-[#FDECEA] text-[13px] font-semibold text-[#8C1D18]"
+                className="min-h-11 flex-1 rounded-[10px] border border-danger/35 bg-danger-soft text-[13px] font-semibold text-danger transition-colors hover:bg-danger/15"
               >
                 Cancel appointment
               </button>
@@ -1101,7 +1282,10 @@ function VisitRow({
                 <input type="hidden" name="id" value={visit.id} />
                 <input type="hidden" name="status" value="completed" />
                 <input type="hidden" name="return" value={returnTo} />
-                <PendingButton pendingLabel="Saving…" className="min-h-11 w-full rounded-[10px] border border-[#14201F] bg-white text-[13px] font-semibold text-[#14201F]">
+                <PendingButton
+                  pendingLabel="Saving…"
+                  className="min-h-11 w-full rounded-[10px] border border-success/35 bg-success-soft text-[13px] font-semibold text-success transition-colors hover:bg-success/15"
+                >
                   Mark complete
                 </PendingButton>
               </form>
@@ -1111,7 +1295,7 @@ function VisitRow({
             {upcoming ? (
               <Link
                 href={`/reschedule/${visit.id}?return=${encodeURIComponent(returnTo)}`}
-                className="inline-flex min-h-11 flex-1 items-center justify-center rounded-[10px] border border-[#C9D2CF] bg-[#F7F9F8] text-[13px] font-semibold"
+                className="inline-flex min-h-11 flex-1 items-center justify-center rounded-[10px] border border-hairline bg-surface-2 text-[13px] font-semibold text-ink transition-colors hover:bg-fill"
               >
                 Move to another time
               </Link>
@@ -1143,10 +1327,12 @@ function RepeatFields({
   undated: boolean;
 }) {
   const id = `repeat-${edit.key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+  const dateInputClass =
+    "h-11 rounded-[10px] border border-hairline bg-surface-2 px-2 text-sm font-normal text-ink tabular-nums focus:border-accent focus:outline-none disabled:opacity-50";
   const recurringBox = (
     <label
       htmlFor={`${id}-on`}
-      className={`inline-flex min-h-11 items-center gap-2.5 font-semibold ${edit.recurring ? "text-sm" : "text-[13px] min-[87.5rem]:min-h-8"}`}
+      className={`inline-flex min-h-11 items-center gap-2.5 font-semibold text-ink ${edit.recurring ? "text-sm" : "text-[13px] min-[87.5rem]:min-h-8"}`}
     >
       <input
         id={`${id}-on`}
@@ -1162,7 +1348,7 @@ function RepeatFields({
             startDate: edit.startDate || edit.date || today,
           });
         }}
-        className={edit.recurring ? "size-5 accent-[#14201F]" : "size-[18px] accent-[#14201F]"}
+        className={edit.recurring ? "size-5 accent-accent" : "size-[18px] accent-accent"}
       />
       Recurring every week
     </label>
@@ -1174,7 +1360,7 @@ function RepeatFields({
         // A one-off: the weekly switch shares the Date label's line, so the editor stays short.
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center justify-between gap-x-3">
-            <label htmlFor={`${id}-date`} className="text-[13px] font-semibold">
+            <label htmlFor={`${id}-date`} className="text-[13px] font-semibold text-ink-2">
               Date
             </label>
             {recurringBox}
@@ -1192,14 +1378,14 @@ function RepeatFields({
               if (!isIsoDate(date)) return;
               setEdit({ ...edit, date, weekdays: [weekdayIndex(date)] });
             }}
-            className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-2 text-sm font-normal text-[#14201F] tabular-nums"
+            className={dateInputClass}
           />
         </div>
       ) : null}
       {edit.recurring ? (
         <>
           <fieldset className="border-0 p-0">
-            <legend className="text-[13px] font-semibold">Days</legend>
+            <legend className="text-[13px] font-semibold text-ink-2">Days</legend>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {WEEKDAY_NAMES.map((name, index) => {
                 const day = index + 1;
@@ -1214,8 +1400,7 @@ function RepeatFields({
                     onClick={() =>
                       setEdit({ ...edit, weekdays: on ? edit.weekdays.filter((item) => item !== day) : [...edit.weekdays, day].sort((a, b) => a - b) })
                     }
-                    className="min-h-11 min-w-11 rounded-[10px] border px-2 text-[13px] font-semibold disabled:opacity-40"
-                    style={{ borderColor: "#14201F", background: on ? "#14201F" : "#FFFFFF", color: on ? "#FFFFFF" : "#14201F" }}
+                    className={`min-h-11 min-w-11 rounded-[10px] border px-2 text-[13px] font-semibold transition-colors disabled:opacity-40 ${choiceButton(on)}`}
                   >
                     {name.slice(0, 3)}
                   </button>
@@ -1224,12 +1409,12 @@ function RepeatFields({
             </div>
           </fieldset>
           {undated && !edit.startDate && !edit.endDate ? (
-            <p className="rounded-[10px] border border-[#9CC9DE] bg-[#E3F0F8] px-3 py-2 text-[13px] leading-snug text-[#083F59]">
+            <p className={`rounded-[10px] border px-3 py-2 text-[13px] leading-snug ${bannerToneClass("info")}`}>
               This weekly session has no start or end date. Add both so patients see when it runs.
             </p>
           ) : null}
           <div className="grid grid-cols-2 gap-2">
-            <label htmlFor={`${id}-from`} className="flex flex-col gap-1 text-[13px] font-semibold">
+            <label htmlFor={`${id}-from`} className="flex flex-col gap-1 text-[13px] font-semibold text-ink-2">
               Start date
               <input
                 id={`${id}-from`}
@@ -1238,10 +1423,10 @@ function RepeatFields({
                 value={edit.startDate}
                 disabled={disabled}
                 onChange={(event) => setEdit({ ...edit, startDate: event.target.value })}
-                className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-2 text-sm font-normal text-[#14201F] tabular-nums"
+                className={dateInputClass}
               />
             </label>
-            <label htmlFor={`${id}-until`} className="flex flex-col gap-1 text-[13px] font-semibold">
+            <label htmlFor={`${id}-until`} className="flex flex-col gap-1 text-[13px] font-semibold text-ink-2">
               End date
               <input
                 id={`${id}-until`}
@@ -1251,7 +1436,7 @@ function RepeatFields({
                 value={edit.endDate}
                 disabled={disabled}
                 onChange={(event) => setEdit({ ...edit, endDate: event.target.value })}
-                className="h-11 rounded-[10px] border border-[#C9D2CF] bg-white px-2 text-sm font-normal text-[#14201F] tabular-nums"
+                className={dateInputClass}
               />
             </label>
           </div>
@@ -1288,14 +1473,15 @@ function SessionFields({ edit, base, room }: { edit: EditorState; base: ConsultS
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col">
-      <span className="text-xs text-[#4F605C]">{label}</span>
-      <span className="text-[28px] leading-tight font-bold tabular-nums">{value}</span>
+      <span className="text-xs text-muted">{label}</span>
+      <span className="text-[28px] leading-tight font-bold text-ink tabular-nums">{value}</span>
     </div>
   );
 }
 
 function TypeButton({
   label,
+  hint,
   pressed,
   palette,
   disabled,
@@ -1303,8 +1489,9 @@ function TypeButton({
   children,
 }: {
   label: string;
+  hint?: string;
   pressed: boolean;
-  palette: typeof STREAM;
+  palette: Palette;
   disabled: boolean;
   onClick: () => void;
   children: ReactNode;
@@ -1315,15 +1502,18 @@ function TypeButton({
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[10px] border text-sm font-semibold disabled:opacity-40"
+      className="flex min-h-12 flex-col items-start gap-0.5 rounded-[10px] border px-3 py-2 text-left transition-colors disabled:opacity-40"
       style={{
-        background: pressed ? palette.bg : "#FFFFFF",
-        color: pressed ? palette.fg : "#14201F",
-        borderColor: pressed ? palette.bd : "#C9D2CF",
+        background: pressed ? palette.bg : "var(--v-surface-2)",
+        color: pressed ? palette.fg : "var(--v-ink-2)",
+        borderColor: pressed ? palette.bd : "var(--v-hairline)",
       }}
     >
-      {children}
-      {label}
+      <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+        {children}
+        {label}
+      </span>
+      {hint ? <span className="text-[11px] leading-tight opacity-80">{hint}</span> : null}
     </button>
   );
 }
@@ -1471,7 +1661,7 @@ function placesWord(count: number): string {
 }
 
 function edgeNote(deltaMinutes: number, edit: EditorState, edge: "start" | "end"): string {
-  if (deltaMinutes === 0) return edge === "start" ? "Original start" : "Original end";
+  if (deltaMinutes === 0) return "";
   const minutes = Math.abs(deltaMinutes);
   const when = `${minutes} min ${deltaMinutes < 0 ? "earlier" : "later"}`;
   if (edit.mode === "wave" && !edit.waveMinutes) return when;
@@ -1519,18 +1709,22 @@ function occupying(visits: readonly ScheduleVisit[]) {
     .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime, sessionId: visit.sessionId }));
 }
 
-function planStyle(tone: "info" | "warn"): { background: string; color: string; borderColor: string } {
+function bannerToneClass(tone: "info" | "warn"): string {
   return tone === "warn"
-    ? { background: "#FFF1DC", color: "#5E2C05", borderColor: "#E3B079" }
-    : { background: "#E3F0F8", color: "#083F59", borderColor: "#9CC9DE" };
+    ? "border-warn/35 bg-warn-soft text-ink"
+    : "border-accent/25 bg-accent-soft text-ink";
 }
 
 const iconButton =
-  "inline-flex size-11 items-center justify-center rounded-[10px] border border-[#C9D2CF] bg-white text-[#14201F] disabled:opacity-40";
+  "inline-flex size-11 items-center justify-center rounded-[10px] border border-hairline bg-surface-2 text-ink transition-colors hover:border-control hover:bg-fill disabled:opacity-40";
 const textButton =
-  "inline-flex min-h-11 items-center justify-center rounded-[10px] border border-[#C9D2CF] bg-white text-sm font-semibold text-[#14201F]";
+  "inline-flex min-h-11 items-center justify-center rounded-[10px] border border-hairline bg-surface-2 text-sm font-semibold text-ink transition-colors hover:border-control hover:bg-fill";
 const solidButton =
-  "inline-flex min-h-11 items-center justify-center rounded-[10px] border border-[#14201F] bg-[#14201F] px-4 text-sm font-semibold text-white";
+  "inline-flex min-h-11 items-center justify-center rounded-[10px] border border-transparent bg-ink px-4 text-sm font-semibold text-canvas transition-opacity hover:opacity-90 disabled:opacity-40";
+const choiceButton = (on: boolean) =>
+  on
+    ? "border-ink bg-ink text-canvas"
+    : "border-hairline bg-surface-2 text-ink-2 hover:border-control hover:bg-fill hover:text-ink";
 
 function Chevron({ direction }: { direction: "left" | "right" }) {
   return (
@@ -1589,7 +1783,7 @@ function PlusIcon() {
 
 function PencilIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0 text-[#4F605C]">
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0 text-muted">
       <path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5L11 2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="none" />
     </svg>
   );

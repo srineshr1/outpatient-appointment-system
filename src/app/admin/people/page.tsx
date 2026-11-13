@@ -86,7 +86,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
             </thead>
             <tbody className={tbodyClass}>
               {rows.map((row) => (
-                <tr key={row.user.id} className="hover:bg-[#f9fbfc]">
+                <tr key={row.user.id} className="transition-colors hover:bg-ink/[0.03]">
                   <Td>
                     <RowLink href={`/admin/people/${row.user.id}`}>{row.user.name}</RowLink>
                     <span className="block text-[13px] break-all text-muted">{row.user.email}</span>
@@ -96,7 +96,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
                     {row.visits}
                     {row.upcoming > 0 ? <span className="block text-[13px] text-muted">{row.upcoming} to come</span> : null}
                   </Td>
-                  <Td align="right" className={row.owedPence > 0 ? "font-medium text-[#774b06]" : ""}>
+                  <Td align="right" className={row.owedPence > 0 ? "font-medium text-amber-700 dark:text-amber-300" : ""}>
                     <Money pence={row.owedPence} />
                   </Td>
                   <Td className="whitespace-nowrap tabular-nums">{instantLabel(row.user.createdAt, snapshot.today)}</Td>

@@ -13,7 +13,8 @@ import { dispatchSoon, queueDoctorNotice, queueNotice, rescheduleReminders } fro
 import { releaseExpiredHolds } from "./payments/holds";
 import { getSlot, getSlots } from "./repository";
 import { slotStart, slotStatus } from "./schedule";
-import { baseSlotId, freeToken, heldId, tokenOfHeld } from "./sessions";
+import { sessionsOf } from "./data";
+import { baseSlotId, canonicalHeldIds, freeToken, heldId, tokenOfHeld } from "./sessions";
 import { seesWholeBook } from "./visits";
 import { getStore } from "./store";
 
@@ -100,7 +101,7 @@ export async function rescheduleVisit(
   await releaseExpiredHolds();
   let held = await store.listBlockedSlotIds();
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const token = target.mode === "wave" ? freeToken(target.id, target.capacity ?? 1, held) : null;
+    const token = target.mode === "wave" ? freeToken(target.id, target.capacity ?? 1, canonicalHeldIds(held, sessionsOf(target.doctorId), target)) : null;
     if (target.mode === "wave" && token === null) return { ok: false, reason: "taken" };
     const to: Placement = {
       slotId: token === null ? target.id : heldId(target.id, token),

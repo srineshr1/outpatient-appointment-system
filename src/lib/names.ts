@@ -13,3 +13,11 @@ export function salutation(fullName: string): string {
   }
   return rest[0] ?? "there";
 }
+
+/** "Dr Asha Rao" from "Asha Rao", "Dr. Asha Rao" or "dr asha rao": the title is never doubled. */
+export function doctorTitle(name: string, fallback = "Doctor"): string {
+  const clean = name.replace(/\s+/g, " ").trim();
+  if (!clean) return fallback;
+  const rest = clean.replace(/^(dr|doctor)\.?(\s+|$)/i, "").trim();
+  return rest ? `Dr ${rest}` : fallback;
+}

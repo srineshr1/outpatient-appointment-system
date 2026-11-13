@@ -39,7 +39,7 @@ import { notifyDisplaced, notifyOfferClosed, notifyRebooked } from "./rebooking-
 import { refundForCancellation, type CancellationRefund } from "./payments/service";
 import { getSlot } from "./repository";
 import { slotStart, slotStatus } from "./schedule";
-import { baseSlotId, freeToken, heldId, overriddenDates, slotsForSession, tokenOfHeld } from "./sessions";
+import { baseSlotId, canonicalHeldIds, freeToken, heldId, isTime, minutesOverlap, overriddenDates, slotsForSession, toMinutes, tokenOfHeld } from "./sessions";
 import { getStore } from "./store";
 
 /** How long the offered times stay held for the patient. */
@@ -80,14 +80,42 @@ export function displacedBy(
   existing: ConsultSession,
   next: ConsultSession,
   today: string,
+  trims: readonly SessionTrim[] = [],
 ): AppointmentRecord[] {
-  const upcoming = visits.filter((visit) => displaceable(visit) && visit.sessionId === existing.id && visit.date >= today);
-  if (next.archivedAt) return sortByTime(upcoming);
-  // An hours-only change keeps payment holds where they are (elastic scheduling). A structural change
-  // (fewer patients per wave, another slot length or wave interval, stream/wave, days or dates) must move
-  // every reservation that no longer fits, holds included.
-  const structural = sessionStructureChanged(existing, next);
-  const stranded = upcoming.filter((visit) => structural || visit.status === "booked").filter((visit) => !stillFits(visit, next));
+  const upcoming = visits.filter((visit) => displaceable(visit) && visit.date >= today);
+  const ownUpcoming = upcoming.filter((visit) => visit.sessionId === existing.id);
+  let stranded: AppointmentRecord[] = [];
+  if (next.archivedAt) {
+    stranded = [...ownUpcoming];
+  } else {
+    // An hours-only change keeps payment holds where they are (elastic scheduling). A structural change
+    // (fewer patients per wave, another slot length or wave interval, stream/wave, days or dates) must move
+    // every reservation that no longer fits, holds included.
+    const structural = sessionStructureChanged(existing, next);
+    stranded = ownUpcoming
+      .filter((visit) => structural || visit.status === "booked")
+      .filter((visit) => !stillFits(visit, next));
+  }
+
+  // Also include any visits in other sessions that overlap absorbed trims
+  if (trims.length > 0) {
+    const otherVisits = upcoming.filter((visit) => visit.sessionId !== existing.id);
+    for (const visit of otherVisits) {
+      if (!isTime(visit.time)) continue;
+      const vStart = toMinutes(visit.time);
+      const vEnd = visit.endTime && isTime(visit.endTime) ? toMinutes(visit.endTime) : vStart + 15;
+      const hit = trims.some(
+        (t) =>
+          t.sessionId === visit.sessionId &&
+          t.date === visit.date &&
+          minutesOverlap(toMinutes(t.startTime), toMinutes(t.endTime), vStart, vEnd),
+      );
+      if (hit && !stranded.some((s) => s.id === visit.id)) {
+        stranded.push(visit);
+      }
+    }
+  }
+
   return sortByTime(stranded);
 }
 
@@ -120,8 +148,8 @@ export function openSlotsFor(input: Omit<AlternativeInput, "visit" | "count"> & 
 }
 
 /** The place a slot offers next: a stream slot itself, or a wave's lowest free token. Null when full. */
-export function placementFor(slot: Slot, heldIds: readonly string[]): Placement | null {
-  const token = slot.mode === "wave" ? freeToken(slot.id, slot.capacity ?? 1, heldIds) : null;
+export function placementFor(slot: Slot, heldIds: readonly string[], sessions: readonly ConsultSession[] = []): Placement | null {
+  const token = slot.mode === "wave" ? freeToken(slot.id, slot.capacity ?? 1, canonicalHeldIds(heldIds, sessions, slot)) : null;
   if (slot.mode === "wave" && token === null) return null;
   return {
     slotId: token === null ? slot.id : heldId(slot.id, token),
@@ -147,7 +175,7 @@ export function pickAlternatives(input: AlternativeInput): Placement[] {
   const picked: Placement[] = [];
   for (const slot of open) {
     if (picked.length >= count) break;
-    const place = placementFor(slot, heldIds);
+    const place = placementFor(slot, heldIds, input.sessions);
     if (place) picked.push(place);
   }
   return picked;
@@ -218,7 +246,7 @@ export async function displaceAndSave(
     store.listSessionTrims(existing.doctorId),
     pendingHolds(store, existing.doctorId),
   ]);
-  const displaced = displacedBy(visits, existing, next, todayIso(instant));
+  const displaced = displacedBy(visits, existing, next, todayIso(instant), trims);
   if (displaced.length === 0) return { ok: false, reason: "none" };
   if (displaced.length !== options.expected) return { ok: false, reason: "changed" };
 
@@ -287,7 +315,7 @@ export async function moreTimes(offer: RebookingOffer, limit = 20): Promise<Plac
   for (const slot of openSlotsFor({ doctorId: offer.doctorId, sessions, trims, reserved, instant })) {
     if (places.length >= limit) break;
     if (offered.has(slot.id)) continue;
-    const place = placementFor(slot, heldIds);
+    const place = placementFor(slot, heldIds, sessions);
     if (place) places.push(place);
   }
   return sortByTime(places);
@@ -322,7 +350,7 @@ export async function acceptOffer(token: string, slotId: string): Promise<Accept
     const slot = await getSlot(baseSlotId(slotId));
     if (!slot || slot.doctorId !== offer.doctorId || slotStatus(slot, [], now()) !== "open") return { ok: false, reason: "missing" };
     const own = new Set(offer.slots.map((item) => item.slotId));
-    to = placementFor(slot, (await store.listBlockedSlotIds()).filter((id) => !own.has(id)));
+    to = placementFor(slot, (await store.listBlockedSlotIds()).filter((id) => !own.has(id)), await store.listConsultSessions(offer.doctorId));
     if (!to) return { ok: false, reason: "taken" };
   }
   if (slotStart(to).getTime() <= now().getTime()) return { ok: false, reason: "missing" };

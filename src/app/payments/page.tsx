@@ -33,7 +33,7 @@ export default async function PaymentsPage() {
       {items.length === 0 ? (
         <p className="mt-8 max-w-prose text-body text-ink-2">
           No online payments yet. Visits paid at the desk are recorded by the practice.{" "}
-          <Link href="/appointments" className="text-accent hover:underline underline-offset-4">
+          <Link href="/appointments" className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
             Your appointments
           </Link>
         </p>
@@ -41,7 +41,7 @@ export default async function PaymentsPage() {
         <ul className="mt-8 grid max-w-2xl gap-3">
           {items.map(({ payment, visit, refunds }) => (
             <li key={payment.id}>
-              <Card className="p-5">
+              <Card className="border-ink/10 p-5 backdrop-blur-md">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h2 className="text-body font-semibold text-ink">{findDoctor(visit.doctorId)?.name ?? "Your doctor"}</h2>
                   <p className="tabular text-body font-semibold text-ink">{formatMoney(payment.amountMinor)}</p>
@@ -68,7 +68,7 @@ export default async function PaymentsPage() {
                   </ul>
                 ) : null}
                 <p className="mt-3 text-callout">
-                  <Link href={`/receipt/${payment.id}`} className="text-accent hover:underline underline-offset-4">
+                  <Link href={`/receipt/${payment.id}`} className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                     View receipt
                   </Link>
                 </p>

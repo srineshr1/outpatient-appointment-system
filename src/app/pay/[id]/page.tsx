@@ -74,7 +74,7 @@ export default async function PayPage({ params, searchParams }: { params: Promis
     body = (
       <Notice tone="info">
         This visit is {visit.status === "cancelled" ? "cancelled" : visit.status === "completed" ? "complete" : "booked"}, so there is nothing to pay here.{" "}
-        <Link href="/appointments" className="text-accent hover:underline underline-offset-4">
+        <Link href="/appointments" className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
           Your appointments
         </Link>
       </Notice>
@@ -84,7 +84,7 @@ export default async function PayPage({ params, searchParams }: { params: Promis
   return (
     <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
       <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Pay for your visit</PageHeading>
-      <Card className="mt-6 max-w-xl p-5 md:p-6">
+      <Card className="mt-6 max-w-xl border-ink/10 p-5 backdrop-blur-md md:p-6">
         <dl className="grid gap-3 text-body">
           <div>
             <dt className="text-callout text-muted">Visit</dt>

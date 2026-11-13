@@ -34,7 +34,7 @@ function TakingsTable({ label, first, lines, total }: { label: string; first: st
         </thead>
         <tbody className={tbodyClass}>
           {lines.map((line) => (
-            <tr key={line.key}>
+            <tr key={line.key} className="transition-colors hover:bg-ink/[0.03]">
               <Td className="font-medium">{line.label}</Td>
               <Td align="right">{line.payments}</Td>
               <Td align="right">
@@ -50,7 +50,7 @@ function TakingsTable({ label, first, lines, total }: { label: string; first: st
             </tr>
           ))}
         </tbody>
-        <tfoot className="border-t border-hairline bg-[#f6f8fa] font-semibold">
+        <tfoot className="border-t border-hairline bg-surface/80 dark:bg-zinc-900/80 font-semibold text-ink">
           <tr>
             <Td>Total</Td>
             <Td align="right">{total.payments}</Td>
@@ -169,7 +169,7 @@ export default async function TakingsPage({ searchParams }: { searchParams: Prom
               </thead>
               <tbody className={tbodyClass}>
                 {report.byDoctor.map((line) => (
-                  <tr key={line.key}>
+                  <tr key={line.key} className="transition-colors hover:bg-ink/[0.03]">
                     <Td className="font-medium whitespace-nowrap">{line.label}</Td>
                     {PAYMENT_METHODS.map((method) => (
                       <Td key={method} align="right">

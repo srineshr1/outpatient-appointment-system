@@ -156,7 +156,7 @@ export default async function VisitFeesPage({ searchParams }: { searchParams: Pr
             </thead>
             <tbody className={tbodyClass}>
               {rows.slice(0, SHOW_AT_MOST).map((row) => (
-                <tr key={row.visit.id} className="hover:bg-[#f9fbfc]">
+                <tr key={row.visit.id} className="transition-colors hover:bg-ink/[0.03]">
                   <Td className="whitespace-nowrap">
                     <RowLink href={`/admin/appointments/${row.visit.id}`}>{row.visit.reference}</RowLink>
                   </Td>
@@ -172,7 +172,7 @@ export default async function VisitFeesPage({ searchParams }: { searchParams: Pr
                   <Td align="right">
                     <Money pence={row.money.refundedPence} />
                   </Td>
-                  <Td align="right" className={row.money.duePence > 0 ? "font-medium text-[#774b06]" : ""}>
+                  <Td align="right" className={row.money.duePence > 0 ? "font-medium text-amber-700 dark:text-amber-300" : ""}>
                     <Money pence={row.money.duePence} />
                   </Td>
                   <Td>

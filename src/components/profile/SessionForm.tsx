@@ -132,7 +132,7 @@ export function SessionForm({
           ).map(([value, title, text]) => (
             <label key={value} className="relative" title={text}>
               <input type="radio" name="kind" value={value} checked={shownKind === value} onChange={() => setKind(value)} className="peer sr-only" />
-              <span className="inline-flex min-h-11 cursor-pointer items-center rounded-full px-4 text-callout font-semibold text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+              <span className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-hairline bg-surface-2 px-4 text-callout font-medium text-ink-2 transition-colors hover:border-control hover:bg-fill hover:text-ink peer-checked:border-ink peer-checked:bg-ink peer-checked:text-canvas peer-checked:font-semibold peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
                 {title}
               </span>
             </label>
@@ -151,7 +151,7 @@ export function SessionForm({
           {WEEKDAY_NAMES.map((name, index) => (
             <label key={name} className="relative">
               <input type="checkbox" name="weekdays" value={index + 1} defaultChecked={typedDays.includes(index + 1)} className="peer sr-only" />
-              <span className="inline-flex min-h-11 cursor-pointer items-center rounded-full px-4 text-callout font-medium text-accent shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent peer-checked:text-white peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+              <span className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-hairline bg-surface-2 px-4 text-callout font-medium text-ink-2 transition-colors hover:border-control hover:bg-fill hover:text-ink peer-checked:border-ink peer-checked:bg-ink peer-checked:text-canvas peer-checked:font-semibold peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
                 {name}
               </span>
             </label>
@@ -177,7 +177,7 @@ export function SessionForm({
           ).map(([value, title, text]) => (
             <label key={value} className="relative flex h-full cursor-pointer">
               <input type="radio" name="mode" value={value} checked={shown === value} onChange={() => setMode(value)} className="peer sr-only" />
-              <span className="flex h-full min-h-[6.75rem] w-full flex-col rounded-card p-4 shadow-[inset_0_0_0_1px_var(--color-hairline)] peer-checked:bg-accent-soft peer-checked:shadow-[inset_0_0_0_2px_var(--color-accent)] peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
+              <span className="flex h-full min-h-[6.75rem] w-full flex-col rounded-card bg-surface-2 p-4 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:shadow-[inset_0_0_0_1px_var(--color-control)] peer-checked:bg-accent-soft peer-checked:shadow-[inset_0_0_0_2px_var(--color-accent)] peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55">
                 <span className="block text-body font-semibold text-ink">{title}</span>
                 <span className="mt-1 line-clamp-3 text-callout text-ink-2">{text}</span>
               </span>
@@ -282,7 +282,7 @@ function DisplacePrompt({
 }) {
   const patients = count === 1 ? "1 patient is" : `${count} patients are`;
   return (
-    <section aria-labelledby={`${idPrefix}-displace`} role="alert" className="rounded-card bg-danger-soft px-5 py-4 text-callout text-ink md:col-span-2">
+    <section aria-labelledby={`${idPrefix}-displace`} role="alert" className="rounded-card border border-danger/25 bg-danger-soft px-5 py-4 text-callout text-ink md:col-span-2">
       <h3 id={`${idPrefix}-displace`} className="text-body font-semibold">
         {patients} booked in the hours you are removing
       </h3>

@@ -1,5 +1,5 @@
 import { now, todayIso } from "./clock";
-import { occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, stillFits, type Reservation } from "./elastic-scheduling";
+import { isUpcomingVisit, occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, stillFits, type Reservation } from "./elastic-scheduling";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -1134,8 +1134,9 @@ export class SqliteClinicStore implements ClinicStore {
       const old = toConsultSession(row);
       const visits = (this.db.prepare("SELECT * FROM appointments WHERE session_id = ?").all(session.id) as unknown as AppointmentRow[]).map(toAppointment);
       const reserved = visits.filter(visit => occupiesTime(visit) && visit.date >= todayIso(now()));
-      // Removing needs no reservations left; a structural change needs every remaining one to still fit.
-      if ((old.archivedAt !== session.archivedAt && reserved.length > 0) ||
+      // Removing needs no upcoming reservations left (a visit already completed today does not count);
+      // a structural change needs every remaining one to still fit.
+      if ((old.archivedAt !== session.archivedAt && reserved.some(isUpcomingVisit)) ||
         (sessionStructureChanged(old, session) && reserved.some(visit => !stillFits(visit, session)))) {
         throw new Error("Reserved sessions may change hours, name and room only.");
       }

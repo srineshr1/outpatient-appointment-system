@@ -53,16 +53,18 @@ function SectionNav({ current, counts, label }: { current: SectionId; counts: Na
               <Link
                 href={section.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-9 items-center gap-2.5 rounded-md px-2.5 text-sm no-underline transition-colors ${
-                  active ? "bg-[#d7e6ef] font-semibold text-ink" : "text-ink hover:bg-black/5"
+                className={`flex min-h-9 items-center gap-2.5 rounded-lg border px-2.5 text-sm no-underline transition-colors ${
+                  active
+                    ? "border-accent/20 dark:border-cyan-400/20 bg-accent/12 dark:bg-cyan-400/12 font-semibold text-accent dark:text-cyan-300"
+                    : "border-transparent text-ink-2 hover:bg-ink/[0.05] hover:text-ink"
                 }`}
               >
-                <Icon size={18} className={active ? "text-accent" : "text-ink-2"} />
+                <Icon size={18} className={active ? "text-accent dark:text-cyan-400" : "text-muted"} />
                 <span className="flex-1">{section.label}</span>
                 {count ? (
                   <span
                     className={`rounded px-1.5 text-xs font-medium tabular-nums ${
-                      count.tone === "warn" ? "bg-[#fff0d5] text-[#774b06]" : "text-ink-2"
+                      count.tone === "warn" ? "border border-amber-400/25 bg-amber-400/12 text-amber-700 dark:text-amber-300" : "text-muted"
                     }`}
                   >
                     <span className="sr-only">, </span>
@@ -82,14 +84,17 @@ function SectionNav({ current, counts, label }: { current: SectionId; counts: Na
 function Brand() {
   return (
     <Link href="/admin" className="flex items-center gap-2.5 rounded-md px-2 py-1 no-underline">
-      <span aria-hidden="true" className="grid size-8 place-items-center rounded-lg bg-accent text-white">
+      <span
+        aria-hidden="true"
+        className="grid size-8 place-items-center rounded-lg bg-cyan-400 bg-gradient-to-br from-cyan-400 to-blue-500 text-zinc-950 shadow-[0_0_14px_rgba(34,211,238,0.3)]"
+      >
         <svg width="15" height="15" viewBox="0 0 14 14" fill="currentColor">
           <path d="M5 1h4v4h4v4H9v4H5V9H1V5h4z" />
         </svg>
       </span>
       <span className="min-w-0 leading-tight">
         <span className="block truncate text-sm font-semibold text-ink">{practice.name}</span>
-        <span className="block text-xs text-ink-2">Admin console</span>
+        <span className="block text-xs text-muted">Admin console</span>
       </span>
     </Link>
   );
@@ -97,23 +102,29 @@ function Brand() {
 
 function AccountFooter({ admin }: { admin: SessionUser }) {
   return (
-    <div className="mt-auto border-t border-[#d4e0e7] p-3">
+    <div className="mt-auto border-t border-ink/[0.08] p-3">
       <div className="flex items-center gap-2.5 px-1">
-        <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-white text-xs font-semibold text-ink-2">
+        <span
+          aria-hidden="true"
+          className="grid size-8 shrink-0 place-items-center rounded-full border border-ink/10 bg-fill-strong dark:bg-zinc-800 text-xs font-semibold text-ink"
+        >
           {monogram(admin.name)}
         </span>
         <span className="min-w-0 leading-tight">
           <span className="block truncate text-sm font-medium text-ink">{admin.name}</span>
-          <span className="block truncate text-xs text-ink-2">{admin.email}</span>
+          <span className="block truncate text-xs text-muted">{admin.email}</span>
         </span>
       </div>
       <div className="mt-3 grid gap-1">
-        <Link href="/" className="flex min-h-9 items-center gap-2 rounded-md px-2.5 text-sm text-ink no-underline hover:bg-black/5">
-          <ExternalIcon size={16} className="text-ink-2" />
+        <Link
+          href="/"
+          className="flex min-h-9 items-center gap-2 rounded-lg px-2.5 text-sm text-ink-2 no-underline transition-colors hover:bg-ink/[0.05] hover:text-ink"
+        >
+          <ExternalIcon size={16} className="text-muted" />
           Practice website
         </Link>
         <form action={signOutAction}>
-          <SignOutButton className="flex min-h-9 w-full items-center rounded-md px-2.5 text-left text-sm text-ink hover:bg-black/5">
+          <SignOutButton className="flex min-h-9 w-full items-center rounded-lg px-2.5 text-left text-sm text-ink-2 transition-colors hover:bg-ink/[0.05] hover:text-ink">
             Sign out
           </SignOutButton>
         </form>
@@ -145,15 +156,15 @@ interface AdminShellProps {
 export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, notice, children }: AdminShellProps) {
   const current = sectionOf(section);
   return (
-    <div className="min-h-dvh bg-surface text-ink lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+    <div className="min-h-dvh bg-canvas text-ink lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       <a
         href="#admin-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-ink focus:px-4 focus:py-2.5 focus:text-sm focus:font-medium focus:text-white"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-cyan-400 focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-zinc-950"
       >
         Skip to page content
       </a>
 
-      <div className="hidden border-r border-[#d4e0e7] bg-[#edf5f9] lg:block print:hidden">
+      <div className="hidden border-r border-ink/[0.08] bg-surface dark:bg-[#0c0c0f] lg:block print:hidden">
         <div className="sticky top-0 flex h-dvh flex-col overflow-y-auto">
           <div className="px-3 pt-4 pb-5">
             <Brand />
@@ -164,7 +175,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
       </div>
 
       <div className="min-w-0">
-        <div className="sticky top-0 z-20 border-b border-hairline bg-surface/95 backdrop-blur print:hidden">
+        <div className="sticky top-0 z-20 border-b border-ink/[0.08] bg-surface/80 dark:bg-zinc-950/80 backdrop-blur-xl print:hidden">
           <div className="flex h-14 items-center gap-3 px-4 md:px-8">
             <MobileMenu>
               <div className="px-3 pb-5">
@@ -177,7 +188,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
               <ol className="flex items-center gap-2 text-sm">
                 <li className={crumb ? "hidden min-w-0 sm:block" : "min-w-0"}>
                   {crumb ? (
-                    <Link href={current.href} className="truncate text-ink-2 no-underline hover:text-ink hover:underline underline-offset-4">
+                    <Link href={current.href} className="truncate text-muted no-underline hover:text-ink hover:underline underline-offset-4">
                       {current.label}
                     </Link>
                   ) : (
@@ -188,7 +199,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
                 </li>
                 {crumb ? (
                   <li className="flex min-w-0 items-center gap-2">
-                    <span aria-hidden="true" className="hidden text-muted sm:inline">
+                    <span aria-hidden="true" className="hidden text-muted dark:text-zinc-500 sm:inline">
                       ›
                     </span>
                     <span aria-current="page" className="truncate font-medium text-ink">
@@ -198,9 +209,9 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
                 ) : null}
               </ol>
             </nav>
-            <p className="hidden items-center gap-1.5 rounded-md border border-hairline px-2 py-1 text-xs text-ink-2 xl:flex">
+            <p className="hidden items-center gap-1.5 rounded-lg border border-ink/10 bg-ink/[0.03] px-2.5 py-1 text-xs text-ink-2 xl:flex">
               Acting as
-              <span className="rounded bg-[#e8f1fb] px-1.5 py-0.5 font-medium text-[#0b4f8a]">Admin</span>
+              <span className="rounded border border-accent/25 dark:border-cyan-400/25 bg-accent/12 dark:bg-cyan-400/12 px-1.5 py-0.5 font-medium text-accent dark:text-cyan-300">Admin</span>
               <span className="max-w-40 truncate font-medium text-ink">{admin.name}</span>
             </p>
             <CommandPalette />
@@ -208,7 +219,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
         </div>
 
         {tabs && tabs.length > 0 ? (
-          <div className="border-b border-hairline px-4 md:px-8 print:hidden">
+          <div className="border-b border-ink/[0.08] px-4 md:px-8 print:hidden">
             <nav aria-label={`${current.label} pages`} className="relative -mb-px overflow-x-auto [scrollbar-width:none]">
               <ul className="flex gap-1">
                 {tabs.map((tab) => {
@@ -219,7 +230,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
                         href={tab.href}
                         aria-current={active ? "page" : undefined}
                         className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-2 text-sm font-medium no-underline transition-colors ${
-                          active ? "border-accent text-ink" : "border-transparent text-ink-2 hover:border-hairline hover:text-ink"
+                          active ? "border-accent dark:border-cyan-400 text-accent dark:text-cyan-300" : "border-transparent text-muted hover:border-ink/20 hover:text-ink"
                         }`}
                       >
                         {tab.label}
