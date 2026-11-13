@@ -17,7 +17,7 @@ import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedL
 import { CountUp } from "@/components/reactbits/CountUp";
 import { BentoCard, MagicBento } from "@/components/reactbits/MagicBento";
 import { RubberSegment } from "@/components/reactbits/RubberSegment";
-import { Button, ButtonLink } from "@/components/ui/Button";
+import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import {
   buildWeek,
@@ -349,160 +349,160 @@ export function SessionsViewer({
         </BentoCard>
       </MagicBento>
 
-      {/* 3. Interactive View Switcher & Week Controls */}
+      {/* 2. Unified Schedule Workspace */}
       <section
-        aria-label="Schedule controls"
-        className="rounded-sheet border border-hairline bg-surface p-4 shadow-card sm:p-5"
+        aria-label={view === "week" ? "Weekly schedule grid" : "Active sessions directory"}
+        className="rounded-sheet border border-hairline bg-surface p-4 shadow-card sm:p-6"
       >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-4">
-            <RubberSegment
-              aria-label="Schedule view"
-              value={view}
-              onChange={(next) => setView(next as ViewMode)}
-              size="md"
-              radius={12}
-              equalSlots={false}
-              trackColor={isDark ? "#18181b" : "#f4f4f5"}
-              thumbColor={isDark ? "#27272a" : "#ffffff"}
-              textColor={isDark ? "#a1a1aa" : "#52525b"}
-              activeTextColor={isDark ? "#fafafa" : "#09090b"}
-              className="border border-hairline"
-              items={[
-                { value: "week", label: "Week Grid", icon: <Calendar size={15} /> },
-                { value: "directory", label: "Session Directory", icon: <ClipboardList size={15} /> },
-              ]}
-            />
+        {/* Unified Controls Header */}
+        <div className="mb-5 border-b border-hairline pb-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {/* View Switcher & Date Range */}
+            <div className="flex flex-wrap items-center gap-3">
+              <RubberSegment
+                aria-label="Schedule view"
+                value={view}
+                onChange={(next) => setView(next as ViewMode)}
+                size="md"
+                radius={12}
+                equalSlots={false}
+                trackColor={isDark ? "#18181b" : "#f4f4f5"}
+                thumbColor={isDark ? "#27272a" : "#ffffff"}
+                textColor={isDark ? "#a1a1aa" : "#52525b"}
+                activeTextColor={isDark ? "#fafafa" : "#09090b"}
+                className="border border-hairline"
+                items={[
+                  { value: "week", label: "Week Grid", icon: <Calendar size={15} /> },
+                  { value: "directory", label: "Session Directory", icon: <ClipboardList size={15} /> },
+                ]}
+              />
 
-            <div className="text-callout">
-              <span className="font-semibold text-ink">{weekTitle(monday)}</span>
-              <span className="ml-2 text-caption text-muted">
-                · {weekTag(weekOffset)} · Today is {todayTitle(today)}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {view === "week" ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={() => setWeekOffset((offset) => offset - 1)}
-                  aria-label="Previous week"
-                >
-                  <ChevronLeft size={16} />
-                  Previous week
-                </Button>
-                <Button
-                  variant={weekOffset === 0 ? "primary" : "secondary"}
-                  size="md"
-                  onClick={() => setWeekOffset(0)}
-                  disabled={weekOffset === 0}
-                >
-                  This week
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={() => setWeekOffset((offset) => offset + 1)}
-                  aria-label="Next week"
-                >
-                  Next week
-                  <ChevronRight size={16} />
-                </Button>
-              </>
-            ) : null}
-
-            <ButtonLink href="/dashboard/sessions/manage" variant="primary" size="md">
-              <Sliders size={16} />
-              Edit in Session Studio
-            </ButtonLink>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Week Grid Mode OR 5. Session Directory Mode */}
-      {view === "week" ? (
-        <div className="space-y-6">
-          {/* Weekly Schedule Calendar */}
-          <section
-            aria-label="Weekly schedule grid"
-            className="rounded-sheet border border-hairline bg-surface p-4 shadow-card sm:p-6"
-          >
-            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-title3 font-semibold text-ink">Weekly schedule</h2>
-                <p className="text-caption text-muted">
-                  Select any session block to inspect booked patients and capacity utilization below.
-                </p>
+              <div className="text-callout">
+                <span className="font-semibold text-ink">{weekTitle(monday)}</span>
+                <span className="ml-2 text-caption text-muted">
+                  · {weekTag(weekOffset)} · Today is {todayTitle(today)}
+                </span>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Day Filter Toggle */}
-                <div className="inline-flex items-center rounded-xl border border-hairline bg-surface-2 p-1 text-caption">
+            </div>
+
+            {/* Prev / This / Next Week + Edit in Session Studio */}
+            <div className="flex flex-wrap items-center gap-2">
+              {view === "week" ? (
+                <div className="inline-flex items-center rounded-xl border border-hairline bg-surface-2 p-0.5 text-caption">
                   <button
                     type="button"
-                    onClick={() => setShowActiveOnly(false)}
-                    className={`rounded-lg px-3 py-1 font-medium transition-colors ${
-                      !showActiveOnly
-                        ? "bg-surface text-ink shadow-sm font-semibold"
-                        : "text-muted hover:text-ink"
-                    }`}
+                    onClick={() => setWeekOffset((offset) => offset - 1)}
+                    aria-label="Previous week"
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium text-ink-2 hover:bg-surface hover:text-ink transition"
                   >
-                    Full week ({week.days.length})
+                    <ChevronLeft size={14} />
+                    <span>Prev week</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowActiveOnly(true)}
-                    disabled={activeDays.length === 0}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 font-medium transition-colors ${
-                      showActiveOnly
-                        ? "bg-surface text-ink shadow-sm font-semibold"
+                    onClick={() => setWeekOffset(0)}
+                    disabled={weekOffset === 0}
+                    className={`rounded-lg px-2.5 py-1 font-semibold transition ${
+                      weekOffset === 0
+                        ? "bg-surface text-ink shadow-sm"
                         : "text-muted hover:text-ink disabled:opacity-40"
                     }`}
                   >
-                    <span>Active days</span>
-                    <span
-                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold ${
-                        activeDays.length > 0 ? "bg-accent/15 text-accent" : "bg-fill text-muted"
-                      }`}
-                    >
-                      {activeDays.length}
-                    </span>
+                    This week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeekOffset((offset) => offset + 1)}
+                    aria-label="Next week"
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium text-ink-2 hover:bg-surface hover:text-ink transition"
+                  >
+                    <span>Next week</span>
+                    <ChevronRight size={14} />
                   </button>
                 </div>
+              ) : null}
 
-                {/* Legend */}
-                <div className="hidden items-center gap-3 text-caption text-ink-2 md:flex">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden="true" className="size-2.5 rounded-full bg-accent" />
-                    Stream (timed slots)
+              <ButtonLink
+                href="/dashboard/sessions/manage"
+                variant="primary"
+                size="md"
+                className="gap-1.5"
+              >
+                <Sliders size={14} />
+                Edit in Session Studio
+              </ButtonLink>
+            </div>
+          </div>
+
+          {/* Sub-bar for Week Grid: Filter & Legend */}
+          {view === "week" ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pt-2 text-caption text-ink-2">
+              <div className="inline-flex items-center rounded-xl border border-hairline bg-surface-2 p-1 text-caption">
+                <button
+                  type="button"
+                  onClick={() => setShowActiveOnly(false)}
+                  className={`rounded-lg px-3 py-1 font-medium transition-colors ${
+                    !showActiveOnly
+                      ? "bg-surface text-ink shadow-sm font-semibold"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  Full week ({week.days.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowActiveOnly(true)}
+                  disabled={activeDays.length === 0}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 font-medium transition-colors ${
+                    showActiveOnly
+                      ? "bg-surface text-ink shadow-sm font-semibold"
+                      : "text-muted hover:text-ink disabled:opacity-40"
+                  }`}
+                >
+                  <span>Active days</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold ${
+                      activeDays.length > 0 ? "bg-accent/15 text-accent" : "bg-fill text-muted"
+                    }`}
+                  >
+                    {activeDays.length}
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span aria-hidden="true" className="size-2.5 rounded-full bg-warn" />
-                    Wave (token queue)
-                  </span>
-                </div>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-4 text-caption text-ink-2">
+                <span className="inline-flex items-center gap-1.5">
+                  <span aria-hidden="true" className="size-2.5 rounded-full bg-accent" />
+                  Stream (timed slots)
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span aria-hidden="true" className="size-2.5 rounded-full bg-warn" />
+                  Wave (token queue)
+                </span>
               </div>
             </div>
+          ) : null}
+        </div>
 
-            <div
-              className={`grid gap-3 sm:grid-cols-2 md:grid-cols-3 ${
-                isFilteringActive
-                  ? displayedDays.length === 1
-                    ? "grid-cols-1 md:grid-cols-1"
-                    : displayedDays.length === 2
-                      ? "grid-cols-1 sm:grid-cols-2"
-                      : displayedDays.length === 3
-                        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-                        : displayedDays.length === 4
-                          ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
-                          : `grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-${Math.min(displayedDays.length, 6)}`
-                  : week.days.length === 7
-                    ? "lg:grid-cols-7"
-                    : "lg:grid-cols-6"
-              }`}
-            >
+        {/* Content Body: Week Grid OR Session Directory */}
+        {view === "week" ? (
+          <div
+            className={`grid gap-3 sm:grid-cols-2 md:grid-cols-3 ${
+              isFilteringActive
+                ? displayedDays.length === 1
+                  ? "grid-cols-1 md:grid-cols-1"
+                  : displayedDays.length === 2
+                    ? "grid-cols-1 sm:grid-cols-2"
+                    : displayedDays.length === 3
+                      ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+                      : displayedDays.length === 4
+                        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+                        : `grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-${Math.min(displayedDays.length, 6)}`
+                : week.days.length === 7
+                  ? "lg:grid-cols-7"
+                  : "lg:grid-cols-6"
+            }`}
+          >
               {displayedDays.map((day) => {
                 const isSingleDay = displayedDays.length === 1;
 
@@ -637,251 +637,248 @@ export function SessionsViewer({
                 );
               })}
             </div>
-          </section>
+        ) : sessions.length === 0 ? (
+          <div className="rounded-card border border-dashed border-hairline bg-surface-2/40 p-8 text-center">
+            <h2 className="text-title3 font-semibold text-ink">No active consulting sessions</h2>
+            <p className="mx-auto mt-2 max-w-md text-callout text-ink-2">
+              Add your weekly or one-off consulting hours in Session Studio so patients can see and book you.
+            </p>
+            <div className="mt-5 flex justify-center">
+              <ButtonLink href="/dashboard/sessions/manage" variant="primary" size="md">
+                <Sliders size={16} />
+                Create first session in Studio
+              </ButtonLink>
+            </div>
+          </div>
+        ) : (
+          <AnimatedList className="grid gap-4 md:grid-cols-2">
+            {sessions.map((session, index) => {
+              const upcoming = upcomingBookedCount(session, visits, today);
+              const past = sessionIsPast(session, today);
 
-          {/* Session & Patient Inspector */}
-          <section
-            aria-label="Session and patient inspector"
-            className="rounded-sheet border border-hairline bg-surface p-5 shadow-card md:p-6"
-          >
-            {selected ? (
-              <div className="grid gap-6 lg:grid-cols-12">
-                {/* Session Details & Capacity: 5 cols on lg, 4 cols on xl */}
-                <div className="space-y-5 lg:col-span-5 xl:col-span-4">
-                  <div className="space-y-2 border-b border-hairline pb-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-caption font-medium uppercase tracking-wider text-muted">
-                        Session inspector
-                      </span>
-                      <SessionModeBadge mode={selected.session.mode} />
+              return (
+                <AnimatedListItem key={session.id} index={index}>
+                  <Card className="flex h-full flex-col justify-between gap-4 rounded-sheet p-5 md:p-6">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h2 className="text-title3 font-semibold text-ink">
+                          {session.label || "Consulting session"}
+                        </h2>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <SessionModeBadge mode={session.mode} />
+                          {session.onDate ? (
+                            <span className="rounded-full bg-fill px-2.5 py-0.5 text-[11px] font-medium text-ink-2">
+                              One-off
+                            </span>
+                          ) : null}
+                          {past ? (
+                            <span className="rounded-full bg-fill px-2.5 py-0.5 text-[11px] font-medium text-muted">
+                              Ended
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <p className="text-callout text-ink-2">{describeSession(session)}</p>
+
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-caption text-muted">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Pin size={14} />
+                          {session.room}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 tabular">
+                          <Users size={14} />
+                          {upcoming} upcoming {upcoming === 1 ? "visit" : "visits"}
+                        </span>
+                      </div>
                     </div>
-                    <h2 className="text-title3 font-semibold text-ink">
-                      {selected.session.label || "Consulting session"}
-                    </h2>
-                    <p className="text-callout text-ink-2">
-                      {occurrenceLabel(selected.session, selected.date)}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted">
-                      <span className="inline-flex items-center gap-1.5 tabular font-medium">
-                        <Clock size={14} />
-                        {minutesLabel(selected.startMin)}–{minutesLabel(selected.endMin)}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Pin size={14} />
-                        {selected.session.room}
-                      </span>
+
+                    <div className="border-t border-hairline pt-4">
+                      <ButtonLink
+                        href={`/dashboard/sessions/manage?session=${session.id}`}
+                        variant="secondary"
+                        size="md"
+                        className="w-full justify-center"
+                      >
+                        <Edit size={16} />
+                        Edit in Studio
+                      </ButtonLink>
                     </div>
-                    <p className="text-caption text-ink-2">{describeSession(selected.session)}</p>
+                  </Card>
+                </AnimatedListItem>
+              );
+            })}
+          </AnimatedList>
+        )}
+      </section>
+
+      {/* 3. Session & Patient Inspector (When in week view) */}
+      {view === "week" ? (
+        <section
+          aria-label="Session and patient inspector"
+          className="rounded-sheet border border-hairline bg-surface p-5 shadow-card md:p-6"
+        >
+          {selected ? (
+            <div className="grid gap-6 lg:grid-cols-12">
+              {/* Session Details & Capacity: 5 cols on lg, 4 cols on xl */}
+              <div className="space-y-5 lg:col-span-5 xl:col-span-4">
+                <div className="space-y-2 border-b border-hairline pb-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-caption font-medium uppercase tracking-wider text-muted">
+                      Session inspector
+                    </span>
+                    <SessionModeBadge mode={selected.session.mode} />
                   </div>
-
-                  {/* Capacity Utilization */}
-                  <div className="rounded-card border border-hairline bg-surface-2/70 p-4">
-                    <div className="flex items-center justify-between text-callout font-medium text-ink">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Users size={16} className="text-accent" />
-                        Capacity utilization
-                      </span>
-                      <span className="tabular font-semibold">
-                        {selected.booked} / {selected.capacity} places
-                      </span>
-                    </div>
-                    <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-fill-strong">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          selected.session.mode === "stream" ? "bg-accent" : "bg-warn"
-                        }`}
-                        style={{
-                          width: `${
-                            selected.capacity > 0
-                              ? Math.min(100, Math.round((selected.booked / selected.capacity) * 100))
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <p className="mt-2 text-caption text-muted tabular">
-                      {Math.max(0, selected.capacity - selected.booked)} open{" "}
-                      {selected.capacity - selected.booked === 1 ? "place" : "places"} remaining
-                    </p>
-                  </div>
-
-                  <div>
-                    <ButtonLink
-                      href={`/dashboard/sessions/manage?session=${selected.session.id}`}
-                      variant="primary"
-                      size="md"
-                      className="w-full justify-center"
-                    >
-                      <Edit size={16} />
-                      Edit this session in Studio
-                    </ButtonLink>
-                  </div>
-                </div>
-
-                {/* Booked Visits: 7 cols on lg, 8 cols on xl */}
-                <div className="lg:col-span-7 xl:col-span-8 lg:border-l lg:border-hairline lg:pl-6">
-                  <div className="flex items-center justify-between border-b border-hairline pb-3">
-                    <h3 className="text-callout font-semibold text-ink">
-                      Booked visits ({selectedVisits.length})
-                    </h3>
-                    <span className="text-caption text-muted">
-                      {selectedVisits.length === 0
-                        ? "No bookings"
-                        : `${selectedVisits.length} ${selectedVisits.length === 1 ? "patient" : "patients"}`}
+                  <h2 className="text-title3 font-semibold text-ink">
+                    {selected.session.label || "Consulting session"}
+                  </h2>
+                  <p className="text-callout text-ink-2">
+                    {occurrenceLabel(selected.session, selected.date)}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted">
+                    <span className="inline-flex items-center gap-1.5 tabular font-medium">
+                      <Clock size={14} />
+                      {minutesLabel(selected.startMin)}–{minutesLabel(selected.endMin)}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Pin size={14} />
+                      {selected.session.room}
                     </span>
                   </div>
+                  <p className="text-caption text-ink-2">{describeSession(selected.session)}</p>
+                </div>
 
-                  {selectedVisits.length === 0 ? (
-                    <div className="mt-4 rounded-card border border-dashed border-hairline bg-surface-2/40 px-4 py-8 text-center text-callout text-muted">
-                      No patients are booked in this occurrence yet.
-                    </div>
-                  ) : (
-                    <AnimatedList className="mt-4 grid gap-3 sm:grid-cols-2">
-                      {selectedVisits.map((entry, index) => {
-                        const statusMeta = VISIT_STATUS_STYLE[entry.visit.status];
-                        const timeLabel = slotTimeLabel({
-                          time: entry.visit.time,
-                          endTime: entry.visit.endTime ?? entry.blockEndTime,
-                          mode: selected.session.mode,
-                        });
+                {/* Capacity Utilization */}
+                <div className="rounded-card border border-hairline bg-surface-2/70 p-4">
+                  <div className="flex items-center justify-between text-callout font-medium text-ink">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Users size={16} className="text-accent" />
+                      Capacity utilization
+                    </span>
+                    <span className="tabular font-semibold">
+                      {selected.booked} / {selected.capacity} places
+                    </span>
+                  </div>
+                  <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-fill-strong">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        selected.session.mode === "stream" ? "bg-accent" : "bg-warn"
+                      }`}
+                      style={{
+                        width: `${
+                          selected.capacity > 0
+                            ? Math.min(100, Math.round((selected.booked / selected.capacity) * 100))
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-2 text-caption text-muted tabular">
+                    {Math.max(0, selected.capacity - selected.booked)} open{" "}
+                    {selected.capacity - selected.booked === 1 ? "place" : "places"} remaining
+                  </p>
+                </div>
 
-                        return (
-                          <AnimatedListItem
-                            key={entry.visit.id}
-                            index={index}
-                            className="rounded-card border border-hairline bg-surface-2/75 p-3.5 shadow-sm transition hover:border-hairline-strong hover:bg-surface-2"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="truncate text-callout font-semibold text-ink">
-                                  {entry.visit.patientName}
-                                </p>
-                                <p className="mt-0.5 text-caption font-medium text-ink-2 tabular">
-                                  {timeLabel}
-                                  {selected.session.mode === "wave" && entry.visit.token
-                                    ? ` · Token #${entry.visit.token}`
-                                    : ""}
-                                </p>
-                                <p className="mt-0.5 text-caption text-muted truncate">
-                                  {entry.visit.reason} · {entry.visit.reference}
-                                </p>
-                                {entry.outsideHours ? (
-                                  <p className="mt-1 text-[11px] font-medium text-warn">
-                                    Booked outside current session hours
-                                  </p>
-                                ) : null}
-                              </div>
-                              <span
-                                className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusMeta.className}`}
-                              >
-                                {statusMeta.label}
-                              </span>
-                            </div>
-                          </AnimatedListItem>
-                        );
-                      })}
-                    </AnimatedList>
-                  )}
+                <div>
+                  <ButtonLink
+                    href={`/dashboard/sessions/manage?session=${selected.session.id}`}
+                    variant="primary"
+                    size="md"
+                    className="w-full justify-center"
+                  >
+                    <Edit size={16} />
+                    Edit this session in Studio
+                  </ButtonLink>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4 py-6 text-center">
-                <h2 className="text-title3 font-semibold text-ink">
-                  No sessions in {weekTitle(monday)}
-                </h2>
-                <p className="text-callout text-ink-2">
-                  Switch weeks above or open Session Studio to add consulting hours for this period.
-                </p>
-                <ButtonLink
-                  href="/dashboard/sessions/manage"
-                  variant="primary"
-                  size="md"
-                  className="w-full justify-center sm:w-auto"
-                >
-                  <Sliders size={16} />
-                  Open Session Studio
-                </ButtonLink>
-              </div>
-            )}
-          </section>
-        </div>
-      ) : (
-        <section aria-label="Active sessions directory">
-          {sessions.length === 0 ? (
-            <Card className="rounded-sheet p-8 text-center">
-              <h2 className="text-title3 font-semibold text-ink">No active consulting sessions</h2>
-              <p className="mx-auto mt-2 max-w-md text-callout text-ink-2">
-                Add your weekly or one-off consulting hours in Session Studio so patients can see and book you.
-              </p>
-              <div className="mt-5 flex justify-center">
-                <ButtonLink href="/dashboard/sessions/manage" variant="primary" size="md">
-                  <Sliders size={16} />
-                  Create first session in Studio
-                </ButtonLink>
-              </div>
-            </Card>
-          ) : (
-            <AnimatedList className="grid gap-4 md:grid-cols-2">
-              {sessions.map((session, index) => {
-                const upcoming = upcomingBookedCount(session, visits, today);
-                const past = sessionIsPast(session, today);
 
-                return (
-                  <AnimatedListItem key={session.id} index={index}>
-                    <Card className="flex h-full flex-col justify-between gap-4 rounded-sheet p-5 md:p-6">
-                        <div className="space-y-3">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <h2 className="text-title3 font-semibold text-ink">
-                              {session.label || "Consulting session"}
-                            </h2>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <SessionModeBadge mode={session.mode} />
-                              {session.onDate ? (
-                                <span className="rounded-full bg-fill px-2.5 py-0.5 text-[11px] font-medium text-ink-2">
-                                  One-off
-                                </span>
-                              ) : null}
-                              {past ? (
-                                <span className="rounded-full bg-fill px-2.5 py-0.5 text-[11px] font-medium text-muted">
-                                  Ended
-                                </span>
+              {/* Booked Visits: 7 cols on lg, 8 cols on xl */}
+              <div className="lg:col-span-7 xl:col-span-8 lg:border-l lg:border-hairline lg:pl-6">
+                <div className="flex items-center justify-between border-b border-hairline pb-3">
+                  <h3 className="text-callout font-semibold text-ink">
+                    Booked visits ({selectedVisits.length})
+                  </h3>
+                  <span className="text-caption text-muted">
+                    {selectedVisits.length === 0
+                      ? "No bookings"
+                      : `${selectedVisits.length} ${selectedVisits.length === 1 ? "patient" : "patients"}`}
+                  </span>
+                </div>
+
+                {selectedVisits.length === 0 ? (
+                  <div className="mt-4 rounded-card border border-dashed border-hairline bg-surface-2/40 px-4 py-8 text-center text-callout text-muted">
+                    No patients are booked in this occurrence yet.
+                  </div>
+                ) : (
+                  <AnimatedList className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {selectedVisits.map((entry, index) => {
+                      const statusMeta = VISIT_STATUS_STYLE[entry.visit.status];
+                      const timeLabel = slotTimeLabel({
+                        time: entry.visit.time,
+                        endTime: entry.visit.endTime ?? entry.blockEndTime,
+                        mode: selected.session.mode,
+                      });
+
+                      return (
+                        <AnimatedListItem
+                          key={entry.visit.id}
+                          index={index}
+                          className="rounded-card border border-hairline bg-surface-2/75 p-3.5 shadow-sm transition hover:border-hairline-strong hover:bg-surface-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-callout font-semibold text-ink">
+                                {entry.visit.patientName}
+                              </p>
+                              <p className="mt-0.5 text-caption font-medium text-ink-2 tabular">
+                                {timeLabel}
+                                {selected.session.mode === "wave" && entry.visit.token
+                                  ? ` · Token #${entry.visit.token}`
+                                  : ""}
+                              </p>
+                              <p className="mt-0.5 text-caption text-muted truncate">
+                                {entry.visit.reason} · {entry.visit.reference}
+                              </p>
+                              {entry.outsideHours ? (
+                                <p className="mt-1 text-[11px] font-medium text-warn">
+                                  Booked outside current session hours
+                                </p>
                               ) : null}
                             </div>
-                          </div>
-
-                          <p className="text-callout text-ink-2">{describeSession(session)}</p>
-
-                          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-caption text-muted">
-                            <span className="inline-flex items-center gap-1.5">
-                              <Pin size={14} />
-                              {session.room}
-                            </span>
-                            <span className="inline-flex items-center gap-1.5 tabular">
-                              <Users size={14} />
-                              {upcoming} upcoming {upcoming === 1 ? "visit" : "visits"}
+                            <span
+                              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusMeta.className}`}
+                            >
+                              {statusMeta.label}
                             </span>
                           </div>
-                        </div>
-
-                        <div className="border-t border-hairline pt-4">
-                          <ButtonLink
-                            href={`/dashboard/sessions/manage?session=${session.id}`}
-                            variant="secondary"
-                            size="md"
-                            className="w-full justify-center"
-                          >
-                            <Edit size={16} />
-                            Edit in Studio
-                          </ButtonLink>
-                        </div>
-                      </Card>
-                  </AnimatedListItem>
-                );
-              })}
-            </AnimatedList>
+                        </AnimatedListItem>
+                      );
+                    })}
+                  </AnimatedList>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-6 text-center">
+              <h2 className="text-title3 font-semibold text-ink">
+                No sessions in {weekTitle(monday)}
+              </h2>
+              <p className="text-callout text-ink-2">
+                Switch weeks above or open Session Studio to add consulting hours for this period.
+              </p>
+              <ButtonLink
+                href="/dashboard/sessions/manage"
+                variant="primary"
+                size="md"
+                className="w-full justify-center sm:w-auto"
+              >
+                <Sliders size={16} />
+                Open Session Studio
+              </ButtonLink>
+            </div>
           )}
         </section>
-      )}
+      ) : null}
     </div>
   );
 }

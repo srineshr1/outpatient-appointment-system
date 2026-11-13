@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { TimeWheelPicker } from "@/components/doctors/TimeWheel";
-import { CLINIC_END, CLINIC_START, clinicWeekday, minutesLabel, sessionIsPast } from "@/components/doctors/schedule-model";
-import { Alert, Calendar, Check, Clock, Edit, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
+import { CLINIC_END, CLINIC_START, clinicWeekday, sessionIsPast, weekTitle } from "@/components/doctors/schedule-model";
+import { Alert, Calendar, Check, ChevronLeft, ChevronRight, Clock, Edit, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
 import { CountUp } from "@/components/reactbits/CountUp";
 import { GlideSelect } from "@/components/reactbits/GlideSelect";
@@ -15,21 +15,23 @@ import { Card, Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { PendingButton } from "@/components/ui/PendingButton";
 import type { AppointmentStatus, ConsultSession, SessionTrim } from "@/lib/clinic-types";
-import { addDays } from "@/lib/clock";
+import { addDays, dayOfMonth, mondayOf, weekdayIndex } from "@/lib/clock";
 import { occupiesTime, sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
 import type { FormState } from "@/lib/form-state";
-import { formatShortDate } from "@/lib/format";
 import { defaultsFor, type SessionDefaults } from "@/lib/session-defaults";
 import {
   checkSession,
+  daysLabel,
   describeSession,
   fromMinutes,
+  hoursOnDate,
   isTime,
   MAX_WAVE_CAPACITY,
   minutesOverlap,
   planAbsorption,
   planStreamShift,
   sessionBlocks,
+  sessionRunsOn,
   STREAM_SLOT_MINUTES,
   toMinutes,
   WAVE_MINUTES,
@@ -175,6 +177,23 @@ function formatDuration(minutes: number): string {
   return `${minutes}m`;
 }
 
+function formatDateHeading(iso: string): string {
+  const [, month, day] = iso.split("-").map(Number);
+  const dayName = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][weekdayIndex(iso)];
+  const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][(month ?? 1) - 1];
+  return `${dayName}, ${day} ${monthName}`;
+}
+
+function weekOffsetForDate(target: string, baseToday: string): number {
+  try {
+    const mTarget = new Date(mondayOf(target) + "T00:00:00Z").getTime();
+    const mBase = new Date(mondayOf(baseToday) + "T00:00:00Z").getTime();
+    return Math.round((mTarget - mBase) / (7 * 24 * 60 * 60 * 1000));
+  } catch {
+    return 0;
+  }
+}
+
 export function SessionStudio({
   doctorId,
   doctorName,
@@ -215,6 +234,7 @@ export function SessionStudio({
     [initialSessionId, sessions, startInCreateMode],
   );
 
+  const initialTarget = initialDate || initialSession?.onDate || today;
   const [editingId, setEditingId] = useState<string | null>(() => initialSession?.id ?? null);
   const [isCreateMode, setIsCreateMode] = useState<boolean>(() => startInCreateMode || sessions.length === 0);
   const [draft, setDraft] = useState<StudioDraft>(() =>
@@ -222,6 +242,11 @@ export function SessionStudio({
   );
   const [showWheels, setShowWheels] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
+  const [studioWeekOffset, setStudioWeekOffset] = useState<number>(() =>
+    weekOffsetForDate(initialTarget, today),
+  );
+  const [selectedDate, setSelectedDate] = useState<string>(() => initialTarget);
+  const [showAllSessions, setShowAllSessions] = useState(false);
 
   const [state, formAction] = useActionState(saveSession, null as FormState);
 
@@ -244,6 +269,10 @@ export function SessionStudio({
     setEditingId(session.id);
     setDraft(createDraft(session, room, today));
     setConfirmRetire(false);
+    if (session.onDate) {
+      setSelectedDate(session.onDate);
+      setStudioWeekOffset(weekOffsetForDate(session.onDate, today));
+    }
   };
 
   const startCreate = () => {
@@ -251,7 +280,65 @@ export function SessionStudio({
     setEditingId(null);
     setDraft(createDraft(null, room, today, initialDate));
     setConfirmRetire(false);
+    if (initialDate) {
+      setSelectedDate(initialDate);
+      setStudioWeekOffset(weekOffsetForDate(initialDate, today));
+    }
   };
+
+  const studioMonday = useMemo(
+    () => addDays(mondayOf(today), studioWeekOffset * 7),
+    [today, studioWeekOffset],
+  );
+
+  const weekDays = useMemo(() => {
+    const liveSessions = sessions.filter((s) => !s.archivedAt);
+    const DOW_THREE_LETTERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = addDays(studioMonday, i);
+      const dayIdx = weekdayIndex(date);
+      const dow = DOW_THREE_LETTERS[dayIdx];
+      const num = dayOfMonth(date);
+      const isToday = date === today;
+      const isSelected = !showAllSessions && date === selectedDate;
+
+      const dateSessions = liveSessions.filter((s) => {
+        const hours = hoursOnDate(s, date, trims, liveSessions);
+        return Boolean(hours);
+      });
+
+      return {
+        date,
+        dow,
+        num,
+        isToday,
+        isSelected,
+        sessionCount: dateSessions.length,
+      };
+    });
+  }, [studioMonday, today, selectedDate, showAllSessions, sessions, trims]);
+
+  const selectedDateSessions = useMemo(() => {
+    if (!selectedDate) return [];
+    const liveSessions = sessions.filter((s) => !s.archivedAt);
+    return liveSessions
+      .map((session) => {
+        const hours = hoursOnDate(session, selectedDate, trims, liveSessions);
+        if (!hours) return null;
+        return {
+          session,
+          hours,
+          upcoming: upcomingCountBySession.get(session.id) ?? 0,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+      .sort((a, b) => a.hours.startTime.localeCompare(b.hours.startTime));
+  }, [selectedDate, sessions, trims, upcomingCountBySession]);
+
+  const draftAppliesToSelectedDate = useMemo(() => {
+    if (!selectedDate) return false;
+    return sessionRunsOn({ ...toSessionInput(draft), weekdays: [...draft.weekdays] }, selectedDate);
+  }, [draft, selectedDate]);
 
   const resetDraft = () => {
     if (editing) {
@@ -1083,98 +1170,301 @@ export function SessionStudio({
           ) : null}
         </Card>
 
-        {/* RIGHT PANEL — "Calendar Preview" (stacked preview cards matching Sketch 2) */}
-        <aside aria-label="Calendar preview" className="min-w-0 space-y-4">
+        {/* RIGHT PANEL — Week Day Strip & Sessions on Date */}
+        <aside aria-label="Schedule calendar and sessions" className="min-w-0 space-y-4">
           <Card className="min-w-0 overflow-hidden rounded-sheet p-5">
+            {/* Week navigation row */}
             <div className="flex items-center justify-between gap-2 border-b border-hairline pb-3">
-              <h2 className="text-title3 font-semibold text-ink">Calendar Preview</h2>
-              <span className="rounded-full bg-surface-2 px-2.5 py-0.5 text-caption font-medium text-ink-2">
-                Live
-              </span>
-            </div>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-callout font-bold text-ink truncate">
+                  {weekTitle(studioMonday)}
+                </span>
+                {studioWeekOffset !== 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStudioWeekOffset(0);
+                      setSelectedDate(today);
+                      setShowAllSessions(false);
+                    }}
+                    className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent hover:bg-accent-soft/80 transition-colors"
+                  >
+                    This week
+                  </button>
+                ) : null}
+              </div>
 
-            {/* Stack Card 1: Draft summary block */}
-            <div className="mt-4 min-w-0 rounded-card border border-hairline bg-surface-2 p-4">
-              <div className="flex items-center justify-between gap-2 min-w-0">
-                <span className="truncate min-w-0 flex-1 text-callout font-semibold text-ink">{sessionHeading}</span>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                    draft.mode === "wave" ? "bg-warn-soft text-warn" : "bg-accent-soft text-accent"
-                  }`}
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setStudioWeekOffset((v) => v - 1)}
+                  aria-label="Previous week"
+                  className="!min-h-8 !px-2"
                 >
-                  {draft.mode === "wave" ? "Wave" : "Stream"}
-                </span>
-              </div>
-              <p className="mt-2 text-body font-semibold text-ink tabular">
-                {minutesLabel(startMin)} – {minutesLabel(endMin)}
-              </p>
-              <p className="mt-1 text-caption text-ink-2">
-                {isRecurring
-                  ? `${draft.weekdays.map((d) => WEEKDAY_NAMES[d - 1]).join(", ") || "No days"} · ${
-                      draft.startDate ? formatShortDate(draft.startDate) : "No start"
-                    } to ${draft.endDate ? formatShortDate(draft.endDate) : "Open"}`
-                  : draft.onDate
-                    ? `One-off · ${formatShortDate(draft.onDate)}`
-                    : "Pick a date"}
-              </p>
-              <div className="mt-3 flex items-center justify-between border-t border-hairline pt-2.5 text-caption text-muted">
-                <span className="inline-flex items-center gap-1">
-                  <Pin size={13} />
-                  {draft.room || "Room pending"}
-                </span>
-                <span className="tabular font-medium text-ink">
-                  {newPlaces} {draft.mode === "stream" ? "slots" : "tokens"}
-                </span>
+                  <ChevronLeft size={14} />
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setStudioWeekOffset((v) => v + 1)}
+                  aria-label="Next week"
+                  className="!min-h-8 !px-2"
+                >
+                  <ChevronRight size={14} />
+                </Button>
               </div>
             </div>
 
-            {/* Stack Card 2: Existing sessions quick switcher */}
-            <div className="mt-4 min-w-0 overflow-hidden rounded-card border border-hairline bg-surface-2/60 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-callout font-semibold text-ink">Your sessions</h3>
-                <span className="text-caption text-muted tabular">{sessions.length}</span>
-              </div>
-              {sessions.length === 0 ? (
-                <p className="mt-2 text-caption text-muted">
-                  No saved sessions yet. Submit the form on the left to publish your first one.
+            {/* Three-letter weekday buttons with date number below */}
+            <div className="mt-3 grid grid-cols-7 gap-1.5" role="tablist" aria-label="Week days">
+              {weekDays.map((day) => {
+                return (
+                  <button
+                    key={day.date}
+                    type="button"
+                    role="tab"
+                    aria-selected={day.isSelected}
+                    aria-label={`${day.dow} ${day.num}, ${day.sessionCount} ${day.sessionCount === 1 ? "session" : "sessions"}`}
+                    onClick={() => {
+                      setSelectedDate(day.date);
+                      setShowAllSessions(false);
+                    }}
+                    className={`group relative flex flex-col items-center justify-center rounded-xl p-2 text-center transition-all ${
+                      day.isSelected
+                        ? "border border-accent bg-accent text-accent-ink shadow-sm"
+                        : day.isToday
+                          ? "border border-accent/40 bg-accent-soft/30 text-ink hover:bg-accent-soft/50"
+                          : "border border-hairline bg-surface hover:border-control hover:bg-fill text-ink"
+                    }`}
+                  >
+                    <span
+                      className={`text-[11px] font-semibold tracking-wider uppercase ${
+                        day.isSelected ? "text-accent-ink" : "text-muted group-hover:text-ink"
+                      }`}
+                    >
+                      {day.dow}
+                    </span>
+                    <span
+                      className={`mt-0.5 text-callout font-bold tabular ${
+                        day.isSelected ? "text-accent-ink" : "text-ink"
+                      }`}
+                    >
+                      {day.num}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`mt-1 size-1.5 rounded-full transition-colors ${
+                        day.sessionCount > 0
+                          ? day.isSelected
+                            ? "bg-accent-ink"
+                            : "bg-accent"
+                          : "bg-transparent"
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Section heading: Sessions on selected date (or All sessions) */}
+            <div className="mt-5 flex items-center justify-between gap-2 border-t border-hairline pt-4">
+              <div className="min-w-0">
+                <h3 className="text-callout font-bold text-ink truncate">
+                  {showAllSessions
+                    ? "All sessions"
+                    : `Sessions on ${formatDateHeading(selectedDate)}`}
+                </h3>
+                <p className="text-caption text-muted">
+                  {showAllSessions
+                    ? `${sessions.length} total active ${sessions.length === 1 ? "session" : "sessions"}`
+                    : `${selectedDateSessions.length} ${
+                        selectedDateSessions.length === 1 ? "session" : "sessions"
+                      } scheduled`}
                 </p>
-              ) : (
-                <AnimatedList className="mt-3 gap-2 w-full min-w-0 max-w-full p-0 m-0 list-none">
-                  {sessions.map((session, index) => {
-                    const selected = !isCreateMode && editing?.id === session.id;
-                    const upcoming = upcomingCountBySession.get(session.id) ?? 0;
-                    return (
-                      <AnimatedListItem key={session.id} index={index} selected={selected} className="min-w-0 w-full max-w-full p-0 m-0 list-none">
-                        <button
-                          type="button"
-                          onClick={() => selectSession(session)}
-                          aria-pressed={selected}
-                          className={`group block w-full min-w-0 max-w-full overflow-hidden rounded-xl border p-3 text-left transition-colors box-border ${
-                            selected
-                              ? "border-accent bg-accent-soft/75 dark:bg-accent/20"
-                              : "border-hairline bg-surface hover:border-control hover:bg-fill"
-                          }`}
+              </div>
+
+              {sessions.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllSessions((prev) => !prev)}
+                  className="shrink-0 text-caption font-semibold text-accent hover:underline"
+                >
+                  {showAllSessions ? "Filter by date" : `View all (${sessions.length})`}
+                </button>
+              ) : null}
+            </div>
+
+            {/* Sessions list */}
+            <div className="mt-3">
+              {showAllSessions ? (
+                // Full directory of sessions
+                sessions.length === 0 ? (
+                  <p className="py-4 text-center text-caption text-muted">
+                    No saved sessions yet.
+                  </p>
+                ) : (
+                  <AnimatedList className="gap-2 w-full min-w-0 max-w-full p-0 m-0 list-none">
+                    {sessions.map((session, index) => {
+                      const selected = !isCreateMode && editing?.id === session.id;
+                      const upcoming = upcomingCountBySession.get(session.id) ?? 0;
+                      return (
+                        <AnimatedListItem
+                          key={session.id}
+                          index={index}
+                          selected={selected}
+                          className="min-w-0 w-full max-w-full p-0 m-0 list-none"
                         >
-                          <div className="flex items-center justify-between gap-2 min-w-0 w-full">
-                            <span className="truncate min-w-0 flex-1 text-callout font-semibold text-ink">
-                              {session.label || (session.mode === "wave" ? "Wave session" : "Stream session")}
-                            </span>
-                            <span className="shrink-0 text-[11px] font-medium text-muted tabular">
-                              {session.startTime}–{session.endTime}
-                            </span>
-                          </div>
-                          <p className="mt-1 line-clamp-2 text-caption text-ink-2 break-words">
-                            {describeSession(session)}
-                          </p>
-                          <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted tabular">
-                            <Users size={12} className="shrink-0" />
-                            <span>{upcoming} upcoming</span>
-                          </p>
-                        </button>
-                      </AnimatedListItem>
-                    );
-                  })}
-                </AnimatedList>
+                          <button
+                            type="button"
+                            onClick={() => selectSession(session)}
+                            aria-pressed={selected}
+                            className={`group block w-full min-w-0 max-w-full overflow-hidden rounded-xl border p-3 text-left transition-colors box-border ${
+                              selected
+                                ? "border-accent bg-accent-soft/75 dark:bg-accent/20"
+                                : "border-hairline bg-surface hover:border-control hover:bg-fill"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                              <span className="truncate min-w-0 flex-1 text-callout font-semibold text-ink">
+                                {session.label ||
+                                  (session.mode === "wave" ? "Wave session" : "Stream session")}
+                              </span>
+                              <span className="shrink-0 text-[11px] font-medium text-muted tabular">
+                                {session.startTime}–{session.endTime}
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-caption text-ink-2 break-words">
+                              {describeSession(session)}
+                            </p>
+                            <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted tabular">
+                              <Users size={12} className="shrink-0" />
+                              <span>{upcoming} upcoming</span>
+                            </p>
+                          </button>
+                        </AnimatedListItem>
+                      );
+                    })}
+                  </AnimatedList>
+                )
+              ) : (
+                // Filtered to selectedDate
+                <div className="space-y-2.5">
+                  {/* If user is creating a session for this date, show unsaved draft badge */}
+                  {isCreateMode && draftAppliesToSelectedDate ? (
+                    <div className="rounded-xl border border-dashed border-accent bg-accent-soft/20 p-3.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-callout font-semibold text-ink truncate">
+                          {draft.label || (draft.mode === "wave" ? "New wave session" : "New stream session")}
+                        </span>
+                        <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-ink">
+                          Draft in progress
+                        </span>
+                      </div>
+                      <p className="mt-1 text-caption font-medium text-ink tabular">
+                        {draft.startTime} – {draft.endTime} · {newPlaces} {draft.mode === "stream" ? "slots" : "tokens"}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted">
+                        📍 {draft.room || room || "Room pending"} · Unsaved
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {selectedDateSessions.length === 0 && (!isCreateMode || !draftAppliesToSelectedDate) ? (
+                    <div className="rounded-xl border border-dashed border-hairline bg-surface/50 px-4 py-6 text-center">
+                      <p className="text-callout font-semibold text-ink">
+                        No sessions on {formatDateHeading(selectedDate)}
+                      </p>
+                      <p className="mt-1 text-caption text-muted">
+                        No consulting hours scheduled for this date.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        onClick={() => {
+                          setIsCreateMode(true);
+                          setEditingId(null);
+                          setDraft(createDraft(null, room, today, selectedDate));
+                          setConfirmRetire(false);
+                        }}
+                        className="mt-3 inline-flex items-center gap-1.5"
+                      >
+                        <Plus size={14} />
+                        Add session on this date
+                      </Button>
+                    </div>
+                  ) : (
+                    <AnimatedList className="gap-2 w-full min-w-0 max-w-full p-0 m-0 list-none">
+                      {selectedDateSessions.map(({ session, hours, upcoming }, index) => {
+                        const isBeingEdited = !isCreateMode && editing?.id === session.id;
+                        const isWave = session.mode === "wave";
+                        return (
+                          <AnimatedListItem
+                            key={session.id}
+                            index={index}
+                            selected={isBeingEdited}
+                            className="min-w-0 w-full max-w-full p-0 m-0 list-none"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => selectSession(session)}
+                              aria-pressed={isBeingEdited}
+                              className={`group block w-full min-w-0 max-w-full overflow-hidden rounded-xl border p-3.5 text-left transition-colors box-border ${
+                                isBeingEdited
+                                  ? "border-accent bg-accent-soft/75 dark:bg-accent/20 ring-1 ring-accent"
+                                  : "border-hairline bg-surface hover:border-control hover:bg-fill"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                                <span className="truncate min-w-0 flex-1 text-callout font-semibold text-ink">
+                                  {session.label || (isWave ? "Wave session" : "Stream session")}
+                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {isBeingEdited ? (
+                                    <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-ink">
+                                      Editing now
+                                    </span>
+                                  ) : null}
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                      isWave ? "bg-warn-soft text-warn" : "bg-accent-soft text-accent"
+                                    }`}
+                                  >
+                                    {isWave ? "Wave" : "Stream"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p className="mt-1 text-body font-semibold text-ink tabular">
+                                {hours.startTime} – {hours.endTime}
+                              </p>
+
+                              <p className="mt-1 text-caption text-ink-2">
+                                {session.onDate
+                                  ? "One-off session"
+                                  : `Repeats ${daysLabel(session)}`}
+                              </p>
+
+                              <div className="mt-2.5 flex items-center justify-between border-t border-hairline/60 pt-2 text-caption text-muted">
+                                <span className="inline-flex items-center gap-1">
+                                  <Pin size={12} />
+                                  {session.room || "Room pending"}
+                                </span>
+                                <span className="inline-flex items-center gap-1 tabular">
+                                  <Users size={12} />
+                                  <span>{upcoming} upcoming</span>
+                                </span>
+                              </div>
+                            </button>
+                          </AnimatedListItem>
+                        );
+                      })}
+                    </AnimatedList>
+                  )}
+                </div>
               )}
             </div>
           </Card>
