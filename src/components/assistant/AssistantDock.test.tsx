@@ -166,6 +166,139 @@ describe("AssistantDock thinking line", () => {
   });
 });
 
+describe("AssistantDock cancel", () => {
+  function deferredFetch() {
+    let resolve: (value: unknown) => void = () => {};
+    const fetchMock = vi.fn().mockImplementation(() => new Promise((done) => {
+      resolve = done;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    return { fetchMock, resolve: (value: unknown) => resolve(value) };
+  }
+
+  function ask(text: string) {
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.keyDown(box, { key: "Enter" });
+  }
+
+  it("turns Send into an enabled Cancel while a reply is on its way", async () => {
+    deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+
+    const cancel = await screen.findByRole("button", { name: "Cancel request" });
+    expect(cancel).toHaveTextContent("Cancel");
+    expect(cancel).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+  });
+
+  it("stops the request on Cancel, leaves the user message, and does not show an error", async () => {
+    const { fetchMock, resolve } = deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+
+    const cancel = await screen.findByRole("button", { name: "Cancel request" });
+    fireEvent.click(cancel);
+
+    const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
+    expect(init.signal.aborted).toBe(true);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Checking the book/)).not.toBeInTheDocument();
+    expect(screen.getByText("How many sessions today?")).toBeInTheDocument();
+    expect(screen.queryByText(/aborted/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/The user aborted/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+
+    await act(async () => {
+      resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
+    });
+    expect(screen.queryByText("You have two sessions today.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "What about tomorrow?" } });
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  it("does not cancel when Enter is pressed while a reply is on its way", async () => {
+    const { fetchMock } = deferredFetch();
+    openDock();
+    ask("Hello");
+    await screen.findByRole("button", { name: "Cancel request" });
+    fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
+    expect(init.signal.aborted).toBe(false);
+    expect(screen.getByRole("button", { name: "Cancel request" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+  });
+
+  it("cancels a confirmation in flight and keeps the pending card", async () => {
+    let resolveConfirm: (value: unknown) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          reply: "I can take that visit off the book.",
+          pending: {
+            token: "tok-1",
+            title: "Cancel this visit",
+            summary: "Remove the 10:00 visit with Dr Doom.",
+            confirmLabel: "Take it off the book",
+            expiresAt: "2026-11-13T10:00:00.000Z",
+          },
+        }),
+      })
+      .mockImplementationOnce(() => new Promise((done) => {
+        resolveConfirm = done;
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    ask("Cancel my 10:00 visit");
+
+    expect(await screen.findByText("Cancel this visit")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Take it off the book" }));
+
+    const cancel = await screen.findByRole("button", { name: "Cancel request" });
+    fireEvent.click(cancel);
+
+    const confirmInit = fetchMock.mock.calls[1]?.[1] as { signal: AbortSignal };
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/assistant/confirm");
+    expect(confirmInit.signal.aborted).toBe(true);
+    expect(screen.getByText("Cancel this visit")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Take it off the book" })).toBeEnabled();
+    expect(document.querySelector(".thought-line[data-working]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+
+    await act(async () => {
+      resolveConfirm({ ok: true, json: async () => ({ reply: "Done." }) });
+    });
+    expect(screen.queryByText("Done.")).not.toBeInTheDocument();
+    expect(screen.getByText("Cancel this visit")).toBeInTheDocument();
+  });
+
+  it("aborts an in-flight request when the panel is closed", async () => {
+    const { fetchMock, resolve } = deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+    await screen.findByRole("status");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
+    expect(init.signal.aborted).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    await act(async () => {
+      resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
+    });
+    expect(screen.queryByText("You have two sessions today.")).not.toBeInTheDocument();
+    expect(screen.getByText("How many sessions today?")).toBeInTheDocument();
+  });
+});
+
 describe("AssistantDock voice", () => {
   it("asks for the microphone on Speak, then releases that stream and starts listening", async () => {
     vi.stubGlobal("SpeechRecognition", FakeRecognition);

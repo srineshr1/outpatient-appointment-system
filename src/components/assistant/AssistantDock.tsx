@@ -71,6 +71,13 @@ function localeFor(text: string): "hi-IN" | "en-IN" {
   return /\p{Script=Devanagari}/u.test(text) ? "hi-IN" : "en-IN";
 }
 
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 function expiryLabel(iso: string): string {
   const when = new Date(iso);
   if (Number.isNaN(when.getTime())) return "soon";
@@ -265,6 +272,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const finishSpeechRef = useRef<(() => void) | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const turnSeqRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -337,7 +345,25 @@ export function AssistantDock({ user }: { user: DockUser }) {
     setOpen(true);
   }
 
+  function abortInFlight() {
+    const controller = abortRef.current;
+    if (controller) {
+      abortRef.current = null;
+      controller.abort();
+    }
+    setWaiting(false);
+    setLiveTurn(null);
+    busyRef.current = false;
+    queuedRef.current = null;
+  }
+
+  function cancelRequest() {
+    abortInFlight();
+    if (voiceOnRef.current) startListen();
+  }
+
   function closePanel() {
+    abortInFlight();
     voiceOff("");
     dragCleanupRef.current?.();
     setOpen(false);
@@ -688,18 +714,23 @@ export function AssistantDock({ user }: { user: DockUser }) {
     setMessages(history);
     const turn = ++turnSeqRef.current;
     const startedAt = performance.now();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLiveTurn(turn);
     setWaiting(true);
     try {
       const response = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: history.map(({ role, content }) => ({ role, content })),
           pendingToken: pendingRef.current?.token ?? null,
         }),
       });
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       const data = (await response.json()) as TurnResponse;
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       if (!response.ok) throw new Error(data.message || "The assistant couldn't answer.");
       const reply = data.reply?.trim() || "I couldn't put that into words. Please ask again.";
       const next = [
@@ -719,17 +750,21 @@ export function AssistantDock({ user }: { user: DockUser }) {
       pendingRef.current = data.pending ?? null;
       if (voiceOnRef.current) await speak(reply);
     } catch (error) {
+      if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
       const reply = error instanceof Error ? error.message : "Something went wrong.";
       const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt) }];
       messagesRef.current = next;
       setMessages(next);
     } finally {
-      setWaiting(false);
-      busyRef.current = false;
-      const queued = queuedRef.current;
-      queuedRef.current = null;
-      if (queued && voiceOnRef.current) void send(queued);
-      else if (voiceOnRef.current) startListen();
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setWaiting(false);
+        busyRef.current = false;
+        const queued = queuedRef.current;
+        queuedRef.current = null;
+        if (queued && voiceOnRef.current) void send(queued);
+        else if (voiceOnRef.current) startListen();
+      }
     }
   }
 
@@ -740,15 +775,20 @@ export function AssistantDock({ user }: { user: DockUser }) {
     pauseListen();
     const turn = ++turnSeqRef.current;
     const startedAt = performance.now();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLiveTurn(turn);
     setWaiting(true);
     try {
       const response = await fetch("/api/assistant/confirm", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ token: card.token, decision }),
       });
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       const data = (await response.json()) as TurnResponse;
+      if (controller.signal.aborted || abortRef.current !== controller) return;
       if (!response.ok) throw new Error(data.message || "That confirmation didn't go through.");
       const reply = data.reply?.trim() || "Done.";
       const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt), ...(data.payUrl ? { payUrl: data.payUrl } : {}) }];
@@ -758,14 +798,18 @@ export function AssistantDock({ user }: { user: DockUser }) {
       pendingRef.current = null;
       if (voiceOnRef.current) await speak(reply);
     } catch (error) {
+      if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
       const reply = error instanceof Error ? error.message : "That confirmation didn't go through.";
       const next = [...messagesRef.current, { role: "assistant" as const, content: reply, turn, thoughtFor: secondsSince(startedAt) }];
       messagesRef.current = next;
       setMessages(next);
     } finally {
-      setWaiting(false);
-      busyRef.current = false;
-      if (voiceOnRef.current) startListen();
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setWaiting(false);
+        busyRef.current = false;
+        if (voiceOnRef.current) startListen();
+      }
     }
   }
 
@@ -917,7 +961,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
             className="flex items-center gap-2 border-t border-hairline p-3"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!waiting) void send(interim || draft);
+              // A leftover Enter in the box does not submit the form (see onKeyDown), so this
+              // path is the Send/Cancel button. While a reply is on its way, treat it as Cancel.
+              if (waiting) cancelRequest();
+              else void send(interim || draft);
             }}
           >
             <label className="sr-only" htmlFor={`${titleId}-input`}>Message</label>
@@ -932,6 +979,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
                   event.preventDefault();
+                  // Enter does nothing while a request is in flight, so a leftover Enter cannot cancel it.
                   if (!waiting) void send(interim || draft);
                 }}
                 placeholder={listening ? "Listening…" : "Ask about a visit"}
@@ -956,9 +1004,15 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 )}
               </button>
             </div>
-            <button type="submit" className={`${buttonClass("primary")} h-12`} disabled={waiting || !(interim || draft).trim()}>
-              Send
-            </button>
+            {waiting ? (
+              <button type="button" className={`${buttonClass("secondary")} h-12`} aria-label="Cancel request" onClick={cancelRequest}>
+                Cancel
+              </button>
+            ) : (
+              <button type="submit" className={`${buttonClass("primary")} h-12`} disabled={!(interim || draft).trim()}>
+                Send
+              </button>
+            )}
           </form>
         </dialog>
       ) : null}
