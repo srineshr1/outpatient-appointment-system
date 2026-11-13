@@ -35,8 +35,8 @@ interface ChatMessage {
   thoughtFor?: number;
 }
 
-/** Fits the dock's text-callout size (0.9375rem). */
-const THOUGHT_FONT_SIZE = 15;
+/** A 16px label stays readable above a reply, including on a white dock. */
+const THOUGHT_FONT_SIZE = 16;
 
 function secondsSince(startedAt: number): number {
   return Math.round((performance.now() - startedAt) / 100) / 10;
@@ -48,7 +48,7 @@ function secondsSince(startedAt: number): number {
  */
 function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }) {
   return (
-    <div className="text-callout text-ink-2">
+    <div className="text-callout font-semibold text-ink">
       <ThoughtLine
         className="clinic-thought-line"
         working={working}
@@ -56,6 +56,8 @@ function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }
         label="Checking the book…"
         glyph="sparkle"
         fontSize={THOUGHT_FONT_SIZE}
+        breathDepth={0}
+        color="#1d1d1f"
         collapsible
         collapseOnSettle
         showTimer
@@ -196,6 +198,8 @@ export const MIC_BLOCKED =
 export const NO_MIC = "No microphone was found. Connect one and press Speak again, or type instead.";
 export const MIC_BUSY = "Another app is using the microphone. Close it and press Speak again, or type instead.";
 export const NO_RECOGNITION = "This browser can't turn speech into text. You can type instead, or try Chrome or Edge.";
+/** After this much silence with no new speech results, send what was heard once. */
+export const LISTEN_SILENCE_MS = 1800;
 const MIC_FAILED = "The microphone didn't start. Press Speak to try again, or type instead.";
 
 /** Why getUserMedia failed, as a message for the dock. */
@@ -305,6 +309,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const messagesRef = useRef<ChatMessage[]>([]);
   const requestingRef = useRef(false);
   const interimRef = useRef("");
+  const finalsRef = useRef("");
+  const silenceTimerRef = useRef(0);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const finishSpeechRef = useRef<(() => void) | null>(null);
@@ -351,6 +357,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
     () => () => {
       wantListenRef.current = false;
       voiceOnRef.current = false;
+      if (silenceTimerRef.current) window.clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = 0;
       recRef.current?.abort();
       recRef.current = null;
       bargeRef.current?.();
@@ -486,14 +494,29 @@ export function AssistantDock({ user }: { user: DockUser }) {
     bargeRef.current = null;
   }
 
+  function clearSilenceTimer() {
+    if (silenceTimerRef.current) window.clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = 0;
+  }
+
+  function clearHeard() {
+    finalsRef.current = "";
+    interimRef.current = "";
+    setInterim("");
+  }
+
+  function heardText() {
+    return `${finalsRef.current}${interimRef.current}`.replace(/\s+/g, " ").trim();
+  }
+
   function pauseListen() {
     wantListenRef.current = false;
+    clearSilenceTimer();
     const rec = recRef.current;
     recRef.current = null;
     rec?.abort();
     setListening(false);
-    interimRef.current = "";
-    setInterim("");
+    clearHeard();
   }
 
   /** Turn voice fully off: no recognition, no speech, no open microphone. */
@@ -528,31 +551,54 @@ export function AssistantDock({ user }: { user: DockUser }) {
     wantListenRef.current = true;
     if (!voiceOnRef.current || speakingRef.current || busyRef.current || recRef.current) return;
     const rec = new Ctor();
-    // One utterance, then the browser ends the session after a short pause.
-    rec.continuous = false;
+    // Keep listening across short pauses; a silence timer decides when the utterance is finished.
+    rec.continuous = true;
     rec.interimResults = true;
     rec.lang = localeRef.current;
     let fatal = false;
+    clearSilenceTimer();
+    clearHeard();
+
+    function armSilenceTimer() {
+      clearSilenceTimer();
+      silenceTimerRef.current = window.setTimeout(() => {
+        silenceTimerRef.current = 0;
+        if (recRef.current !== rec || !wantListenRef.current) return;
+        commitHeard();
+      }, LISTEN_SILENCE_MS);
+    }
+
+    function commitHeard() {
+      clearSilenceTimer();
+      const heard = heardText();
+      clearHeard();
+      if (fatal) return;
+      if (
+        heard &&
+        voiceOnRef.current &&
+        Date.now() >= ignoreUntilRef.current &&
+        !isEcho(heard, lastSpokenRef.current)
+      ) {
+        setLocale(detectLanguage(heard, localeRef.current).locale);
+        // Turn voice off synchronously after starting the send so finally cannot reopen the mic.
+        void send(heard);
+      }
+      if (voiceOnRef.current) voiceOff("");
+    }
+
     rec.onresult = (event) => {
       if (recRef.current !== rec || !wantListenRef.current || speakingRef.current) return;
-      let finalText = "";
+      let addedFinal = "";
       let partial = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const piece = event.results[i]?.[0]?.transcript ?? "";
-        if (event.results[i]?.isFinal) finalText += piece;
+        if (event.results[i]?.isFinal) addedFinal += piece;
         else partial += piece;
       }
+      if (addedFinal) finalsRef.current += addedFinal;
       interimRef.current = partial;
-      setInterim(partial);
-      const heard = finalText.trim();
-      if (!heard) return;
-      setLocale(detectLanguage(heard, localeRef.current).locale);
-      if (Date.now() < ignoreUntilRef.current || isEcho(heard, lastSpokenRef.current)) return;
-      interimRef.current = "";
-      setInterim("");
-      // Turn voice off synchronously after starting the send so finally cannot reopen the mic.
-      void send(heard);
-      voiceOff("");
+      setInterim(`${finalsRef.current}${partial}`);
+      armSilenceTimer();
     };
     rec.onerror = (event) => {
       if (recRef.current !== rec) return;
@@ -566,7 +612,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
               : event.error === "language-not-supported"
                 ? "This browser can't recognise speech in this language. You can type instead."
                 : null;
-      // "no-speech" and "aborted" are routine; onend turns the mic off after a pause.
+      // "no-speech" and "aborted" are routine; the silence timer or onend turns the mic off.
       if (!note) return;
       fatal = true;
       voiceOff(note);
@@ -575,26 +621,14 @@ export function AssistantDock({ user }: { user: DockUser }) {
       if (recRef.current !== rec) return;
       recRef.current = null;
       setListening(false);
-      const leftover = interimRef.current.trim();
-      interimRef.current = "";
-      setInterim("");
-      if (fatal) return;
-      // Some browsers end the session without marking the last words final. Send them once.
-      if (
-        leftover &&
-        voiceOnRef.current &&
-        Date.now() >= ignoreUntilRef.current &&
-        !isEcho(leftover, lastSpokenRef.current)
-      ) {
-        void send(leftover);
-      }
-      // A finished (or silent) session should not keep the pill latched on.
-      if (voiceOnRef.current) voiceOff("");
+      // A finished session sends what was accumulated once and does not restart.
+      commitHeard();
     };
     recRef.current = rec;
     try {
       rec.start();
       setListening(true);
+      armSilenceTimer();
     } catch {
       recRef.current = null;
       voiceOff(MIC_FAILED);
