@@ -98,6 +98,74 @@ describe("AssistantDock", () => {
   });
 });
 
+describe("AssistantDock thinking line", () => {
+  function deferredFetch() {
+    let resolve: (value: unknown) => void = () => {};
+    const fetchMock = vi.fn().mockReturnValue(new Promise((done) => (resolve = done)));
+    vi.stubGlobal("fetch", fetchMock);
+    return { fetchMock, resolve };
+  }
+
+  function ask(text: string) {
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.keyDown(box, { key: "Enter" });
+  }
+
+  it("breathes while a reply is on its way, then settles above that reply", async () => {
+    const { resolve } = deferredFetch();
+    openDock();
+    ask("How many sessions today?");
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Checking the book…");
+    const line = status.closest(".thought-line") as HTMLElement;
+    expect(line).toHaveAttribute("data-working");
+    // The old plain paragraph is gone; the label lives inside the line.
+    expect(screen.getAllByText("Checking the book…").every((el) => el.tagName !== "P" && line.contains(el))).toBe(true);
+
+    await act(async () => {
+      resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
+    });
+
+    const reply = await screen.findByText("You have two sessions today.");
+    // Same element, so the line crossfades rather than being swapped out.
+    expect(line.isConnected).toBe(true);
+    expect(line).not.toHaveAttribute("data-working");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Thought for \d+\.\d seconds$/));
+    expect(line.querySelector(".thought-line__timer")?.textContent).toMatch(/^\d+\.\ds$/);
+    expect(line.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("settles when the request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({ message: "The assistant is busy." }) }));
+    openDock();
+    ask("Hello");
+    expect(await screen.findByText("The assistant is busy.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^Thought for/));
+    expect(screen.getByRole("status").closest(".thought-line")).not.toHaveAttribute("data-working");
+  });
+
+  it("starts a new line for the next question and keeps the earlier one settled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ reply: "First answer." }) })
+        .mockReturnValueOnce(new Promise(() => {})),
+    );
+    openDock();
+    ask("First?");
+    await screen.findByText("First answer.");
+    ask("Second?");
+    await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("status")[0]).toHaveTextContent(/^Thought for/));
+    const [, second] = screen.getAllByRole("status");
+    expect(second).toHaveTextContent("Checking the book…");
+    expect(second?.closest(".thought-line")).toHaveAttribute("data-working");
+  });
+});
+
 describe("AssistantDock voice", () => {
   it("asks for the microphone on Speak, then releases that stream and starts listening", async () => {
     vi.stubGlobal("SpeechRecognition", FakeRecognition);
