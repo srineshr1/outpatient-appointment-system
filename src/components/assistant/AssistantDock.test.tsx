@@ -713,3 +713,56 @@ describe("AssistantDock resize", () => {
     expect(screen.getByRole("dialog").style.width).toBe("");
   });
 });
+
+describe("AssistantDock scrolling and thought line contrast", () => {
+  it("makes the message list the only scrolling region inside the dock", () => {
+    openDock();
+    const panel = screen.getByRole("dialog");
+    // A flex column with a bounded height clips its children unless they can shrink.
+    // min-h-0 on the panel and the scroller is what lets overflow-y-auto actually scroll.
+    expect(panel.className.split(" ")).toEqual(
+      expect.arrayContaining(["flex", "flex-col", "min-h-0", "overflow-hidden"]),
+    );
+
+    const scroller = panel.querySelector("[aria-live='polite']");
+    expect(scroller).toBeInstanceOf(HTMLElement);
+    expect(scroller).toHaveClass("min-h-0", "flex-1", "overflow-y-auto", "overscroll-contain");
+    expect(scroller?.className).toContain("[-webkit-overflow-scrolling:touch]");
+
+    const header = screen.getByRole("button", { name: "Close" }).parentElement;
+    const form = panel.querySelector("form");
+    expect(header).toHaveClass("flex-shrink-0");
+    expect(form).toHaveClass("flex-shrink-0");
+    expect(form).toHaveClass("overflow-visible");
+    expect(header).not.toHaveClass("overflow-y-auto");
+    expect(form).not.toHaveClass("overflow-y-auto");
+
+    // jsdom does not do real flex layout, so scrollHeight > clientHeight cannot be
+    // asserted here. The classes above are what make a long conversation scroll
+    // in the browser: the scroller shrinks, and the header and composer stay put.
+  });
+
+  it("paints the thinking line in ink so the working and settled labels stay readable", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ reply: "You have two sessions today." }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "How many sessions today?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    const working = (await screen.findByRole("status")).closest(".thought-line") as HTMLElement;
+    expect(working).toHaveClass("clinic-thought-line");
+    expect(working.closest(".text-ink-2")).not.toBeNull();
+    expect(working.closest(".text-muted")).toBeNull();
+
+    await screen.findByText("You have two sessions today.");
+    const settled = screen.getByRole("status").closest(".thought-line") as HTMLElement;
+    expect(settled).toHaveClass("clinic-thought-line");
+    expect(settled).not.toHaveAttribute("data-working");
+    expect(settled.closest(".text-ink-2")).not.toBeNull();
+    expect(settled.closest(".text-muted")).toBeNull();
+  });
+});
