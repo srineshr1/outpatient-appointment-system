@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { DoctorDirectory } from "@/components/directory/DoctorDirectory";
-import { Calendar, Check, Clock, Lock, Phone, Pin } from "@/components/icons";
+import { Check, Clock, Lock, Phone, Pin } from "@/components/icons";
 import { useClock } from "@/components/providers/ClockProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import CardNav, { type CardNavItem } from "@/components/reactbits/CardNav";
@@ -61,8 +61,8 @@ const HOSPITAL_NAV_ITEMS: CardNavItem[] = [
     description: "5-star luxury recovery suites, Michelin-trained nutrition, and private concierge.",
     links: [
       { label: "Luxury Patient Care", href: "/patient-care" },
-      { label: "Presidential Suites", href: "/patient-care#suites" },
-      { label: "Dedicated Concierge", href: "/patient-care#concierge" },
+      { label: "Patient Sign In / Register", href: "/sign-in" },
+      { label: "Our Doctors & Hours", href: "/#doctors" },
       { label: "Healing Sensory Gardens", href: "/patient-care#wellness" },
     ],
   },
@@ -101,10 +101,10 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
   return (
     <>
       {/* ---------- Interactive CardNav Floating Navigation ---------- */}
-      <div className="relative z-30 pt-4 pb-1 px-4 max-w-5xl mx-auto">
+      <header className="relative z-30 pt-4 pb-1 px-4 sm:px-6 md:px-8 max-w-page mx-auto w-full">
         <CardNav
           logo={
-            <span className="flex items-center gap-2 font-bold tracking-tight text-ink text-sm sm:text-base">
+            <span className="flex items-center gap-2.5 font-bold tracking-tight text-ink text-sm sm:text-base">
               <span className="flex size-7 items-center justify-center rounded-lg bg-teal-600 text-white font-bold text-xs shadow-sm">
                 W
               </span>
@@ -124,9 +124,9 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
           surface="glass"
           cardEffect="rise"
           openOn="click"
-          maxWidth={820}
+          maxWidth={1248}
         />
-      </div>
+      </header>
 
       {/* ---------- Hero ---------- */}
       <section className="relative isolate overflow-hidden">
@@ -158,24 +158,6 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
               <p className="mt-4 max-w-prose text-title3 font-normal text-ink-2">
                 Choose one of our doctors, pick a time that suits you and get a calendar invite. No phone queue at 8am.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href={bookHref} className="btn-chunky btn-chunky-primary sm:w-auto">
-                  <Calendar size={20} />
-                  Book an appointment
-                </Link>
-                {role === null ? (
-                  <Link href="/sign-in" className="btn-chunky btn-chunky-secondary sm:w-auto">
-                    Create an account
-                  </Link>
-                ) : (
-                  <Link
-                    href={role === "patient" ? "/appointments" : "/dashboard"}
-                    className="btn-chunky btn-chunky-secondary sm:w-auto"
-                  >
-                    {role === "patient" ? "Your appointments" : "Clinic book"}
-                  </Link>
-                )}
-              </div>
               <ul className="mt-8 grid max-w-lg grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 text-callout text-ink-2">
                 <Perk>Pay online or at the desk</Perk>
                 <Perk>Book up to 4 weeks ahead</Perk>

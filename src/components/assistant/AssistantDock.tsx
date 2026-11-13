@@ -19,8 +19,8 @@ import type { DetectedLanguage } from "@/lib/assistant/language";
 import type { SlotLink } from "@/lib/assistant/slot-links";
 import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
-import { Magnet } from "@/components/reactbits/Magnet";
 import { buttonClass } from "@/components/ui/button-styles";
+import { MorphSurface } from "@/components/ui/morph-surface";
 import GlideSelect from "./GlideSelect";
 import type { GlideSelectOption } from "./GlideSelect";
 import ThoughtLine from "./ThoughtLine";
@@ -1060,27 +1060,36 @@ export function AssistantDock({ user }: { user: DockUser }) {
   return (
     <>
       {open ? null : (
-        <Magnet
-          padding={24}
-          magnetStrength={2}
-          maxOffset={5}
-          wrapperClassName={`fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 transition-[transform,opacity] duration-200 ${
+        <div
+          className={`fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 transition-[transform,opacity] duration-200 ${
             tucked ? "pointer-events-none translate-y-24 opacity-0" : ""
           }`}
-          style={{ position: "fixed" }}
         >
-          <button
-            ref={launcherRef}
-            type="button"
-            aria-label="Ask the clinic assistant"
-            className="grid size-14 place-items-center rounded-full bg-ink text-canvas shadow-raised transition-all hover:opacity-90 active:scale-95"
-            onClick={openPanel}
-          >
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
-              <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
-            </svg>
-          </button>
-        </Magnet>
+          <MorphSurface
+            triggerRef={launcherRef}
+            dockLabel="Clinic assistant"
+            triggerLabel="Ask"
+            triggerAriaLabel="Ask the clinic assistant"
+            onDockClick={openPanel}
+            triggerIcon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
+              </svg>
+            }
+            placeholder={user.role === "doctor" ? "Ask about your schedule or times..." : "Ask about a visit, doctor, or times..."}
+            collapsedWidth="auto"
+            collapsedHeight={44}
+            expandedWidth={360}
+            expandedHeight={200}
+            onExpand={openPanel}
+            onSubmit={async (formData) => {
+              const message = formData.get("message") as string;
+              if (!message?.trim()) return;
+              openPanel();
+              void send(message);
+            }}
+          />
+        </div>
       )}
       {open ? (
         <dialog

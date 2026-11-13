@@ -3,6 +3,7 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ArrowUpRight01Icon } from '@hugeicons/core-free-icons';
+import SpecularButton from './SpecularButton';
 import './CardNav.css';
 
 export interface CardNavLink {
@@ -453,19 +454,36 @@ export const CardNav: React.FC<CardNavProps> = ({
     );
   };
 
-  const ctaButton = (target: CardNavCta, wide: boolean) =>
-    anchor(
-      target,
-      {
-        className: wide ? CTA_WIDE : CTA,
-        tabIndex: wide && !open ? -1 : undefined,
-        onClick: (event: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
-          target.onClick?.(event);
-          if (wide) setOpen(false);
-        }
-      },
-      target.label
-    );
+  const ctaButton = (target: CardNavCta, wide: boolean) => (
+    <SpecularButton
+      size={wide ? 'md' : 'sm'}
+      radius={18}
+      tint={theme === 'dark' ? '#ffffff' : '#18181b'}
+      tintOpacity={theme === 'dark' ? 0.04 : 0.94}
+      textColor={theme === 'dark' ? '#f5f5f5' : '#ffffff'}
+      lineColor="#ffffff"
+      baseColor="#525252"
+      intensity={1}
+      idleIntensity={0.4}
+      shineSize={10}
+      shineFade={34}
+      thickness={1.2}
+      glow={1}
+      autoAnimate={true}
+      speed={0.35}
+      followMouse={true}
+      proximity={250}
+      href={target.href}
+      tabIndex={wide && !open ? -1 : undefined}
+      className={wide ? 'w-full' : 'justify-self-end'}
+      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+        target.onClick?.(event as any);
+        if (wide) setOpen(false);
+      }}
+    >
+      {target.label}
+    </SpecularButton>
+  );
 
   return (
     <div
