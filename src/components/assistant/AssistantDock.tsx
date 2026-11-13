@@ -40,6 +40,10 @@ interface ChatMessage {
 const THOUGHT_FONT_SIZE = 16;
 /** Solid theme ink (near-black on the light dock) so the line never washes out. */
 const THOUGHT_INK = "var(--color-ink, #1d1d1f)";
+/** The sparkle breathes while waiting. The words themselves never dim (see AssistantDock.css). */
+const THOUGHT_BREATH = 0.45;
+/** One pass of the sheen and the underline gleam. */
+const THOUGHT_SHIMMER_SECONDS = 1.8;
 
 /** Suggestion chips shown before the first message, by role. Each one is a real assistant task. */
 export const QUICK_PROMPTS = {
@@ -66,8 +70,9 @@ function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }
         glyph="sparkle"
         fontSize={THOUGHT_FONT_SIZE}
         color={THOUGHT_INK}
-        breathDepth={0}
-        shimmer={false}
+        breathDepth={THOUGHT_BREATH}
+        shimmer
+        shimmerDuration={THOUGHT_SHIMMER_SECONDS}
         collapsible
         collapseOnSettle
         showTimer
@@ -1012,7 +1017,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
           aria-labelledby={titleId}
           style={dockStyle}
           data-resizing={resizing ? "true" : undefined}
-          className="fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] min-h-0 w-auto max-w-none flex-col overflow-hidden rounded-t-3xl border border-hairline bg-surface p-0 text-ink shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
+          className="clinic-dock fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] min-h-0 w-auto max-w-none flex-col overflow-hidden rounded-t-3xl border border-hairline bg-surface p-0 text-ink shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
         >
           {isDesktop ? (
             <>

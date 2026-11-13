@@ -57,7 +57,7 @@ const sessionFields = {
 };
 
 const doctorTools: ToolSpec[] = [
-  { type: "function", name: "list_appointments", description: "Appointments on this doctor's book for one date, including who is coming. Never another doctor's book.", parameters: { type: "object", properties: { date }, required: ["date"] } },
+  { type: "function", name: "list_appointments", description: "This doctor's day for one date: the consulting sessions that run (times, stream or wave, places and how many are booked) and the appointments on the book, including who is coming. Use it for 'my schedule', 'my day' or 'today'. Never another doctor's book.", parameters: { type: "object", properties: { date }, required: ["date"] } },
   { type: "function", name: "appointment_stats", description: "Counts of confirmed, completed, cancelled, awaiting-payment and expired visits between two dates.", parameters: { type: "object", properties: { from: date, to: date }, required: ["from"] } },
   { type: "function", name: "working_hours", description: "Consulting sessions (shifts and working hours) with their ids. Omit date for the weekly pattern. Leave is not stored.", parameters: { type: "object", properties: { date } } },
   { type: "function", name: "propose_add_session", description: "Prepare adding a consulting session (stream or wave). A one-off session on one date unless the doctor asks for a weekly one. Runs the Schedule editor's checks. Does not add it until the doctor confirms.", parameters: { type: "object", properties: { date: { ...date, description: "The date (a one-off session), or the first date of a weekly one. 'today' and 'tomorrow' are accepted." }, ...sessionFields }, required: ["date", "startTime", "endTime"] } },

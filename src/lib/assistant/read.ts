@@ -11,7 +11,7 @@ import { paymentHistory, refundStatusLabel } from "../payments/summary";
 import { paymentLine, summarise } from "../payments";
 import { getSlots } from "../repository";
 import { nextOpening, openSlots, slotStart } from "../schedule";
-import { daysLabel, fromMinutes, isIsoDate, overriddenDates, sessionShownOn, toMinutes } from "../sessions";
+import { daysLabel, fromMinutes, hoursOnDate, isIsoDate, overriddenDates, sessionBlocks, sessionShownOn, toMinutes } from "../sessions";
 import { getStore } from "../store";
 import { visitsFor } from "../visits";
 
@@ -65,19 +65,77 @@ function statusCounts(visits: readonly AppointmentRecord[]): Record<AppointmentS
   return { ...counts, total: visits.length };
 }
 
+/** Visits that still take a place in a session: booked, held for payment, or already seen. */
+function holdsPlace(visit: AppointmentRecord): boolean {
+  return visit.status === "booked" || visit.status === "pending_payment" || visit.status === "completed";
+}
+
+/** Places a session offers on a date once its saved hours (and any free-edge cuts) are applied. */
+function placesIn(session: ConsultSession, hours: { startTime: string; endTime: string }): number {
+  if (session.mode === "wave" && !session.waveMinutes) return session.waveCapacity ?? 0;
+  const blocks = sessionBlocks(session).filter((block) => block.time >= hours.startTime && block.endTime <= hours.endTime);
+  return session.mode === "wave" ? blocks.length * (session.waveCapacity ?? 0) : blocks.length;
+}
+
+/**
+ * The doctor's day: the consulting sessions that run on the date (with places and how many are
+ * booked) and the visits on the book. A session with no bookings still counts as a clinic day.
+ */
 export async function doctorAppointments(user: PublicUser, dateInput?: string) {
   const doctor = doctorOnly(user);
   if (!doctor.ok) return doctor;
   const date = resolveDay(dateInput);
   if (typeof date !== "string") return date;
-  const visits = (await visitsFor(user)).filter((visit) => visit.date === date);
+  const store = await getStore();
+  const [allVisits, roster, trims] = await Promise.all([
+    visitsFor(user),
+    store.listConsultSessions(doctor.doctorId),
+    store.listSessionTrims(doctor.doctorId).catch(() => []),
+  ]);
+  const visits = allVisits.filter((visit) => visit.date === date);
+  const live = roster.filter((session) => !session.archivedAt);
+  const sessions = live
+    .map((session) => ({ session, hours: hoursOnDate(session, date, trims, live) }))
+    .filter((entry): entry is { session: ConsultSession; hours: { startTime: string; endTime: string } } => entry.hours !== null)
+    .sort((a, b) => a.hours.startTime.localeCompare(b.hours.startTime))
+    .map(({ session, hours }) => {
+      const places = placesIn(session, hours);
+      const booked = visits.filter((visit) => visit.sessionId === session.id && holdsPlace(visit)).length;
+      return {
+        id: session.id,
+        label: session.label || "Consulting session",
+        mode: session.mode,
+        startTime: hours.startTime,
+        endTime: hours.endTime,
+        room: session.room,
+        places,
+        booked,
+        placesLeft: Math.max(0, places - booked),
+      };
+    });
   const shown = visits.slice(0, LIST_CAP).map((visit) => publicVisit(visit, "doctor"));
+  const active = visits.filter(holdsPlace).length;
+  const sessionWord = sessions.length === 1 ? "session" : "sessions";
+  const visitWord = active === 1 ? "visit" : "visits";
+  const summary =
+    sessions.length === 0 && active === 0
+      ? "No consulting session runs that day and no visit is booked: a day out of clinic."
+      : sessions.length === 0
+        ? `No consulting session is saved for that day, but ${active} ${visitWord} ${active === 1 ? "is" : "are"} on the book.`
+        : active === 0
+          ? `You are in clinic: ${sessions.length} consulting ${sessionWord}, but no one is booked yet. The day is not empty.`
+          : `You are in clinic: ${sessions.length} consulting ${sessionWord} and ${active} ${visitWord} on the book.`;
   return {
     date,
     doctor: findDoctor(doctor.doctorId)?.name ?? "You",
+    inClinic: sessions.length > 0,
+    summary,
+    sessions,
     count: visits.length,
+    activeVisits: active,
     truncated: visits.length > shown.length,
     appointments: shown,
+    note: "Report the sessions (times, stream or wave, places booked of total) and the visits (time, patient, reason, status). A session with no bookings is still a clinic session: say it is on and that no one is booked yet. Only call the day empty when there is no session and no visit.",
   };
 }
 

@@ -1,11 +1,34 @@
 /*
- * Dock-only contrast for the thinking line.
+ * The dock's typeface.
  *
- * The published ThoughtLine fades the settled line and timer, and its working
- * shimmer paints the label with background-clip: text and a transparent fill.
- * On a white dock that erased "Checking the book…" and left only the timer.
- * The dock turns the shimmer off (shimmer={false}) and keeps every part of the
- * line in solid theme ink: working label, settled "Thought for", and timer.
+ * The rest of the site is set in Inter. The conversation (intro, bubbles, replies, the
+ * thinking line and the composer) is set in IBM Plex Sans: a grotesque with real
+ * character (squared curves, open apertures, a distinct "a", "g" and "t") that reads
+ * well at 15-17px in both themes, so the dock stops looking like a stock chat widget.
+ * Loaded once by next/font in the root layout as --font-dock. Scripts Plex does not
+ * cover (Telugu, Tamil, Bengali…) fall back to the platform's own face for that script.
+ */
+.clinic-dock {
+  font-family: var(--font-dock), "IBM Plex Sans", "Noto Sans", "Segoe UI", sans-serif;
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.clinic-dock :where(input, textarea, button) {
+  font-family: inherit;
+}
+
+/*
+ * The thinking line: React Bits ThoughtLine, animated, with the words always in solid ink.
+ *
+ * The published component paints its working label with background-clip: text and a
+ * transparent fill. On a white dock that erased "Checking the book…" and left only the
+ * timer. Here the letters keep a solid theme-ink fill at all times, and the motion lives
+ * on separate layers that never clip the text:
+ *   - a soft accent sheen sweeps behind the words (::before, under the letters),
+ *   - a short accent gleam runs along an underline (::after),
+ *   - the sparkle breathes (Motion, breathDepth) and twinkles.
+ * When the reply lands, the line settles to "Thought for Xs" at full strength.
  */
 .clinic-thought-line {
   --tl-done: 1;
@@ -21,13 +44,91 @@
   -webkit-text-fill-color: currentColor;
 }
 
-/* Belt and braces: even if the shimmer attribute ever comes back, never clip the ink away. */
+/* Working: the shimmer is on, but only as layers around solid letters. */
 .clinic-thought-line.thought-line[data-working] .thought-line__breath,
 .clinic-thought-line.thought-line[data-working] .thought-line__breath[data-shimmer] {
-  background: none;
-  -webkit-background-clip: border-box;
-  background-clip: border-box;
-  color: var(--color-ink, #1d1d1f);
-  -webkit-text-fill-color: currentColor;
+  position: relative;
+  isolation: isolate;
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  color: var(--color-ink, #1d1d1f) !important;
+  -webkit-text-fill-color: var(--color-ink, #1d1d1f) !important;
   animation: none;
+}
+
+.clinic-thought-line.thought-line[data-working] .thought-line__breath[data-shimmer]::before {
+  content: "";
+  position: absolute;
+  inset: -0.15em -0.4em;
+  z-index: -1;
+  border-radius: 0.45em;
+  background-image: linear-gradient(
+    100deg,
+    transparent 25%,
+    color-mix(in srgb, var(--color-accent, #0071e3) 24%, transparent) 50%,
+    transparent 75%
+  );
+  background-size: 250% 100%;
+  background-position: 125% 0;
+  background-repeat: no-repeat;
+  animation: clinic-thought-sheen var(--tl-shimmer, 1.8s) linear infinite;
+  pointer-events: none;
+}
+
+.clinic-thought-line.thought-line[data-working] .thought-line__breath[data-shimmer]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.28em;
+  height: 2px;
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--color-accent, #0071e3) 14%, transparent);
+  background-image: linear-gradient(90deg, transparent, var(--color-accent, #0071e3), transparent);
+  background-size: 40% 100%;
+  background-position: -70% 0;
+  background-repeat: no-repeat;
+  animation: clinic-thought-gleam var(--tl-shimmer, 1.8s) cubic-bezier(0.77, 0, 0.175, 1) infinite;
+  pointer-events: none;
+}
+
+.clinic-thought-line.thought-line[data-working] .thought-line__glyph {
+  color: var(--color-accent, #0071e3);
+}
+
+.clinic-thought-line.thought-line[data-working] .thought-line__glyph svg {
+  animation: clinic-thought-twinkle 1.6s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes clinic-thought-sheen {
+  to {
+    background-position: -125% 0;
+  }
+}
+
+@keyframes clinic-thought-gleam {
+  to {
+    background-position: 170% 0;
+  }
+}
+
+@keyframes clinic-thought-twinkle {
+  0%,
+  100% {
+    transform: scale(0.86) rotate(0deg);
+  }
+
+  50% {
+    transform: scale(1.08) rotate(18deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clinic-thought-line.thought-line[data-working] .thought-line__breath[data-shimmer]::before,
+  .clinic-thought-line.thought-line[data-working] .thought-line__breath[data-shimmer]::after,
+  .clinic-thought-line.thought-line[data-working] .thought-line__glyph svg {
+    animation: none;
+  }
 }
