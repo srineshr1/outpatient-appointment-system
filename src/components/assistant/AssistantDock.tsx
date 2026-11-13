@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
 import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
+import { DEFAULT_LANGUAGE, detectLanguage, nextListenLocale, pickVoiceFor, supportedLocale } from "@/lib/assistant/language";
 import type { SlotLink } from "@/lib/assistant/slot-links";
 import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
@@ -66,6 +67,8 @@ interface TurnResponse {
   pending?: PendingCard | null;
   payUrl?: string;
   slots?: SlotLink[];
+  /** BCP 47 locale the reply is written in, e.g. "te-IN". */
+  locale?: string;
   message?: string;
 }
 
@@ -84,9 +87,21 @@ function pillSource(): VoicePillSource {
   return canAnalyse && finePointer && recognitionCtor() ? "mic" : "simulated";
 }
 
-/** Devanagari means Hindi. Latin script covers English and Hinglish. */
-function localeFor(text: string): "hi-IN" | "en-IN" {
-  return /\p{Script=Devanagari}/u.test(text) ? "hi-IN" : "en-IN";
+/** The last language the user spoke or wrote in, so the next visit listens in it. */
+export const LOCALE_KEY = "clinic-assistant-locale";
+
+/** Saved locale, else the browser's language if we know it, else Indian English. */
+function initialLocale(): string {
+  if (typeof window === "undefined") return DEFAULT_LANGUAGE.locale;
+  try {
+    const saved = supportedLocale(window.localStorage.getItem(LOCALE_KEY));
+    if (saved) return saved;
+  } catch {
+    // Storage blocked: fall through to the browser language.
+  }
+  const browser = typeof navigator !== "undefined" ? supportedLocale(navigator.language) : null;
+  // A browser set to en-US still gets the Indian English voice the clinic uses.
+  return browser && !browser.startsWith("en") ? browser : DEFAULT_LANGUAGE.locale;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -282,7 +297,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const queuedRef = useRef<string | null>(null);
   const lastSpokenRef = useRef("");
   const ignoreUntilRef = useRef(0);
-  const localeRef = useRef<"hi-IN" | "en-IN">(typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("hi") ? "hi-IN" : "en-IN");
+  const localeRef = useRef<string>(DEFAULT_LANGUAGE.locale);
   const pendingRef = useRef<PendingCard | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const requestingRef = useRef(false);
@@ -298,6 +313,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const pillOnRef = useRef(false);
   const pillDeniedRef = useRef(false);
 
+  useEffect(() => { localeRef.current = initialLocale(); }, []);
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
@@ -534,7 +550,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setInterim(partial);
       const heard = finalText.trim();
       if (!heard) return;
-      localeRef.current = localeFor(heard);
+      setLocale(detectLanguage(heard, localeRef.current).locale);
       if (Date.now() < ignoreUntilRef.current || isEcho(heard, lastSpokenRef.current)) return;
       interimRef.current = "";
       setInterim("");
@@ -664,16 +680,23 @@ export function AssistantDock({ user }: { user: DockUser }) {
     }, 50);
   }
 
-  function pickVoice(locale: "hi-IN" | "en-IN"): SpeechSynthesisVoice | null {
-    const voices = voicesRef.current.length ? voicesRef.current : (window.speechSynthesis.getVoices?.() ?? []);
-    if (voices.length) voicesRef.current = voices;
-    const exact = locale.toLowerCase();
-    const prefix = locale === "hi-IN" ? "hi" : "en";
-    const normal = (voice: SpeechSynthesisVoice) => voice.lang.toLowerCase().replace("_", "-");
-    return voices.find((voice) => normal(voice) === exact) ?? voices.find((voice) => normal(voice).startsWith(prefix)) ?? null;
+  /** Remember the language to listen in next, here and for later visits. */
+  function setLocale(locale: string) {
+    localeRef.current = locale;
+    try {
+      window.localStorage.setItem(LOCALE_KEY, locale);
+    } catch {
+      // Private mode or full storage: the language just won't be remembered.
+    }
   }
 
-  function speak(text: string): Promise<void> {
+  function pickVoice(locale: string): SpeechSynthesisVoice | null {
+    const voices = voicesRef.current.length ? voicesRef.current : (window.speechSynthesis.getVoices?.() ?? []);
+    if (voices.length) voicesRef.current = voices;
+    return pickVoiceFor(voices, locale);
+  }
+
+  function speak(text: string, locale?: string): Promise<void> {
     const generation = speakGen.current + 1;
     speakGen.current = generation;
     return new Promise((resolve) => {
@@ -685,10 +708,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
       const hadQueue = synth.speaking || synth.pending;
       synth.cancel();
       const utterance = new SpeechSynthesisUtterance(text.replace(/\s+/g, " ").slice(0, 600));
-      const locale = localeFor(text);
-      localeRef.current = locale;
-      utterance.lang = locale;
-      const voice = pickVoice(locale);
+      const lang = locale || detectLanguage(text, localeRef.current).locale;
+      // Without a voice for this language the browser default still gets the right lang.
+      utterance.lang = lang;
+      const voice = pickVoice(lang);
       if (voice) utterance.voice = voice;
       lastSpokenRef.current = utterance.text;
       // Chrome can skip onend if the utterance is garbage collected mid-speech.
@@ -735,7 +758,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
-    localeRef.current = localeFor(trimmed);
+    const userLocale = detectLanguage(trimmed, localeRef.current).locale;
+    setLocale(userLocale);
     if (busyRef.current) {
       queuedRef.current = trimmed;
       return;
@@ -782,7 +806,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setMessages(next);
       setPending(data.pending ?? null);
       pendingRef.current = data.pending ?? null;
-      if (voiceOnRef.current) await speak(reply);
+      const spoken = supportedLocale(data.locale) ?? detectLanguage(reply, userLocale).locale;
+      setLocale(nextListenLocale(userLocale, spoken));
+      if (voiceOnRef.current) await speak(reply, spoken);
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
       const reply = error instanceof Error ? error.message : "Something went wrong.";
@@ -830,7 +856,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
       setMessages(next);
       setPending(null);
       pendingRef.current = null;
-      if (voiceOnRef.current) await speak(reply);
+      const spoken = supportedLocale(data.locale) ?? detectLanguage(reply, localeRef.current).locale;
+      setLocale(nextListenLocale(localeRef.current, spoken));
+      if (voiceOnRef.current) await speak(reply, spoken);
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
       const reply = error instanceof Error ? error.message : "That confirmation didn't go through.";

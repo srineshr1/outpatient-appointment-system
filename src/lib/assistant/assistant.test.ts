@@ -70,6 +70,24 @@ describe("assistant intent and echo", () => {
     expect(interpretReply("please book Dr Cho tomorrow")).toBe("chat");
   });
 
+  it("accepts a short yes or no in the major Indian languages, Urdu, Spanish and French", () => {
+    for (const yes of ["అవును", "ஆம்", "ஆமாம்", "ಹೌದು", "അതെ", "हो", "होय", "হ্যাঁ", "હા", "ਹਾਂ", "ਹਾਂ ਜੀ", "جی", "ہاں", "جی ہاں", "avunu", "sí", "oui", "ठीक आहे।"]) {
+      expect(interpretReply(yes), yes).toBe("confirm");
+    }
+    for (const no of ["కాదు", "வேண்டாம்", "இல்லை", "ಇಲ್ಲ", "ഇല്ല", "नाही", "नको", "না", "ના", "ਨਹੀਂ", "نہیں", "vaddu", "non"]) {
+      expect(interpretReply(no), no).toBe("reject");
+    }
+  });
+
+  it("keeps the safeguards for other languages: a changed time, a date word or a longer request is chat", () => {
+    expect(interpretReply("అవును 3 గంటలకు")).toBe("chat");
+    expect(interpretReply("हो ३ वाजता")).toBe("chat");
+    expect(interpretReply("sí, but tomorrow")).toBe("chat");
+    expect(interpretReply("అవును కానీ రేపు సాయంత్రం మార్చండి దయచేసి ఇంకా")).toBe("chat");
+    expect(interpretReply("ఎప్పుడు")).toBe("chat");
+    expect(interpretReply("doctor")).toBe("chat");
+  });
+
   it("treats the assistant's own words as an echo", () => {
     expect(isEcho("Booked with Dr Cho on Thursday", "Booked with Dr Cho on Thursday at 10:00.")).toBe(true);
     expect(isEcho("book Dr Reid tomorrow morning", "Booked with Dr Cho on Thursday")).toBe(false);
@@ -211,6 +229,90 @@ describe("assistant clinic actions", () => {
     const done = await confirmPending(patient, mine.pending!.token);
     expect(done.ok).toBe(true);
     expect((await (await getStore()).getAppointment(booked.visit.id))?.status).toBe("cancelled");
+  });
+});
+
+describe("assistant languages", () => {
+  async function withXai<T>(replies: unknown[], run: (fetchMock: ReturnType<typeof vi.fn>) => Promise<T>): Promise<T> {
+    const saved = { xai: process.env.XAI_API_KEY, gemini: process.env.GEMINI_API_KEY };
+    process.env.XAI_API_KEY = "test-key";
+    delete process.env.GEMINI_API_KEY;
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify(replies.shift()) }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      return await run(fetchMock);
+    } finally {
+      vi.unstubAllGlobals();
+      if (saved.xai === undefined) delete process.env.XAI_API_KEY;
+      else process.env.XAI_API_KEY = saved.xai;
+      if (saved.gemini !== undefined) process.env.GEMINI_API_KEY = saved.gemini;
+    }
+  }
+
+  function systemOf(fetchMock: ReturnType<typeof vi.fn>): string {
+    const init = fetchMock.mock.calls[0]?.[1] as { body: string };
+    const body = JSON.parse(init.body) as { input: { role?: string; content?: string }[] };
+    return body.input.find((item) => item.role === "system")?.content ?? "";
+  }
+
+  it("tells the model the detected language and returns the reply's locale", async () => {
+    const patient = await account("user-patient-demo");
+    await withXai([{ output_text: "మీకు ఈ వారం అపాయింట్‌మెంట్‌లు లేవు." }], async (fetchMock) => {
+      const result = await handleTurn(patient, [{ role: "user", content: "నా అపాయింట్‌మెంట్‌లు చూపించు" }], null);
+      expect(result.locale).toBe("te-IN");
+      const system = systemOf(fetchMock);
+      expect(system).toMatch(/appears to be in Telugu/);
+      expect(system).toMatch(/Do not ask which language they want/);
+      expect(system).toMatch(/Do not translate into English unless they wrote in English/);
+      // The other rules are still there.
+      expect(system).toMatch(/Never invent a time/);
+      expect(system).toMatch(/Do not reveal dates of birth/);
+    });
+  });
+
+  it("keeps the conversation's language for a short follow-up", async () => {
+    const patient = await account("user-patient-demo");
+    await withXai([{ output_text: "ঠিক আছে।" }], async (fetchMock) => {
+      const result = await handleTurn(
+        patient,
+        [
+          { role: "user", content: "আমার অ্যাপয়েন্টমেন্ট কবে?" },
+          { role: "assistant", content: "আগামীকাল সকাল ১০টায়।" },
+          { role: "user", content: "ok" },
+        ],
+        null,
+      );
+      expect(systemOf(fetchMock)).toMatch(/appears to be in Bengali/);
+      expect(result.locale).toBe("bn-IN");
+    });
+  });
+
+  it("speaks the reply in the language it was actually written in", async () => {
+    const patient = await account("user-patient-demo");
+    await withXai([{ output_text: "You have no visits booked this week." }], async () => {
+      const result = await handleTurn(patient, [{ role: "user", content: "नमस्ते, मेरी अपॉइंटमेंट कब है?" }], null);
+      expect(result.locale).toBe("en-IN");
+    });
+  });
+
+  it("confirms with a Telugu yes and rejects with a Bengali no, returning a locale for the summary", async () => {
+    const patient = await account("user-patient-demo");
+    const store = await getStore();
+    const slot = await freeChoSlot();
+    const before = (await store.listAppointments({ patientUserId: patient.id })).length;
+
+    const first = await runTool(patient, "propose_book", { slotId: slot.id, reasonId: "follow", payOnline: false });
+    const refused = await handleTurn(patient, [{ role: "user", content: "না" }], first.pending!.token);
+    expect(refused.reply).toMatch(/have not booked/i);
+    expect(refused.locale).toBe("en-IN");
+    expect(await store.listAppointments({ patientUserId: patient.id })).toHaveLength(before);
+
+    const second = await runTool(patient, "propose_book", { slotId: slot.id, reasonId: "follow", payOnline: false });
+    const booked = await handleTurn(patient, [{ role: "user", content: "అవును" }], second.pending!.token);
+    expect(booked.reply).toMatch(/Booked HSP-/);
+    // The summary is English, so it is spoken in English.
+    expect(booked.locale).toBe("en-IN");
+    expect(await store.listAppointments({ patientUserId: patient.id })).toHaveLength(before + 1);
   });
 });
 

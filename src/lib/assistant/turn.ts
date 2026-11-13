@@ -1,8 +1,9 @@
 import type { PublicUser } from "../clinic-types";
 import { confirmPending, rejectPending, restoreCard } from "./act";
 import type { PendingCard } from "./confirm-token";
-import { askClinic } from "./grok";
+import { askClinic, replyLocale } from "./grok";
 import { interpretReply } from "./intent";
+import { DEFAULT_LANGUAGE, detectConversation } from "./language";
 import type { SlotLink } from "./slot-links";
 
 export interface ChatMessage {
@@ -16,6 +17,8 @@ export interface TurnResult {
   payUrl?: string;
   /** Open times to show under the reply, grouped by day in the dock. */
   slots?: SlotLink[];
+  /** BCP 47 locale of the reply (e.g. "hi-IN"), so the dock listens and speaks in it. */
+  locale: string;
 }
 
 const hits = new Map<string, number[]>();
@@ -52,21 +55,19 @@ export function parseMessages(input: unknown): ChatMessage[] | null {
 
 export async function handleTurn(user: PublicUser, messages: ChatMessage[], pendingToken: string | null): Promise<TurnResult> {
   const last = [...messages].reverse().find((message) => message.role === "user");
-  if (!last) return { reply: "Ask me about a visit, a doctor, or a time.", pending: null };
+  if (!last) return { reply: "Ask me about a visit, a doctor, or a time.", pending: null, locale: DEFAULT_LANGUAGE.locale };
 
   if (pendingToken) {
     const intent = interpretReply(last.content);
-    if (intent === "confirm") {
-      const outcome = await confirmPending(user, pendingToken);
-      return { reply: outcome.summary, pending: null, ...(outcome.payUrl ? { payUrl: outcome.payUrl } : {}) };
-    }
-    if (intent === "reject") {
-      const outcome = await rejectPending(user, pendingToken);
-      return { reply: outcome.summary, pending: null };
+    if (intent !== "chat") {
+      const outcome = intent === "confirm" ? await confirmPending(user, pendingToken) : await rejectPending(user, pendingToken);
+      // Summaries are in English for now; speak them in the language they are written in.
+      const locale = replyLocale(outcome.summary, detectConversation(messages));
+      return { reply: outcome.summary, pending: null, locale, ...(intent === "confirm" && outcome.payUrl ? { payUrl: outcome.payUrl } : {}) };
     }
   }
 
   const asked = await askClinic(user, messages);
   const pending = asked.pending ?? (pendingToken ? await restoreCard(user, pendingToken) : null);
-  return { reply: asked.reply, pending, ...(asked.slots.length ? { slots: asked.slots } : {}) };
+  return { reply: asked.reply, pending, locale: asked.locale, ...(asked.slots.length ? { slots: asked.slots } : {}) };
 }

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AssistantDock, DOCK_SIZE_KEY, MIC_BLOCKED, NO_RECOGNITION, clampDockSize } from "./AssistantDock";
+import { AssistantDock, DOCK_SIZE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, clampDockSize } from "./AssistantDock";
 
 const doctor = { name: "Dr Doom", role: "doctor" as const };
 const realMatchMedia = window.matchMedia;
@@ -511,6 +511,151 @@ describe("AssistantDock voice pill", () => {
     // Voice stays on and listening starts again; the pill was not reset.
     expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
+  });
+});
+
+class FakeUtterance {
+  lang = "";
+  voice: { lang: string } | null = null;
+  onend: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor(public text: string) {}
+}
+
+/** Speech synthesis that "finishes" each utterance at once and records what was said. */
+function stubSpeech(voices: { lang: string; name: string }[]) {
+  const spoken: FakeUtterance[] = [];
+  vi.stubGlobal("SpeechSynthesisUtterance", FakeUtterance);
+  vi.stubGlobal("speechSynthesis", {
+    speaking: false,
+    pending: false,
+    paused: false,
+    getVoices: () => voices,
+    cancel: vi.fn(),
+    resume: vi.fn(),
+    speak: (utterance: FakeUtterance) => {
+      spoken.push(utterance);
+      utterance.onend?.();
+    },
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
+  return spoken;
+}
+
+function replyWith(...bodies: object[]) {
+  const fetchMock = vi.fn();
+  for (const body of bodies) fetchMock.mockResolvedValueOnce({ ok: true, json: async () => body });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+async function type(text: string, fetchMock: ReturnType<typeof vi.fn>, calls: number) {
+  const box = screen.getByLabelText("Message");
+  fireEvent.change(box, { target: { value: text } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(calls));
+  await waitFor(() => expect(screen.getByLabelText("Message")).not.toHaveAttribute("aria-busy", "true"));
+}
+
+async function startVoice() {
+  vi.stubGlobal("SpeechRecognition", FakeRecognition);
+  setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
+  fireEvent.click(screen.getByRole("button", { name: "Speak" }));
+  await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
+}
+
+describe("AssistantDock languages", () => {
+  it("starts listening in the language saved from a previous visit", async () => {
+    window.localStorage.setItem(LOCALE_KEY, "te-IN");
+    openDock();
+    await startVoice();
+    expect(FakeRecognition.instances[0]?.lang).toBe("te-IN");
+  });
+
+  it("starts in Indian English on a first visit with an English browser", async () => {
+    openDock();
+    await startVoice();
+    expect(FakeRecognition.instances[0]?.lang).toBe("en-IN");
+  });
+
+  it("detects Devanagari, Telugu and Latin from what is typed, and remembers it", async () => {
+    const fetchMock = replyWith({ reply: "कल सुबह 10 बजे।" }, { reply: "రేపు ఉదయం." }, { reply: "The clinic opens at 9 on Monday." });
+    openDock();
+    await type("मेरा अपॉइंटमेंट कब है?", fetchMock, 1);
+    await waitFor(() => expect(window.localStorage.getItem(LOCALE_KEY)).toBe("hi-IN"));
+    await type("నా అపాయింట్‌మెంట్ ఎప్పుడు?", fetchMock, 2);
+    await waitFor(() => expect(window.localStorage.getItem(LOCALE_KEY)).toBe("te-IN"));
+    await type("What are the clinic hours on Monday?", fetchMock, 3);
+    await waitFor(() => expect(window.localStorage.getItem(LOCALE_KEY)).toBe("en-IN"));
+  });
+
+  it("does not reset to English for a short follow-up", async () => {
+    window.localStorage.setItem(LOCALE_KEY, "hi-IN");
+    const fetchMock = replyWith({ reply: "ठीक है।" });
+    openDock();
+    await type("ok", fetchMock, 1);
+    expect(screen.getByText("ठीक है।")).toBeInTheDocument();
+    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("hi-IN");
+  });
+
+  it("speaks and then listens in the locale the server returns, with a voice for that language", async () => {
+    const spoken = stubSpeech([
+      { lang: "en-IN", name: "English India" },
+      { lang: "te-IN", name: "Telugu India" },
+    ]);
+    replyWith({ reply: "మీ అపాయింట్‌మెంట్ రేపు ఉదయం.", locale: "te-IN" });
+    openDock();
+    await startVoice();
+    const first = FakeRecognition.instances[0]!;
+    act(() => {
+      first.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: "నా అపాయింట్‌మెంట్ ఎప్పుడు" }], { isFinal: true })] });
+    });
+    await waitFor(() => expect(spoken).toHaveLength(1));
+    expect(spoken[0]!.lang).toBe("te-IN");
+    expect(spoken[0]!.voice?.lang).toBe("te-IN");
+    await waitFor(() => expect(FakeRecognition.instances.length).toBeGreaterThan(1));
+    expect(FakeRecognition.instances.at(-1)?.lang).toBe("te-IN");
+    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("te-IN");
+  });
+
+  it("uses a voice with the same language prefix, and speaks with no matching voice at all", async () => {
+    const spoken = stubSpeech([
+      { lang: "en-IN", name: "English India" },
+      { lang: "ta-LK", name: "Tamil Sri Lanka" },
+    ]);
+    replyWith({ reply: "நாளை காலை.", locale: "ta-IN" }, { reply: "ನಾಳೆ ಬೆಳಿಗ್ಗೆ.", locale: "kn-IN" });
+    openDock();
+    await startVoice();
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "என் சந்திப்பு எப்போது?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(spoken).toHaveLength(1));
+    expect(spoken[0]!.lang).toBe("ta-IN");
+    expect(spoken[0]!.voice?.lang).toBe("ta-LK");
+
+    await waitFor(() => expect(screen.getByLabelText("Message")).not.toHaveAttribute("readonly"));
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "ನನ್ನ ಅಪಾಯಿಂಟ್ಮೆಂಟ್ ಯಾವಾಗ?" } });
+    fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });
+    await waitFor(() => expect(spoken).toHaveLength(2));
+    expect(spoken[1]!.lang).toBe("kn-IN");
+    // No Kannada voice: the browser default speaks it, never an English voice.
+    expect(spoken[1]!.voice).toBeNull();
+  });
+
+  it("speaks an English summary in English but keeps listening in the user's language", async () => {
+    const spoken = stubSpeech([{ lang: "en-IN", name: "English India" }]);
+    replyWith({ reply: "I have not booked anything.", locale: "en-IN" });
+    window.localStorage.setItem(LOCALE_KEY, "te-IN");
+    openDock();
+    await startVoice();
+    act(() => {
+      FakeRecognition.instances[0]!.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: "వద్దు" }], { isFinal: true })] });
+    });
+    await waitFor(() => expect(spoken).toHaveLength(1));
+    expect(spoken[0]!.lang).toBe("en-IN");
+    await waitFor(() => expect(FakeRecognition.instances.length).toBeGreaterThan(1));
+    expect(FakeRecognition.instances.at(-1)?.lang).toBe("te-IN");
   });
 });
 
