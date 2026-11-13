@@ -468,6 +468,44 @@ export function SessionStudio({
     });
   };
 
+  const recurringRange = useMemo<DateRange | undefined>(() => {
+    if (!draft.startDate) return undefined;
+    const [sY, sM, sD] = draft.startDate.split("-").map(Number);
+    if (!sY || !sM || !sD) return undefined;
+    const from = new Date(sY, sM - 1, sD);
+    if (!draft.endDate) return { from, to: undefined };
+    const [eY, eM, eD] = draft.endDate.split("-").map(Number);
+    if (!eY || !eM || !eD) return { from, to: undefined };
+    const to = new Date(eY, eM - 1, eD);
+    return { from, to };
+  }, [draft.startDate, draft.endDate]);
+
+  const handleRangeSelect = (range: DateRange | undefined) => {
+    if (!range?.from) return;
+    const formatIso = (d: Date) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    let from = range.from;
+    let to = range.to ?? range.from;
+    if (to < from) {
+      const tmp = from;
+      from = to;
+      to = tmp;
+    }
+    const nextStart = formatIso(from);
+    const nextEnd = formatIso(to);
+    const wd = clinicWeekday(nextStart);
+    setDraft((prev) => ({
+      ...prev,
+      startDate: nextStart,
+      endDate: nextEnd,
+      ...(wd ? { weekdays: [wd] } : {}),
+    }));
+  };
+
   // Only a saved session that has ended is read-only. A new draft on a past date stays editable: the
   // schedule check below asks for today or a later date instead of locking the Date field.
   const past = useMemo(() => (editing ? sessionIsPast(editing, today) : false), [editing, today]);
@@ -990,38 +1028,19 @@ export function SessionStudio({
                     </Field>
                   </div>
                 ) : (
-                  <div className="space-y-4 border-t border-hairline pt-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field id="studio-from-date" label="From date">
-                        {({ id }) => (
-                          <input
-                            id={id}
-                            type="date"
-                            value={draft.startDate}
-                            onChange={(e) => {
-                              const nextStart = e.target.value;
-                              const wd = clinicWeekday(nextStart);
-                              setDraft((prev) => ({
-                                ...prev,
-                                startDate: nextStart,
-                                ...(wd ? { weekdays: [wd] } : {}),
-                              }));
-                            }}
-                            className="field tabular"
-                          />
-                        )}
-                      </Field>
-                      <Field id="studio-until-date" label="Until date">
-                        {({ id }) => (
-                          <input
-                            id={id}
-                            type="date"
-                            value={draft.endDate}
-                            onChange={(e) => setDraft((prev) => ({ ...prev, endDate: e.target.value }))}
-                            className="field tabular"
-                          />
-                        )}
-                      </Field>
+                  <div className="space-y-3 border-t border-hairline pt-4">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-full flex items-center justify-between pb-2">
+                        <span className="text-callout font-semibold text-ink">Date range</span>
+                        <span className="text-caption text-muted tabular">
+                          {draft.startDate}{draft.endDate ? ` to ${draft.endDate}` : ""}
+                        </span>
+                      </div>
+                      <CalendarRangeSelect
+                        dateRange={recurringRange}
+                        onSelect={handleRangeSelect}
+                        className="rounded-xl border border-hairline bg-surface p-3 shadow-xs"
+                      />
                     </div>
                   </div>
                 )}
@@ -1171,9 +1190,62 @@ export function SessionStudio({
                 )}
               </div>
 
-              {/* CANCEL & SUBMIT ROW */}
+              {/* ACTIONS ROW: Remove session on left, Cancel & Submit on right */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4">
+                {/* Left side: Remove session (when editing) */}
+                {editing ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!confirmRetire ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        disabled={past}
+                        onClick={() => setConfirmRetire(true)}
+                        className="border-danger/40 bg-danger-soft text-danger hover:bg-danger/15"
+                      >
+                        Remove session
+                      </Button>
+                    ) : (
+                      <>
+                        <PendingButton
+                          formAction={archiveSession}
+                          formNoValidate
+                          pendingLabel="Removing…"
+                          disabled={past}
+                          className={buttonClass(
+                            "secondary",
+                            "md",
+                            "border-danger/45 bg-danger-soft text-danger hover:bg-danger/15",
+                          )}
+                        >
+                          {editingUpcoming > 0 ? "Continue removal…" : "Confirm remove"}
+                        </PendingButton>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="md"
+                          onClick={() => setConfirmRetire(false)}
+                        >
+                          Keep
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div />
+                )}
+
+                {/* Right side: places delta + Cancel + Submit */}
                 <div className="flex flex-wrap items-center gap-2.5">
+                  {editing ? (
+                    <span className="text-caption text-muted tabular mr-1">
+                      {placesDelta === 0
+                        ? `${newPlaces} places/block`
+                        : `${placesDelta > 0 ? "+" : ""}${placesDelta} places vs current`}
+                    </span>
+                  ) : null}
+
                   {editing ? (
                     <Button variant="secondary" size="md" onClick={resetDraft} disabled={past || !dirty}>
                       Cancel
@@ -1194,64 +1266,9 @@ export function SessionStudio({
                     </PendingButton>
                   ) : null}
                 </div>
-
-                {editing ? (
-                  <span className="text-caption text-muted tabular">
-                    {placesDelta === 0
-                      ? `${newPlaces} places/block`
-                      : `${placesDelta > 0 ? "+" : ""}${placesDelta} places vs current`}
-                  </span>
-                ) : null}
               </div>
             </fieldset>
           </form>
-
-          {/* Retire session bar */}
-          {editing ? (
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-card border border-hairline bg-surface-2/60 px-4 py-3.5">
-              <div className="min-w-0">
-                <p className="text-callout font-semibold text-ink">Remove this session</p>
-                <p className="text-caption text-muted">
-                  {editingUpcoming > 0
-                    ? `${editingUpcoming} upcoming ${editingUpcoming === 1 ? "visit" : "visits"} booked.`
-                    : "Removes future booking availability while keeping past records."}
-                </p>
-              </div>
-              <form action={archiveSession} className="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="returnTo" value="/dashboard/sessions/manage" />
-                <input type="hidden" name="viewDate" value={selectedDate} />
-                <input type="hidden" name="id" value={editing.id} />
-                {!confirmRetire ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    disabled={past}
-                    onClick={() => setConfirmRetire(true)}
-                    className="border-danger/40 bg-danger-soft text-danger hover:bg-danger/15"
-                  >
-                    Remove session
-                  </Button>
-                ) : (
-                  <>
-                    <PendingButton
-                      pendingLabel="Removing…"
-                      disabled={past}
-                      className={buttonClass(
-                        "secondary",
-                        "md",
-                        "border-danger/45 bg-danger-soft text-danger hover:bg-danger/15",
-                      )}
-                    >
-                      {editingUpcoming > 0 ? "Continue removal…" : "Confirm remove"}
-                    </PendingButton>
-                    <Button variant="plain" size="md" onClick={() => setConfirmRetire(false)}>
-                      Keep
-                    </Button>
-                  </>
-                )}
-              </form>
-            </div>
-          ) : null}
         </Card>
         </div>
 
