@@ -270,9 +270,8 @@ function desktopQuery(): MediaQueryList | null {
 }
 
 /**
- * Text and voice clinic assistant. Voice is one-shot: after a spoken utterance is sent,
- * recognition stops and the pill returns to rest. The reply may still be spoken; the
- * microphone stays off until they tap Speak again. A separate level meter can interrupt
+ * Text and voice clinic assistant. Speech recognition is paused while the reply is spoken,
+ * so the microphone does not transcribe the assistant. A separate level meter can interrupt
  * speech; that audio is never sent anywhere. Speech recognition runs in the browser.
  * On wider screens the panel can be resized from its top-left corner or its top and left
  * edges, and the size is remembered in localStorage.
@@ -334,6 +333,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const messagesRef = useRef<ChatMessage[]>([]);
   const requestingRef = useRef(false);
   const interimRef = useRef("");
+  const restartsRef = useRef<number[]>([]);
+  const restartTimerRef = useRef(0);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const finishSpeechRef = useRef<(() => void) | null>(null);
@@ -380,6 +381,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
     () => () => {
       wantListenRef.current = false;
       voiceOnRef.current = false;
+      window.clearTimeout(restartTimerRef.current);
       recRef.current?.abort();
       recRef.current = null;
       bargeRef.current?.();
@@ -429,6 +431,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
 
   function cancelRequest() {
     abortInFlight();
+    if (voiceOnRef.current) startListen();
   }
 
   function closePanel() {
@@ -517,6 +520,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
 
   function pauseListen() {
     wantListenRef.current = false;
+    window.clearTimeout(restartTimerRef.current);
+    restartTimerRef.current = 0;
     const rec = recRef.current;
     recRef.current = null;
     rec?.abort();
@@ -556,9 +561,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
     }
     wantListenRef.current = true;
     if (!voiceOnRef.current || speakingRef.current || busyRef.current || recRef.current) return;
+    window.clearTimeout(restartTimerRef.current);
+    restartTimerRef.current = 0;
     const rec = new Ctor();
-    // One utterance, then the browser ends the session after a short pause.
-    rec.continuous = false;
+    rec.continuous = true;
     rec.interimResults = true;
     rec.lang = localeRef.current;
     let fatal = false;
@@ -579,9 +585,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
       if (Date.now() < ignoreUntilRef.current || isEcho(heard, lastSpokenRef.current)) return;
       interimRef.current = "";
       setInterim("");
-      // Turn voice off synchronously after starting the send so finally cannot reopen the mic.
+      restartsRef.current = [];
       void send(heard);
-      voiceOff("");
     };
     rec.onerror = (event) => {
       if (recRef.current !== rec) return;
@@ -595,7 +600,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
               : event.error === "language-not-supported"
                 ? "This browser can't recognise speech in this language. You can type instead."
                 : null;
-      // "no-speech" and "aborted" are routine; onend turns the mic off after a pause.
+      // "no-speech" and "aborted" are routine; onend restarts listening.
       if (!note) return;
       fatal = true;
       voiceOff(note);
@@ -607,18 +612,22 @@ export function AssistantDock({ user }: { user: DockUser }) {
       const leftover = interimRef.current.trim();
       interimRef.current = "";
       setInterim("");
-      if (fatal) return;
-      // Some browsers end the session without marking the last words final. Send them once.
-      if (
-        leftover &&
-        voiceOnRef.current &&
-        Date.now() >= ignoreUntilRef.current &&
-        !isEcho(leftover, lastSpokenRef.current)
-      ) {
+      if (fatal || !voiceOnRef.current || !wantListenRef.current || speakingRef.current) return;
+      // Some browsers end the session without marking the last words final. Send them.
+      if (leftover && Date.now() >= ignoreUntilRef.current && !isEcho(leftover, lastSpokenRef.current)) {
         void send(leftover);
+        return;
       }
-      // A finished (or silent) session should not keep the pill latched on.
-      if (voiceOnRef.current) voiceOff("");
+      const now = Date.now();
+      restartsRef.current = [...restartsRef.current.filter((at) => now - at < 10_000), now];
+      if (restartsRef.current.length > 6) {
+        voiceOff("The microphone kept stopping. Press Speak to try again, or type instead.");
+        return;
+      }
+      restartTimerRef.current = window.setTimeout(() => {
+        restartTimerRef.current = 0;
+        if (voiceOnRef.current && wantListenRef.current) startListen();
+      }, 250);
     };
     recRef.current = rec;
     try {
@@ -782,8 +791,6 @@ export function AssistantDock({ user }: { user: DockUser }) {
     if (!trimmed) return;
     const userLocale = detectLanguage(trimmed, localeRef.current).locale;
     setLocale(userLocale);
-    // Capture before voiceOff runs (it is called right after a spoken send starts).
-    const shouldSpeak = voiceOnRef.current;
     if (busyRef.current) {
       queuedRef.current = trimmed;
       return;
@@ -832,7 +839,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
       pendingRef.current = data.pending ?? null;
       const spoken = supportedLocale(data.locale) ?? detectLanguage(reply, userLocale).locale;
       setLocale(nextListenLocale(userLocale, spoken));
-      if (shouldSpeak) await speak(reply, spoken);
+      if (voiceOnRef.current) await speak(reply, spoken);
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error) || abortRef.current !== controller) return;
       const reply = error instanceof Error ? error.message : "Something went wrong.";
@@ -846,7 +853,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
         busyRef.current = false;
         const queued = queuedRef.current;
         queuedRef.current = null;
-        if (queued && shouldSpeak && voiceOnRef.current) void send(queued);
+        if (queued && voiceOnRef.current) void send(queued);
+        else if (voiceOnRef.current) startListen();
       }
     }
   }
@@ -893,6 +901,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
         abortRef.current = null;
         setWaiting(false);
         busyRef.current = false;
+        if (voiceOnRef.current) startListen();
       }
     }
   }
@@ -919,6 +928,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
     // Stopped or slid to cancel while the browser was asking.
     if (!pillOnRef.current) return;
     setVoiceNote("");
+    restartsRef.current = [];
     voiceOnRef.current = true;
     setVoiceOn(true);
     startListen();
@@ -955,6 +965,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
     speakingRef.current = false;
     setSpeaking(false);
     stopBarge();
+    if (voiceOnRef.current && !busyRef.current) startListen();
   }
 
   const intro =
