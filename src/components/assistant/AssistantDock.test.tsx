@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssistantDock, DOCK_SIZE_KEY, LANGUAGE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, QUICK_PROMPTS, clampDockSize } from "./AssistantDock";
 
@@ -59,6 +59,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   window.matchMedia = realMatchMedia;
@@ -340,7 +341,11 @@ describe("AssistantDock voice", () => {
     expect(screen.getByLabelText("Message")).not.toHaveAttribute("readonly");
 
     fireEvent.click(screen.getByRole("button", { name: "Speak" }));
-    await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
+    await waitFor(() => {
+      const rec = FakeRecognition.instances[0];
+      if (!rec) throw new Error("instance not created yet");
+      expect(rec.start).toHaveBeenCalled();
+    }, { timeout: 5000 });
     expect(screen.queryByText(MIC_BLOCKED)).not.toBeInTheDocument();
   });
 

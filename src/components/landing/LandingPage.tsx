@@ -7,6 +7,8 @@ import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { DoctorDirectory } from "@/components/directory/DoctorDirectory";
 import { Calendar, Check, Clock, Lock, Phone, Pin } from "@/components/icons";
 import { useClock } from "@/components/providers/ClockProvider";
+import { useTheme } from "@/components/providers/ThemeProvider";
+import CardNav, { type CardNavItem } from "@/components/reactbits/CardNav";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { GradientBadge } from "@/components/ui/GradientBadge";
@@ -33,7 +35,61 @@ const COLLAGE = [
   { left: 60, top: 66, size: 116, delay: 0.15, rotate: 2 },
 ];
 
+const HOSPITAL_NAV_ITEMS: CardNavItem[] = [
+  {
+    label: "Clinical Excellence",
+    description: "Surgical innovation, da Vinci Xi robotics, and specialized clinical institutes.",
+    links: [
+      { label: "Centers of Excellence", href: "/excellence" },
+      { label: "da Vinci Robotic Surgery", href: "/excellence#robotics" },
+      { label: "Cardiovascular Institute", href: "/excellence#cardiac" },
+      { label: "Neuro-Spine Center", href: "/excellence#neuro" },
+    ],
+  },
+  {
+    label: "Technology & AI",
+    description: "3.0T Silent MRI, dual-source spectral CT, and AI-driven precision medicine.",
+    links: [
+      { label: "Advanced Diagnostics", href: "/technology" },
+      { label: "3.0T Silent MRI & CT", href: "/technology#imaging" },
+      { label: "AI Clinical Pathology", href: "/technology#ai-pathology" },
+      { label: "Genomic Sequencing", href: "/technology#genomics" },
+    ],
+  },
+  {
+    label: "Patient Care",
+    description: "5-star luxury recovery suites, Michelin-trained nutrition, and private concierge.",
+    links: [
+      { label: "Luxury Patient Care", href: "/patient-care" },
+      { label: "Presidential Suites", href: "/patient-care#suites" },
+      { label: "Dedicated Concierge", href: "/patient-care#concierge" },
+      { label: "Healing Sensory Gardens", href: "/patient-care#wellness" },
+    ],
+  },
+  {
+    label: "Accreditations",
+    description: "JCI Gold Seal, Top Hospital 2026, and world-renowned clinical faculty.",
+    links: [
+      { label: "Awards & Honors", href: "/awards" },
+      { label: "JCI Gold Seal Accreditation", href: "/awards#jci" },
+      { label: "Distinguished Faculty", href: "/awards#faculty" },
+      { label: "99.8% Patient Trust Index", href: "/awards#safety" },
+    ],
+  },
+  {
+    label: "24/7 Emergency",
+    description: "Level-1 trauma center, rooftop helipad, and sub-38 minute door-to-balloon speed.",
+    links: [
+      { label: "Trauma & Emergency", href: "/emergency" },
+      { label: "Rooftop Trauma Helipad", href: "/emergency#helipad" },
+      { label: "Acute Stroke Fast-Track", href: "/emergency#stroke" },
+      { label: "Pediatric Emergency Wing", href: "/emergency#pediatric" },
+    ],
+  },
+];
+
 export function LandingPage({ doctors, upcoming, role }: Props) {
+  const { theme } = useTheme();
   const { now, window } = useClock();
   const bookHref = role === null ? `/sign-in?next=${encodeURIComponent("/book")}` : role === "patient" ? "/book" : "#doctors";
 
@@ -44,6 +100,34 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
 
   return (
     <>
+      {/* ---------- Interactive CardNav Floating Navigation ---------- */}
+      <div className="relative z-30 pt-4 pb-1 px-4 max-w-5xl mx-auto">
+        <CardNav
+          logo={
+            <span className="flex items-center gap-2 font-bold tracking-tight text-ink text-sm sm:text-base">
+              <span className="flex size-7 items-center justify-center rounded-lg bg-teal-600 text-white font-bold text-xs shadow-sm">
+                W
+              </span>
+              <span className="hidden sm:inline">{practice.name}</span>
+              <span className="sm:hidden">Westbrook</span>
+            </span>
+          }
+          logoHref="/"
+          logoAlt={practice.name}
+          items={HOSPITAL_NAV_ITEMS}
+          cta={{
+            label: "Book appointment",
+            href: bookHref,
+          }}
+          linkComponent={Link}
+          theme={theme === "light" ? "light" : "dark"}
+          surface="glass"
+          cardEffect="rise"
+          openOn="click"
+          maxWidth={820}
+        />
+      </div>
+
       {/* ---------- Hero ---------- */}
       <section className="relative isolate overflow-hidden">
         <AuroraBackground className="relative">

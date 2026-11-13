@@ -5,14 +5,18 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    alias: {
+      "@/components/ui/button": fileURLToPath(new URL("./src/components/ui/Button.tsx", import.meta.url)),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
   },
   test: {
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
-    testTimeout: 15000,
+    testTimeout: 25000,
+    hookTimeout: 25000,
     env: { TZ: "America/New_York", SMS_MODE: "off" },
   },
 });

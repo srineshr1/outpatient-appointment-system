@@ -17,6 +17,7 @@
     "types": ["vitest/globals", "@testing-library/jest-dom"],
     "plugins": [{ "name": "next" }],
     "paths": {
+      "@/components/ui/button": ["./src/components/ui/Button.tsx"],
       "@/*": ["./src/*"]
     }
   },

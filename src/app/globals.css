@@ -101,6 +101,18 @@ html.dark {
   --color-danger: var(--v-danger);
   --color-danger-soft: var(--v-danger-soft);
 
+  --color-primary: var(--v-ink);
+  --color-primary-foreground: var(--v-canvas);
+  --color-secondary: var(--v-fill);
+  --color-secondary-foreground: var(--v-ink);
+  --color-destructive: var(--v-danger);
+  --color-destructive-foreground: #ffffff;
+  --color-background: var(--v-canvas);
+  --color-foreground: var(--v-ink);
+  --color-input: var(--v-hairline);
+  --color-ring: var(--v-accent);
+  --color-accent-foreground: var(--v-ink);
+
   --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-statement: var(--font-google-sans), "Google Sans", var(--font-inter), system-ui, sans-serif;
