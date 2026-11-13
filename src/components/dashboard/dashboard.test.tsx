@@ -217,6 +217,10 @@ describe("Doctor Dashboard Redesign", () => {
     expect(Array.from(returnInputs).every((el) => el.value === "/dashboard/sessions/manage")).toBe(true);
     expect(screen.getByRole("heading", { name: "Add / Edit panel" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Calendar Preview" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "Weeks of the month" })).toBeInTheDocument();
+    const weekDots = screen.getAllByRole("tab", { name: /Week \d+/i });
+    expect(weekDots.length).toBeGreaterThan(0);
+
     expect(screen.getByRole("tablist", { name: "Week days" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Mon/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Tue/i })).toBeInTheDocument();

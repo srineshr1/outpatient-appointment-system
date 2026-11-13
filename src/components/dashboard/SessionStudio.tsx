@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { TimeWheelPicker } from "@/components/doctors/TimeWheel";
-import { CLINIC_END, CLINIC_START, clinicWeekday, sessionIsPast, weekTitle } from "@/components/doctors/schedule-model";
+import { CLINIC_END, CLINIC_START, clinicWeekday, sessionIsPast } from "@/components/doctors/schedule-model";
 import { Alert, Calendar, Check, ChevronLeft, ChevronRight, Clock, Edit, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
 import { CountUp } from "@/components/reactbits/CountUp";
@@ -194,6 +194,48 @@ function weekOffsetForDate(target: string, baseToday: string): number {
   }
 }
 
+interface MonthWeek {
+  monday: string;
+  weekIndex: number;
+  label: string;
+}
+
+function getMonthWeeks(currentMonday: string): { monthTitle: string; weeks: MonthWeek[] } {
+  const mondayMonth = currentMonday.slice(0, 7);
+  const thursdayMonth = addDays(currentMonday, 3).slice(0, 7);
+  const targetPrefix = currentMonday.startsWith(thursdayMonth) ? mondayMonth : thursdayMonth;
+
+  const [yStr, mStr] = targetPrefix.split("-");
+  const year = Number(yStr);
+  const month = Number(mStr);
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const monthTitle = `${monthNames[month - 1]} ${year}`;
+
+  let scanMonday = mondayOf(`${targetPrefix}-01`);
+  if (scanMonday < `${targetPrefix}-01` && !addDays(scanMonday, 3).startsWith(targetPrefix)) {
+    scanMonday = addDays(scanMonday, 7);
+  }
+
+  const weeks: MonthWeek[] = [];
+  let idx = 1;
+  while (scanMonday.startsWith(targetPrefix) || addDays(scanMonday, 3).startsWith(targetPrefix)) {
+    const startNum = dayOfMonth(scanMonday);
+    const endNum = dayOfMonth(addDays(scanMonday, 5));
+    weeks.push({
+      monday: scanMonday,
+      weekIndex: idx,
+      label: `Week ${idx} (${startNum}–${endNum})`,
+    });
+    scanMonday = addDays(scanMonday, 7);
+    idx++;
+  }
+
+  return { monthTitle, weeks };
+}
+
 export function SessionStudio({
   doctorId,
   doctorName,
@@ -289,6 +331,16 @@ export function SessionStudio({
   const studioMonday = useMemo(
     () => addDays(mondayOf(today), studioWeekOffset * 7),
     [today, studioWeekOffset],
+  );
+
+  const { monthTitle, weeks: monthWeeks } = useMemo(
+    () => getMonthWeeks(studioMonday),
+    [studioMonday],
+  );
+
+  const isCurrentWeek = useMemo(
+    () => studioMonday === mondayOf(today),
+    [studioMonday, today],
   );
 
   const weekDays = useMemo(() => {
@@ -1173,13 +1225,17 @@ export function SessionStudio({
         {/* RIGHT PANEL — Week Day Strip & Sessions on Date */}
         <aside aria-label="Schedule calendar and sessions" className="min-w-0 space-y-4">
           <Card className="min-w-0 overflow-hidden rounded-sheet p-5">
-            {/* Week navigation row */}
+            {/* Week navigation row with month title & week dots */}
             <div className="flex items-center justify-between gap-2 border-b border-hairline pb-3">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-callout font-bold text-ink truncate">
-                  {weekTitle(studioMonday)}
+                  {monthTitle}
                 </span>
-                {studioWeekOffset !== 0 ? (
+                {isCurrentWeek ? (
+                  <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent shrink-0">
+                    This week
+                  </span>
+                ) : (
                   <button
                     type="button"
                     onClick={() => {
@@ -1187,31 +1243,71 @@ export function SessionStudio({
                       setSelectedDate(today);
                       setShowAllSessions(false);
                     }}
-                    className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent hover:bg-accent-soft/80 transition-colors"
+                    className="rounded-full border border-hairline bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2 hover:bg-surface hover:text-ink transition-colors shrink-0"
                   >
-                    This week
+                    Jump to today
                   </button>
-                ) : null}
+                )}
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
+              {/* Right: <  ● ● ● ● ●  > */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 <Button
                   type="button"
                   variant="secondary"
                   size="md"
                   onClick={() => setStudioWeekOffset((v) => v - 1)}
                   aria-label="Previous week"
-                  className="!min-h-8 !px-2"
+                  className="!min-h-8 !px-2 rounded-full"
                 >
                   <ChevronLeft size={14} />
                 </Button>
+
+                {/* Week dots: dots representing weeks of the month */}
+                <div
+                  className="flex items-center gap-1.5 px-1 py-1"
+                  role="tablist"
+                  aria-label="Weeks of the month"
+                >
+                  {monthWeeks.map((w) => {
+                    const active = w.monday === studioMonday;
+                    return (
+                      <button
+                        key={w.monday}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        aria-label={w.label}
+                        title={w.label}
+                        onClick={() => {
+                          setStudioWeekOffset(weekOffsetForDate(w.monday, today));
+                          setSelectedDate((prevDate) => {
+                            const m = mondayOf(prevDate);
+                            return m === w.monday ? prevDate : w.monday;
+                          });
+                          setShowAllSessions(false);
+                        }}
+                        className="group relative flex items-center justify-center p-0.5 transition-all focus:outline-none"
+                      >
+                        <span
+                          className={`block rounded-full transition-all duration-200 ${
+                            active
+                              ? "h-2.5 w-6 bg-accent shadow-sm"
+                              : "size-2.5 bg-hairline-strong hover:bg-muted group-hover:scale-125"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <Button
                   type="button"
                   variant="secondary"
                   size="md"
                   onClick={() => setStudioWeekOffset((v) => v + 1)}
                   aria-label="Next week"
-                  className="!min-h-8 !px-2"
+                  className="!min-h-8 !px-2 rounded-full"
                 >
                   <ChevronRight size={14} />
                 </Button>
