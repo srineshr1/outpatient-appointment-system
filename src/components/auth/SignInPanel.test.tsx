@@ -17,7 +17,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("password sign-in", () => {
   it("signs in with email and password and shows the same message for any mismatch", async () => {
     renderWithProviders(<SignInPanel nextPath="/book" mode="patient" doctors={doctors} />);
-    await userEvent.type(screen.getByLabelText("Email"), "sam@example.com");
+    await userEvent.type(screen.getByLabelText("Email"), "sam@example.com{enter}");
     await userEvent.type(screen.getByLabelText("Password"), "wrong-password");
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(vi.mocked(signInWithPassword)).toHaveBeenCalledWith({ email: "sam@example.com", password: "wrong-password", next: "/book" });

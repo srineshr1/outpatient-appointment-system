@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useActionState, useMemo, useRef, useState } from "react";
 import { TimeWheelPicker } from "@/components/doctors/TimeWheel";
 import { CLINIC_END, CLINIC_START, clinicWeekday, sessionIsPast } from "@/components/doctors/schedule-model";
-import { Alert, Calendar, Check, ChevronLeft, ChevronRight, Clock, Edit, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
+import { Alert, Calendar, Check, ChevronLeft, ChevronRight, Clock, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
 import { GlideSelect } from "@/components/reactbits/GlideSelect";
 import { RubberSegment } from "@/components/reactbits/RubberSegment";
 import { SquishSwitch } from "@/components/reactbits/SquishSwitch";
 import { Button, ButtonLink, buttonClass } from "@/components/ui/Button";
+import { CalendarRangeSelect } from "@/components/ui/calendar-range-select";
+import type { DateRange } from "react-day-picker";
 import { Card, Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { PendingButton } from "@/components/ui/PendingButton";
@@ -771,13 +773,9 @@ export function SessionStudio({
         {/* LEFT PANEL — "X session" form */}
         <div ref={editorRef} className="min-w-0 scroll-mt-[calc(var(--header-h)+1rem)]">
         <Card className="min-w-0 rounded-sheet p-5 md:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-4">
             <div className="min-w-0 max-w-full flex-1">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-2 px-2.5 py-0.5 text-caption font-medium text-ink-2">
-                {editing ? <Edit size={12} /> : <Plus size={12} />}
-                {editing ? "Editing session" : "Creating session"}
-              </span>
-              <h2 className="mt-2 truncate text-title2 font-semibold text-ink" title={sessionHeading}>
+              <h2 className="truncate text-title2 font-semibold text-ink" title={sessionHeading}>
                 {sessionHeading}
               </h2>
             </div>
@@ -816,6 +814,7 @@ export function SessionStudio({
             <input type="hidden" name="returnTo" value="/dashboard/sessions/manage" />
             <input type="hidden" name="viewDate" value={selectedDate} />
             <input type="hidden" name="id" value={editing?.id ?? ""} />
+            <input type="hidden" name="room" value={draft.room || room || "Room 1"} />
             <input type="hidden" name="kind" value={draft.kind} />
             <input type="hidden" name="mode" value={draft.mode} />
             <input type="hidden" name="startTime" value={draft.startTime} />
@@ -841,36 +840,20 @@ export function SessionStudio({
             )}
 
             <fieldset disabled={past} className="space-y-5 disabled:opacity-65">
-              {/* Name & Room */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field id="studio-label" label="Session name" optional>
-                  {({ id }) => (
-                    <input
-                      id={id}
-                      name="label"
-                      value={draft.label}
-                      maxLength={60}
-                      placeholder="e.g. Morning clinic"
-                      onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))}
-                      className="field"
-                    />
-                  )}
-                </Field>
-                <Field id="studio-room" label="Room or clinic">
-                  {({ id }) => (
-                    <input
-                      id={id}
-                      name="room"
-                      value={draft.room}
-                      maxLength={60}
-                      required
-                      placeholder="Room 6"
-                      onChange={(e) => setDraft((prev) => ({ ...prev, room: e.target.value }))}
-                      className="field"
-                    />
-                  )}
-                </Field>
-              </div>
+              {/* Session name */}
+              <Field id="studio-label" label="Session name" optional>
+                {({ id }) => (
+                  <input
+                    id={id}
+                    name="label"
+                    value={draft.label}
+                    maxLength={60}
+                    placeholder="e.g. Morning clinic"
+                    onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))}
+                    className="field"
+                  />
+                )}
+              </Field>
 
               {/* TIME ROW: Time : [ Start ] [ End ] */}
               <div className="rounded-card border border-hairline bg-surface-2/60 p-4">

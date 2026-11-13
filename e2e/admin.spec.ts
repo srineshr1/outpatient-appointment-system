@@ -22,6 +22,7 @@ const DEMO_PASSWORD = "Halden-demo-2026";
 
 async function signInWithEmail(page: Page, email: string) {
   await page.locator("#email").fill(email);
+  await page.locator("#email").press("Enter");
   await page.locator("#password").fill(DEMO_PASSWORD);
   const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -209,6 +210,7 @@ test.fixme("an admin adds a staff member, turns the account off, and it can't si
   await expect(doctor).toHaveURL(/\/sign-in/);
   await doctor.goto("/sign-in?as=staff");
   await doctor.locator("#email").fill(email);
+  await doctor.locator("#email").press("Enter");
   await doctor.locator("#password").fill(DEMO_PASSWORD);
   await doctor.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(doctor.getByRole("alert").filter({ hasText: "This account is turned off" })).toBeVisible();

@@ -9,8 +9,10 @@ import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { FlickeringGrid } from "@/registry/magicui/flickering-grid";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
+import { Button } from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-styles";
 import { Spinner as ButtonSpinner } from "@/components/ui/Spinner";
+import { ArrowRight } from "lucide-react";
 import type { Doctor } from "@/lib/data";
 import { practice } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
@@ -34,6 +36,7 @@ interface Props {
 export function SignInPanel({ nextPath, mode, doctors, notice = null, initialView = "signin" }: Props) {
   const staff = mode === "staff";
   const [view, setView] = useState<View>(staff && initialView === "signup" ? "signin" : initialView);
+  const [authStep, setAuthStep] = useState<"email" | "password">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -50,7 +53,17 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
     setSent(null);
     setPassword("");
     setConfirm("");
+    setAuthStep("email");
     setView(next);
+  }
+
+  function handleEmailSubmit() {
+    if (!email.trim()) {
+      setError("Enter your email address to continue.");
+      return;
+    }
+    setError(null);
+    setAuthStep("password");
   }
 
   function run(label: string, work: () => Promise<{ ok: boolean; error?: string; message?: string } | undefined>) {
@@ -71,8 +84,13 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
   function submitSignIn(event: FormEvent) {
     event.preventDefault();
-    if (!email.trim() || !password) {
-      setError("Enter your email and password.");
+    if (!email.trim()) {
+      setError("Enter your email address to continue.");
+      setAuthStep("email");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password.");
       return;
     }
     run("Signing in…", () => signInWithPassword({ email, password, next: nextPath }));
@@ -219,47 +237,147 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
     );
   } else {
     body = (
-      <form onSubmit={submitSignIn} noValidate>
-        <TextField
-          id="email"
-          label={staff ? "Practice email" : "Email"}
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={setEmail}
-          pending={pending}
-          error={error}
-          autoFocus
-        />
-        <TextField
-          id="password"
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={setPassword}
-          pending={pending}
-          error={error}
-          maxLength={200}
-        />
-        <div className="mt-1 flex justify-end px-2">
-          <button type="button" onClick={() => go("forgot")} className="min-h-11 text-callout text-accent dark:text-cyan-300 hover:underline underline-offset-4">
-            Forgot password?
-          </button>
-        </div>
-        <ErrorText id="form-error" message={error} />
-        <SubmitButton pending={pending} busyLabel={busyLabel}>
-          Sign in
-        </SubmitButton>
-        {staff ? null : (
-          <p className="mt-3 text-center text-callout text-ink-2">
-            New here?{" "}
-            <button type="button" onClick={() => go("signup")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
-              Create an account
-            </button>
-          </p>
+      <div>
+        {authStep === "email" ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleEmailSubmit();
+            }}
+            noValidate
+          >
+            <div>
+              <div className="flex items-center justify-between px-1 mb-1.5">
+                <label htmlFor="email" className="text-callout font-medium text-ink-2 dark:text-zinc-200">
+                  {staff ? "Practice email" : "Email"}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => go("forgot")}
+                  className="text-callout text-accent hover:underline dark:text-cyan-300 underline-offset-4"
+                >
+                  Forgot password?
+                </button>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  spellCheck={false}
+                  autoComplete="username email"
+                  autoFocus
+                  readOnly={pending}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleEmailSubmit();
+                    }
+                  }}
+                  placeholder="name@example.com"
+                  aria-invalid={Boolean(error) || undefined}
+                  aria-describedby={error ? "form-error" : undefined}
+                  className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 pr-10 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                <button
+                  type="button"
+                  onClick={handleEmailSubmit}
+                  aria-label="Continue with email"
+                  className="absolute right-1.5 inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-ink/10 hover:text-ink transition-colors"
+                >
+                  <ArrowRight className="size-4" />
+                </button>
+              </div>
+            </div>
+            <ErrorText id="form-error" message={error} />
+            {staff ? null : (
+              <p className="mt-4 text-center text-callout text-ink-2">
+                New here?{" "}
+                <button type="button" onClick={() => go("signup")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
+                  Create an account
+                </button>
+              </p>
+            )}
+          </form>
+        ) : (
+          <form onSubmit={submitSignIn} noValidate className="space-y-4">
+            <div className="flex items-center justify-between rounded-md border border-ink/12 bg-surface-2/60 px-3.5 py-2 text-callout">
+              <div className="flex items-center gap-2 truncate">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-caption font-semibold text-accent dark:text-cyan-300">
+                  {email.charAt(0).toUpperCase()}
+                </div>
+                <span className="truncate font-medium text-ink">{email}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthStep("email");
+                  setError(null);
+                }}
+                className="ml-2 shrink-0 text-caption font-medium text-accent hover:underline dark:text-cyan-300"
+              >
+                Change
+              </button>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between px-1 mb-1.5">
+                <label htmlFor="password" className="text-callout font-medium text-ink-2 dark:text-zinc-200">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => go("forgot")}
+                  className="text-callout text-accent hover:underline dark:text-cyan-300 underline-offset-4"
+                >
+                  Forgot password?
+                </button>
+              </div>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                autoFocus
+                readOnly={pending}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitSignIn(event);
+                  }
+                }}
+                placeholder="Enter your password"
+                aria-invalid={Boolean(error) || undefined}
+                aria-describedby={error ? "form-error" : undefined}
+                className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
+
+            <ErrorText id="form-error" message={error} />
+
+            <Button
+              type="submit"
+              disabled={pending}
+              aria-busy={pending || undefined}
+              className="h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {pending ? (
+                <span className="flex items-center justify-center gap-2">
+                  <ButtonSpinner />
+                  <span>{busyLabel || "Signing in…"}</span>
+                </span>
+              ) : (
+                "Sign in"
+              )}
+            </Button>
+          </form>
         )}
-      </form>
+      </div>
     );
   }
 
@@ -300,15 +418,18 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
         {/* Right: Google, or, the form */}
         <div className="w-full rounded-sheet border border-ink/10 bg-surface/80 p-6 shadow-raised backdrop-blur-xl md:p-8">
-          {staff || view === "forgot" ? null : (
+          {staff || view === "forgot" || (view === "signin" && authStep === "password") ? null : (
             <>
-              <a
-                href={googleHref}
-                className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-ink/[0.04] px-6 text-body font-medium text-ink no-underline transition-colors hover:border-ink/25 hover:bg-ink/[0.08]"
+              <Button
+                variant="outline"
+                asChild
+                className="h-11 w-full rounded-md border-ink/15 bg-ink/[0.04] text-body font-medium text-ink hover:border-ink/25 hover:bg-ink/[0.08]"
               >
-                <GoogleMark />
-                {view === "signup" ? "Sign up with Google" : "Sign in with Google"}
-              </a>
+                <a href={googleHref} className="flex h-11 w-full items-center justify-center gap-3">
+                  <GoogleMark />
+                  <span>{view === "signup" ? "Sign up with Google" : "Sign in with Google"}</span>
+                </a>
+              </Button>
               <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
                 <span className="h-px flex-1 bg-ink/10" />
                 OR
@@ -381,7 +502,7 @@ function TextField({
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={Boolean(error) || undefined}
         aria-describedby={[hint ? `${id}-hint` : "", error ? "form-error" : ""].filter(Boolean).join(" ") || undefined}
-        className="field mt-1 h-12 rounded-full! px-5"
+        className="field mt-1 h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
       />
       {hint ? (
         <p id={`${id}-hint`} className="mt-1 px-2 text-caption text-muted">
@@ -394,10 +515,21 @@ function TextField({
 
 function SubmitButton({ pending, busyLabel, children }: { pending: boolean; busyLabel: string; children: ReactNode }) {
   return (
-    <button type="submit" disabled={pending} aria-busy={pending || undefined} className={buttonClass("primary", "lg", "mt-4 w-full disabled:cursor-progress")}>
-      {pending ? <ButtonSpinner /> : null}
-      {pending ? busyLabel : children}
-    </button>
+    <Button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending || undefined}
+      className="mt-4 h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm disabled:opacity-50"
+    >
+      {pending ? (
+        <span className="flex items-center justify-center gap-2">
+          <ButtonSpinner />
+          <span>{busyLabel}</span>
+        </span>
+      ) : (
+        children
+      )}
+    </Button>
   );
 }
 
