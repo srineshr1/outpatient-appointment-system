@@ -15,7 +15,7 @@ type Bezier = [number, number, number, number];
 
 const EASE_OUT: Bezier = [0.23, 1, 0.32, 1];
 const EASE_IN_OUT: Bezier = [0.77, 0, 0.175, 1];
-const GLYPH_DONE = 0.55;
+const GLYPH_DONE = 0.9;
 const EMPTY_STEPS: string[] = [];
 
 const fmt = (ds: number) => (ds < 600 ? `${(ds / 10).toFixed(1)}s` : `${Math.floor(ds / 600)}m ${((ds % 600) / 10).toFixed(1)}s`);

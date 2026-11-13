@@ -14,6 +14,7 @@ import ThoughtLine from "./ThoughtLine";
 import VoicePill from "./VoicePill";
 import type { VoicePillSource, VoicePillStopReason } from "./VoicePill";
 import "./AssistantVoicePill.css";
+import "./AssistantDock.css";
 
 interface PendingCard {
   token: string;
@@ -47,8 +48,9 @@ function secondsSince(startedAt: number): number {
  */
 function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }) {
   return (
-    <div className="text-callout text-muted">
+    <div className="text-callout text-ink-2">
       <ThoughtLine
+        className="clinic-thought-line"
         working={working}
         elapsed={elapsed}
         label="Checking the book…"
@@ -967,7 +969,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
           aria-labelledby={titleId}
           style={dockStyle}
           data-resizing={resizing ? "true" : undefined}
-          className="fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] w-auto max-w-none flex-col rounded-t-3xl border border-hairline bg-surface p-0 shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
+          className="fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] min-h-0 w-auto max-w-none flex-col overflow-hidden rounded-t-3xl border border-hairline bg-surface p-0 shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
         >
           {isDesktop ? (
             <>
@@ -996,7 +998,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
               </button>
             </>
           ) : null}
-          <div className={`flex items-start justify-between gap-3 border-b border-hairline px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
+          <div className={`flex flex-shrink-0 items-start justify-between gap-3 border-b border-hairline px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
             <div>
               <h2 id={titleId} className="text-callout font-semibold text-ink">Clinic assistant</h2>
               <p className="text-caption text-muted">{user.role === "doctor" ? "Your book" : user.name}</p>
@@ -1005,8 +1007,12 @@ export function AssistantDock({ user }: { user: DockUser }) {
               Close
             </button>
           </div>
-          {voiceNote ? <p className="px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
-          <div ref={scrollerRef} className="mt-2 flex-1 space-y-3 overflow-y-auto px-4 py-3" aria-live="polite">
+          {voiceNote ? <p className="flex-shrink-0 px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
+          <div
+            ref={scrollerRef}
+            className="mt-2 min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] px-4 py-3"
+            aria-live="polite"
+          >
             <p className="text-callout text-ink-2">{intro}</p>
             {/* One flat keyed list, so a turn's working line is the same element that settles above its reply. */}
             {[
@@ -1047,7 +1053,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
             ) : null}
           </div>
           <form
-            className="flex items-center gap-2 border-t border-hairline p-3"
+            className="flex flex-shrink-0 items-center gap-2 overflow-visible border-t border-hairline p-3"
             onSubmit={(event) => {
               event.preventDefault();
               // A leftover Enter in the box does not submit the form (see onKeyDown), so this
