@@ -464,7 +464,7 @@ describe("AssistantDock voice pill", () => {
     expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("while a reply is read aloud, Stop speaking interrupts and leaves the mic off", async () => {
+  it("while a reply is read aloud, Stop speaking interrupts and keeps listening", async () => {
     vi.stubGlobal("SpeechRecognition", FakeRecognition);
     setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
     const synth = {
@@ -512,13 +512,12 @@ describe("AssistantDock voice pill", () => {
     fireEvent.click(stopSpeaking);
     expect(synth.cancel).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("button", { name: "Stop speaking" })).not.toBeInTheDocument());
-    // The spoken turn already turned the mic off; stopping speech does not open it again.
-    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(FakeRecognition.instances).toHaveLength(1);
+    // Voice stays on and listening starts again; the pill was not reset.
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
   });
 
-  it("stops the mic after a final spoken utterance and does not start it again after the reply", async () => {
+  it("keeps the mic on after a spoken message is sent, until the user taps to stop", async () => {
     vi.stubGlobal("SpeechRecognition", FakeRecognition);
     setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
     const spoken = stubSpeech([]);
@@ -529,58 +528,57 @@ describe("AssistantDock voice pill", () => {
     press(pill);
     lift(pill);
     await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
-    expect(FakeRecognition.instances[0]?.continuous).toBe(false);
+    expect(FakeRecognition.instances[0]?.continuous).toBe(true);
+
     heard(FakeRecognition.instances[0]!, "How many sessions today?", true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    // Sending does not turn voice off: the pill stays latched while the reply comes back.
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(spoken).toHaveLength(1));
     expect(screen.getByText("You have two sessions today.")).toBeInTheDocument();
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(FakeRecognition.instances).toHaveLength(1);
+
+    // After the reply, listening resumes on its own so they can speak again without a tap.
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
+    const next = FakeRecognition.instances[1]!;
+    expect(next.start).toHaveBeenCalled();
+    expect(next.continuous).toBe(true);
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+
+    // A second utterance is sent the same way (after the short post-speech echo guard).
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    heard(next, "And tomorrow?", true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(3));
+    expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+
+    // Only a tap stops it, and nothing restarts afterwards.
+    const stop = screen.getByRole("button", { name: "Stop voice" });
+    press(stop);
+    lift(stop);
+    expect(FakeRecognition.instances[2]?.abort).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
+    act(() => FakeRecognition.instances[2]?.onend?.());
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(FakeRecognition.instances).toHaveLength(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("sends leftover interim words once when recognition ends, then turns the mic off", async () => {
+  it("restarts listening when the browser ends a silent session, instead of turning the mic off", async () => {
     vi.stubGlobal("SpeechRecognition", FakeRecognition);
     setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "I can cancel that." }) });
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     openDock();
     const pill = screen.getByRole("button", { name: "Speak" });
     press(pill);
     lift(pill);
-    await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
-    const rec = FakeRecognition.instances[0]!;
-    heard(rec, "cancel my four o'clock", false);
-    act(() => rec.onend?.());
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(fetchMock.mock.calls[0]![1].body).messages.at(-1).content).toBe("cancel my four o'clock");
-    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
-    act(() => rec.onend?.());
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.getByText("I can cancel that.")).toBeInTheDocument());
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(FakeRecognition.instances).toHaveLength(1);
-  });
-
-  it("can start a new listen after the mic stops on its own", async () => {
-    vi.stubGlobal("SpeechRecognition", FakeRecognition);
-    setMediaDevices(vi.fn().mockResolvedValue({ getTracks: () => [] }));
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "You have two sessions today." }) }));
-    openDock();
-    const first = screen.getByRole("button", { name: "Speak" });
-    press(first);
-    lift(first);
     await waitFor(() => expect(FakeRecognition.instances[0]?.start).toHaveBeenCalled());
-    heard(FakeRecognition.instances[0]!, "How many sessions today?", true);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false"));
-    const again = screen.getByRole("button", { name: "Speak" });
-    press(again);
-    lift(again);
+    act(() => FakeRecognition.instances[0]?.onerror?.({ error: "no-speech" }));
+    act(() => FakeRecognition.instances[0]?.onend?.());
     await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
     expect(FakeRecognition.instances[1]?.start).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Stop voice" })).toHaveAttribute("aria-pressed", "true");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -669,7 +667,7 @@ describe("AssistantDock languages", () => {
     expect(window.localStorage.getItem(LOCALE_KEY)).toBe("hi-IN");
   });
 
-  it("speaks in the locale the server returns, with a voice for that language", async () => {
+  it("speaks and then listens in the locale the server returns, with a voice for that language", async () => {
     const spoken = stubSpeech([
       { lang: "en-IN", name: "English India" },
       { lang: "te-IN", name: "Telugu India" },
@@ -684,12 +682,9 @@ describe("AssistantDock languages", () => {
     await waitFor(() => expect(spoken).toHaveLength(1));
     expect(spoken[0]!.lang).toBe("te-IN");
     expect(spoken[0]!.voice?.lang).toBe("te-IN");
-    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("te-IN");
-    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
-    expect(FakeRecognition.instances).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "Speak" }));
     await waitFor(() => expect(FakeRecognition.instances.length).toBeGreaterThan(1));
     expect(FakeRecognition.instances.at(-1)?.lang).toBe("te-IN");
+    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("te-IN");
   });
 
   it("uses a voice with the same language prefix, and speaks with no matching voice at all", async () => {
@@ -716,7 +711,7 @@ describe("AssistantDock languages", () => {
     expect(spoken[1]!.voice).toBeNull();
   });
 
-  it("speaks an English summary in English; a new listen stays in the user's language", async () => {
+  it("speaks an English summary in English but keeps listening in the user's language", async () => {
     const spoken = stubSpeech([{ lang: "en-IN", name: "English India" }]);
     replyWith({ reply: "I have not booked anything.", locale: "en-IN" });
     window.localStorage.setItem(LOCALE_KEY, "te-IN");
@@ -727,8 +722,6 @@ describe("AssistantDock languages", () => {
     });
     await waitFor(() => expect(spoken).toHaveLength(1));
     expect(spoken[0]!.lang).toBe("en-IN");
-    expect(screen.getByRole("button", { name: "Speak" })).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(screen.getByRole("button", { name: "Speak" }));
     await waitFor(() => expect(FakeRecognition.instances.length).toBeGreaterThan(1));
     expect(FakeRecognition.instances.at(-1)?.lang).toBe("te-IN");
   });
