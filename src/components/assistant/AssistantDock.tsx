@@ -10,6 +10,9 @@ import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
 import { buttonClass } from "@/components/ui/button-styles";
 import ThoughtLine from "./ThoughtLine";
+import VoicePill from "./VoicePill";
+import type { VoicePillSource, VoicePillStopReason } from "./VoicePill";
+import "./AssistantVoicePill.css";
 
 interface PendingCard {
   token: string;
@@ -64,6 +67,21 @@ interface TurnResponse {
   payUrl?: string;
   slots?: SlotLink[];
   message?: string;
+}
+
+/** The voice pill matches the old 32px mic button so it fits the 48px message box. */
+const PILL_SIZE = 32;
+
+/**
+ * A real microphone waveform needs a second capture beside speech recognition. Desktop
+ * browsers share the microphone fine; phones can refuse recognition while another stream is
+ * open, so touch screens and browsers without recognition get the simulated waveform.
+ */
+function pillSource(): VoicePillSource {
+  if (typeof window === "undefined") return "simulated";
+  const canAnalyse = typeof window.AudioContext !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+  const finePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
+  return canAnalyse && finePointer && recognitionCtor() ? "mic" : "simulated";
 }
 
 /** Devanagari means Hindi. Latin script covers English and Hinglish. */
@@ -245,6 +263,10 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const [isDesktop, setIsDesktop] = useState(false);
   const [size, setSize] = useState<DockSize | null>(null);
   const [resizing, setResizing] = useState(false);
+  // The voice pill keeps its own listening state. A new key resets it when voice stops elsewhere.
+  const [pillKey, setPillKey] = useState(0);
+  const [pillOpen, setPillOpen] = useState(false);
+  const [pillWave, setPillWave] = useState<VoicePillSource>("simulated");
 
   const panelRef = useRef<HTMLDialogElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -273,6 +295,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const turnSeqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const pillOnRef = useRef(false);
+  const pillDeniedRef = useRef(false);
 
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -342,6 +366,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
   function openPanel() {
     const saved = readDockSize();
     setSize(saved ? clampDockSize(saved, window.innerWidth, window.innerHeight) : null);
+    setPillWave(pillSource());
     setOpen(true);
   }
 
@@ -470,6 +495,15 @@ export function AssistantDock({ user }: { user: DockUser }) {
     speakingRef.current = false;
     setSpeaking(false);
     if (note !== undefined) setVoiceNote(note);
+    releasePill();
+  }
+
+  /** Put the voice pill back to rest when voice stopped somewhere other than the pill. */
+  function releasePill() {
+    setPillOpen(false);
+    if (!pillOnRef.current) return;
+    pillOnRef.current = false;
+    setPillKey((key) => key + 1);
   }
 
   function startListen() {
@@ -813,30 +847,57 @@ export function AssistantDock({ user }: { user: DockUser }) {
     }
   }
 
-  async function toggleVoice() {
-    if (voiceOnRef.current) {
-      voiceOff("");
-      return;
-    }
-    if (requestingRef.current) return;
+  /** The pill was pressed: ask for the microphone inside that press, then start listening. */
+  async function startVoice() {
+    if (voiceOnRef.current || requestingRef.current) return;
     if (!recognitionCtor()) {
       voiceOff(NO_RECOGNITION);
       return;
     }
     primeSpeech();
     requestingRef.current = true;
+    pillDeniedRef.current = false;
     setVoiceNote("Allow the microphone if your browser asks.");
-    const problem = await requestMicrophone();
+    let problem = await requestMicrophone();
     requestingRef.current = false;
+    if (!problem && pillDeniedRef.current) problem = MIC_FAILED;
+    pillDeniedRef.current = false;
     if (problem) {
       voiceOff(problem);
       return;
     }
+    // Stopped or slid to cancel while the browser was asking.
+    if (!pillOnRef.current) return;
     setVoiceNote("");
     restartsRef.current = [];
     voiceOnRef.current = true;
     setVoiceOn(true);
     startListen();
+  }
+
+  function onPillStart() {
+    pillOnRef.current = true;
+    setPillOpen(true);
+    void startVoice();
+  }
+
+  function onPillStop({ reason }: { reason: VoicePillStopReason }) {
+    // Voice already stopped elsewhere and reset the pill; this is that old pill unmounting.
+    if (!pillOnRef.current) return;
+    pillOnRef.current = false;
+    setPillOpen(false);
+    if (reason === "mic-denied") {
+      if (requestingRef.current) {
+        // The Speak permission request is still open and will explain what went wrong.
+        pillDeniedRef.current = true;
+        return;
+      }
+      void requestMicrophone().then((problem) => voiceOff(problem ?? MIC_FAILED));
+      return;
+    }
+    // Every stop turns voice off. pauseListen drops unfinished words, so a slide to cancel
+    // (or any other stop) never sends what was half heard.
+    voiceOff("");
   }
 
   function interrupt() {
@@ -983,26 +1044,41 @@ export function AssistantDock({ user }: { user: DockUser }) {
                   if (!waiting) void send(interim || draft);
                 }}
                 placeholder={listening ? "Listening…" : "Ask about a visit"}
-                className="h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pr-12 pl-4 text-callout text-ink outline-none focus:border-accent"
-              />
-              <button
-                type="button"
-                aria-label={speaking ? "Stop speaking" : voiceOn ? "Stop voice" : "Speak"}
-                aria-pressed={voiceOn}
-                onClick={() => (speaking ? interrupt() : void toggleVoice())}
-                className={`absolute top-1/2 right-1.5 grid size-8 -translate-y-1/2 place-items-center rounded-full ${
-                  voiceOn || speaking ? "bg-accent text-white" : "bg-fill text-ink hover:bg-fill-strong"
+                className={`h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pl-4 text-callout text-ink outline-none focus:border-accent ${
+                  pillOpen || voiceOn ? "pr-[9.75rem]" : "pr-12"
                 }`}
-              >
+              />
+              <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2">
+                <VoicePill
+                  key={pillKey}
+                  className="clinic-voice-pill"
+                  ariaLabel={voiceOn ? "Stop voice" : "Speak"}
+                  background="#ececf0"
+                  iconColor="#1d1d1f"
+                  accentColor="#ffffff"
+                  size={PILL_SIZE}
+                  shape="pill"
+                  reach={8}
+                  showTime
+                  waveform
+                  slideToCancel
+                  cancelDistance={64}
+                  mode="auto"
+                  holdAfter={300}
+                  reactive={pillWave}
+                  onStart={onPillStart}
+                  onStop={onPillStop}
+                />
                 {speaking ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" rx="2" fill="currentColor" /></svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                    <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
-                    <path d="M7 11a5 5 0 0 0 10 0M12 16v3M9 19h6" />
-                  </svg>
-                )}
-              </button>
+                  // While a reply is read aloud, a press stops the reading and listens again.
+                  <button
+                    type="button"
+                    aria-label="Stop speaking"
+                    className="absolute inset-0 z-10 rounded-full"
+                    onClick={interrupt}
+                  />
+                ) : null}
+              </span>
             </div>
             {waiting ? (
               <button type="button" className={`${buttonClass("secondary")} h-12`} aria-label="Cancel request" onClick={cancelRequest}>
