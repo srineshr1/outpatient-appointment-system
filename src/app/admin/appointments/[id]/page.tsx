@@ -129,7 +129,7 @@ export default async function VisitPage({
                 {
                   term: "Account",
                   value: patient ? (
-                    <Link href={`/admin/people/${patient.id}`} className="text-accent hover:underline underline-offset-4">
+                    <Link href={`/admin/people/${patient.id}`} className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                       {patient.email}
                     </Link>
                   ) : (
@@ -176,14 +176,14 @@ export default async function VisitPage({
                       </thead>
                       <tbody className={tbodyClass}>
                         {[...charge.entries].reverse().map((entry) => (
-                          <tr key={entry.id}>
+                          <tr key={entry.id} className="transition-colors hover:bg-ink/[0.03]">
                             <Td className="whitespace-nowrap tabular-nums">{instantLabel(entry.at, today)}</Td>
                             <Td>
                               {entry.kind === "payment" ? <Badge tone="success">Payment</Badge> : <Badge tone="info">Refund</Badge>}
                               {entry.note ? <span className="mt-1 block text-[13px] text-muted">{entry.note}</span> : null}
                             </Td>
                             <Td className="whitespace-nowrap">{METHOD_LABELS[entry.method]}</Td>
-                            <Td align="right" className={entry.kind === "refund" ? "text-[#a51c22]" : ""}>
+                            <Td align="right" className={entry.kind === "refund" ? "text-red-700 dark:text-red-300" : ""}>
                               <Money pence={entry.kind === "refund" ? -entry.amountPence : entry.amountPence} />
                             </Td>
                             <Td className="whitespace-nowrap">{entry.byName || "—"}</Td>

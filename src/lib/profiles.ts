@@ -56,7 +56,8 @@ export function readDoctorProfile(record: ProfileRecord | null | undefined): Doc
     qualification: text(data.qualification, 80),
     years: years !== null && years >= 0 && years <= 70 ? years : null,
     room: text(data.room, 60),
-    feePence: fee !== null && fee > 0 ? fee : null,
+    // 0 is a real choice (free of charge), not "use the practice's fees".
+    feePence: fee !== null && fee >= 0 ? fee : null,
     bio: text(data.bio, 600),
     languages: languages.length ? languages : ["English"],
   };

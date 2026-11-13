@@ -7,6 +7,7 @@ import { Alert } from "@/components/icons";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
+import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { buttonClass } from "@/components/ui/button-styles";
 import { Spinner as ButtonSpinner } from "@/components/ui/Spinner";
 import type { Doctor } from "@/lib/data";
@@ -102,14 +103,14 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   const footerLink = staff ? (
     <>
       Not a doctor?{" "}
-      <a href={withNext("/sign-in")} className="font-medium text-accent">
+      <a href={withNext("/sign-in")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
         Patient sign-in
       </a>
     </>
   ) : (
     <>
       Doctor or reception?{" "}
-      <a href={withNext("/sign-in?as=staff")} className="font-medium text-accent">
+      <a href={withNext("/sign-in?as=staff")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
         Sign in as a doctor
       </a>
     </>
@@ -124,7 +125,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
         <TextField id="email" label="Email" type="email" autoComplete="email" value={email} onChange={setEmail} pending={pending} error={error} autoFocus />
         <ErrorText id="form-error" message={error} />
         {sent ? (
-          <p role="status" className="mt-3 rounded-card bg-canvas p-3 text-callout text-ink">
+          <p role="status" className="mt-3 rounded-card border border-emerald-400/25 bg-emerald-400/12 p-3 text-callout text-emerald-700 dark:text-emerald-200">
             {sent}
           </p>
         ) : null}
@@ -141,13 +142,15 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
       <form onSubmit={submitSignUp} noValidate>
         <h2 className="px-2 text-title3 font-semibold text-ink">Create your account</h2>
         <fieldset className="mt-3">
-          <legend className="px-2 text-callout font-medium text-ink">I’m signing up as</legend>
+          <legend className="px-2 text-callout font-medium text-ink-2 dark:text-zinc-200">I’m signing up as</legend>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {(["patient", "doctor"] as const).map((option) => (
               <label
                 key={option}
-                className={`cursor-pointer rounded-card border p-3 text-callout has-focus-visible:border-accent ${
-                  role === option ? "border-accent bg-accent/5" : "border-control bg-surface hover:border-ink-2"
+                className={`cursor-pointer rounded-card border p-3 text-callout transition-colors has-focus-visible:border-accent ${
+                  role === option
+                    ? "border-accent/60 dark:border-cyan-400/60 bg-accent/10 dark:bg-cyan-400/10 shadow-[0_0_16px_rgba(34,211,238,0.12)]"
+                    : "border-ink/12 bg-surface-2 hover:border-ink/25"
                 }`}
               >
                 <input
@@ -207,7 +210,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
         </SubmitButton>
         <p className="mt-3 text-center text-callout text-ink-2">
           Already have an account?{" "}
-          <button type="button" onClick={() => go("signin")} className="font-medium text-accent hover:underline underline-offset-4">
+          <button type="button" onClick={() => go("signin")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
             Sign in
           </button>
         </p>
@@ -239,7 +242,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           maxLength={200}
         />
         <div className="mt-1 flex justify-end px-2">
-          <button type="button" onClick={() => go("forgot")} className="min-h-11 text-callout text-accent hover:underline underline-offset-4">
+          <button type="button" onClick={() => go("forgot")} className="min-h-11 text-callout text-accent dark:text-cyan-300 hover:underline underline-offset-4">
             Forgot password?
           </button>
         </div>
@@ -250,7 +253,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
         {staff ? null : (
           <p className="mt-3 text-center text-callout text-ink-2">
             New here?{" "}
-            <button type="button" onClick={() => go("signup")} className="font-medium text-accent hover:underline underline-offset-4">
+            <button type="button" onClick={() => go("signup")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
               Create an account
             </button>
           </p>
@@ -260,11 +263,15 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   }
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-surface px-5 py-12">
-      <div className="grid w-full max-w-3xl items-center gap-10 md:grid-cols-2 md:gap-16">
+    <AuroraBackground className="grid min-h-dvh place-items-center bg-canvas px-5 py-12">
+      <div className="relative z-10 grid w-full max-w-4xl items-center gap-10 md:grid-cols-2 md:gap-12">
         {/* Left: the practice */}
         <div className="text-center md:text-left">
-          <a href="/" aria-label={`${practice.name} home`} className="inline-grid size-11 place-items-center rounded-xl bg-accent text-white">
+          <a
+            href="/"
+            aria-label={`${practice.name} home`}
+            className="inline-grid size-11 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 text-zinc-950 shadow-[0_0_20px_rgba(34,211,238,0.35)]"
+          >
             <svg width="20" height="20" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
               <path d="M5 1h4v4h4v4H9v4H5V9H1V5h4z" />
             </svg>
@@ -272,25 +279,25 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           <PageHeading className="mt-6 font-statement text-title1 font-bold tracking-[-0.02em] text-ink">
             Welcome to {practice.shortName}
           </PageHeading>
-          <p className="mt-1 text-title3 font-normal text-muted">{staff ? "Clinic staff sign-in" : "Book your visit online"}</p>
+          <p className="mt-1 text-title3 font-normal text-ink-2">{staff ? "Clinic staff sign-in" : "Book your visit online"}</p>
           {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
         </div>
 
         {/* Right: Google, or, the form */}
-        <div className="w-full">
+        <div className="w-full rounded-sheet border border-ink/10 bg-surface/80 p-6 shadow-raised backdrop-blur-xl md:p-8">
           {staff || view === "forgot" ? null : (
             <>
               <a
                 href={googleHref}
-                className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-control bg-surface px-6 text-body font-medium text-ink no-underline hover:bg-fill"
+                className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-ink/[0.04] px-6 text-body font-medium text-ink no-underline transition-colors hover:border-ink/25 hover:bg-ink/[0.08]"
               >
                 <GoogleMark />
                 {view === "signup" ? "Sign up with Google" : "Sign in with Google"}
               </a>
               <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
-                <span className="h-px flex-1 bg-hairline" />
+                <span className="h-px flex-1 bg-ink/10" />
                 OR
-                <span className="h-px flex-1 bg-hairline" />
+                <span className="h-px flex-1 bg-ink/10" />
               </div>
             </>
           )}
@@ -311,7 +318,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           <p className="mt-8 text-center text-callout text-ink-2">{footerLink}</p>
         </div>
       </div>
-    </div>
+    </AuroraBackground>
   );
 }
 
@@ -342,7 +349,7 @@ function TextField({
 }) {
   return (
     <div className="mt-3">
-      <label htmlFor={id} className="block px-2 text-callout font-medium text-ink">
+      <label htmlFor={id} className="block px-2 text-callout font-medium text-ink-2 dark:text-zinc-200">
         {label}
       </label>
       <input
@@ -381,7 +388,7 @@ function SubmitButton({ pending, busyLabel, children }: { pending: boolean; busy
 
 function LinkButton({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className="mt-2 min-h-11 w-full text-callout text-accent hover:underline underline-offset-4">
+    <button type="button" onClick={onClick} disabled={disabled} className="mt-2 min-h-11 w-full text-callout text-accent dark:text-cyan-300 hover:underline underline-offset-4">
       {children}
     </button>
   );
@@ -390,7 +397,7 @@ function LinkButton({ onClick, disabled, children }: { onClick: () => void; disa
 function ErrorText({ id, message }: { id: string; message: string | null }) {
   if (!message) return null;
   return (
-    <p id={id} role="alert" className="mt-2 flex items-start gap-1.5 px-2 text-callout text-danger">
+    <p id={id} role="alert" className="mt-2 flex items-start gap-1.5 px-2 text-callout text-red-700 dark:text-red-300">
       <Alert size={18} className="mt-px shrink-0" />
       <span>{message}</span>
     </p>
@@ -405,8 +412,8 @@ function HeldTime({ nextPath, doctors }: { nextPath: string; doctors: Doctor[] }
   const doctor = held ? doctors.find((item) => item.id === held.doctorId) : null;
   if (!ready || nextPath !== "/book/details" || !held || !doctor) return null;
   return (
-    <div className="mt-6 inline-flex items-center gap-3 rounded-card bg-canvas p-3 pr-5 text-left">
-      <DoctorPortrait doctor={doctor} size={44} />
+    <div className="mt-6 inline-flex items-center gap-3 rounded-card border border-accent/25 dark:border-cyan-400/25 bg-surface/90 p-3 pr-5 text-left shadow-card backdrop-blur-md">
+      <DoctorPortrait doctor={doctor} size={44} className="ring-1 ring-ink/10" />
       <p className="text-callout">
         <span className="block font-semibold text-ink">Holding your time</span>
         <span className="tabular text-ink-2">

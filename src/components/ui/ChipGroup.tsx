@@ -58,8 +58,10 @@ export function ChipGroup({ label, options, value, onChange, className = "flex f
               onKeyDown={(event) => onKeyDown(event, index)}
               whileTap={{ scale: 0.96 }}
               transition={spring.press}
-              className={`relative isolate min-h-11 shrink-0 rounded-full px-4 text-callout font-medium whitespace-nowrap transition-colors duration-200 ${
-                selected ? "text-white" : "bg-surface text-ink shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-fill"
+              className={`relative isolate min-h-11 shrink-0 rounded-full border px-4 text-callout whitespace-nowrap transition-colors duration-150 ${
+                selected
+                  ? "border-transparent font-semibold text-canvas"
+                  : "border-hairline bg-surface font-medium text-ink-2 hover:border-control/60 hover:bg-surface-2 hover:text-ink"
               }`}
             >
               {selected ? (

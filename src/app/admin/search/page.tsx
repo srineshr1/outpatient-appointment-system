@@ -103,7 +103,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                   </thead>
                   <tbody className={tbodyClass}>
                     {people.slice(0, LIMIT).map((row) => (
-                      <tr key={row.user.id}>
+                      <tr key={row.user.id} className="transition-colors hover:bg-ink/[0.03]">
                         <Td>
                           <RowLink href={`/admin/people/${row.user.id}`}>{row.user.name}</RowLink>
                           <span className="block text-[13px] break-all text-muted">{row.user.email}</span>

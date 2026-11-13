@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AssistantDock, DOCK_SIZE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, clampDockSize } from "./AssistantDock";
+import { AssistantDock, DOCK_SIZE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, QUICK_PROMPTS, clampDockSize } from "./AssistantDock";
 
 const doctor = { name: "Dr Doom", role: "doctor" as const };
 const realMatchMedia = window.matchMedia;
@@ -835,5 +835,47 @@ describe("AssistantDock scrolling and thought line contrast", () => {
     expect(settled).not.toHaveAttribute("data-working");
     expect(settled.closest(".text-ink-2")).not.toBeNull();
     expect(settled.closest(".text-muted")).toBeNull();
+  });
+});
+
+describe("AssistantDock quick prompts", () => {
+  const patient = { name: "Asha Rao", role: "patient" as const };
+
+  function promptList() {
+    return screen.queryByRole("list", { name: "Suggested questions" });
+  }
+
+  it("shows the doctor's prompts in an empty conversation", () => {
+    render(<AssistantDock user={doctor} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    expect(promptList()).not.toBeNull();
+    for (const prompt of QUICK_PROMPTS.doctor) expect(screen.getByRole("button", { name: prompt })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: QUICK_PROMPTS.patient[0] })).toBeNull();
+  });
+
+  it("shows the patient's prompts in an empty conversation", () => {
+    render(<AssistantDock user={patient} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    for (const prompt of QUICK_PROMPTS.patient) expect(screen.getByRole("button", { name: prompt })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: QUICK_PROMPTS.doctor[0] })).toBeNull();
+  });
+
+  it("sends the prompt on click, then hides the prompts once the conversation starts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "Two visits are booked today." }) });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssistantDock user={doctor} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "What's on my schedule today?" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/assistant");
+    const body = JSON.parse((init as { body: string }).body) as { messages: { role: string; content: string }[] };
+    expect(body.messages).toEqual([{ role: "user", content: "What's on my schedule today?" }]);
+    expect(promptList()).toBeNull();
+    expect(await screen.findByText("Two visits are booked today.")).toBeTruthy();
+    expect(promptList()).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add a consulting session" })).toBeNull();
   });
 });

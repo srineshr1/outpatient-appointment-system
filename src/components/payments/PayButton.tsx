@@ -120,7 +120,7 @@ export function PayButton({
       description: session.description,
       prefill: { name: session.patientName },
       notes: { reference: session.reference },
-      theme: { color: "#0066cc" },
+      theme: { color: "#06b6d4" },
       modal: {
         ondismiss: () => {
           setPhase((current) => (current === "open" ? "idle" : current));
@@ -178,7 +178,7 @@ export function PayButton({
       ) : null}
       {message ? (
         <Notice tone={phase === "waiting" ? "info" : "danger"} role={phase === "waiting" ? "status" : "alert"} className="flex items-start gap-2">
-          {phase === "waiting" ? null : <Alert size={20} className="mt-px shrink-0 text-danger" />}
+          {phase === "waiting" ? null : <Alert size={20} className="mt-px shrink-0 text-red-700 dark:text-red-300" />}
           {message}
         </Notice>
       ) : null}

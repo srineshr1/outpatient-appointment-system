@@ -47,7 +47,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
               </thead>
               <tbody className={tbodyClass}>
                 {feeTable().map(({ reason, pence }) => (
-                  <tr key={reason.id}>
+                  <tr key={reason.id} className="transition-colors hover:bg-ink/[0.03]">
                     <Td className="font-medium">{reason.label}</Td>
                     <Td align="right">{reason.minutes} min</Td>
                     <Td align="right" className="font-medium">

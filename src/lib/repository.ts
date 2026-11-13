@@ -25,7 +25,7 @@ import { loadDoctors } from "./doctors";
 import { totals } from "./payments";
 import { releaseExpiredHolds } from "./payments/holds";
 import { slotStatus } from "./schedule";
-import { freeToken, heldId } from "./sessions";
+import { canonicalHeldIds, freeToken, heldId } from "./sessions";
 import { applyReservations, holdReservations, type Reservation } from "./elastic-scheduling";
 import { getStore } from "./store";
 
@@ -168,7 +168,7 @@ export async function confirmBooking(input: ConfirmInput, latency = 0): Promise<
   let attempt = 0;
   for (;;) {
     // A wave booking holds "<wave>#<token>": the lowest token nobody holds. A stream slot holds its own id.
-    const token = current.mode === "wave" ? freeToken(current.id, current.capacity ?? 1, held) : null;
+    const token = current.mode === "wave" ? freeToken(current.id, current.capacity ?? 1, canonicalHeldIds(held, sessionsOf(found.doctorId), current)) : null;
     if (current.mode === "wave" && token === null) throw new SlotUnavailableError(current.id, "taken");
     const visit = buildVisit(input, current, reference, token);
     const outcome = await store.createAppointment(visit);

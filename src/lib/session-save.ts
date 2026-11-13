@@ -11,11 +11,11 @@ import { recordEvent, actorOf } from "./audit";
 import { forgetBlockedSlots } from "./blocked-slots";
 import { BLOB_NO_REBOOKING } from "./blob-store";
 import type { ConsultSession, PublicUser } from "./clinic-types";
-import { now, todayIso } from "./clock";
+import { now, practiceWallClock, todayIso } from "./clock";
 import { loadDoctors } from "./doctors";
-import { occupiesTime, sessionStructureChanged } from "./elastic-scheduling";
+import { isUpcomingVisit, occupiesTime, sessionStructureChanged, stillFits } from "./elastic-scheduling";
 import { displaceAndSave, displacedBy } from "./rebooking";
-import { checkSession, planAbsorption, planStreamShift, type SessionInput, type StreamMove } from "./sessions";
+import { checkSession, newAbsorptions, planAbsorption, planStreamShift, visitWhenLabel, type SessionInput, type StreamMove } from "./sessions";
 import { shiftAndSave, shiftCandidates, shiftLines, shiftMovable } from "./stream-shift";
 import { getStore } from "./store";
 
@@ -29,6 +29,11 @@ export interface SessionSaveRequest {
   displace: { expected: number; reason: string } | null;
   /** "Move them to later slots", confirmed for this many patients. */
   shiftCount: number | null;
+  /**
+   * The Schedule editor's "take free hours from another session" tick. Left out by callers (such as
+   * the clinic assistant) whose own confirmation step already showed the doctor that notice.
+   */
+  absorbConfirmed?: boolean;
   /** Run every check and stop before anything is written. */
   dryRun?: boolean;
 }
@@ -59,12 +64,12 @@ function refresh(): void {
 export async function upcomingIn(doctorId: string, sessionId: string): Promise<number> {
   const today = todayIso(now());
   const visits = await (await getStore()).listAppointments({ doctorId });
-  return visits.filter((visit) => occupiesTime(visit) && visit.sessionId === sessionId && visit.date >= today).length;
+  return visits.filter((visit) => isUpcomingVisit(visit) && visit.sessionId === sessionId && visit.date >= today).length;
 }
 
-/** "2099-01-05 11:30" for the first few displaced visits. */
+/** "5 Jan, 11:30" for the first few displaced visits. */
 function timesOf(visits: readonly { date: string; time: string }[]): string[] {
-  return visits.map((visit) => `${visit.date} ${visit.time}`);
+  return visits.map(visitWhenLabel);
 }
 
 export function legacyBlobStore(): boolean {
@@ -95,7 +100,13 @@ export async function saveDoctorSession(user: PublicUser, request: SessionSaveRe
   const today = todayIso(now());
   // A weekly session saved before dates were required may stay open-ended, so it can still be resized.
   const keepOpenRange = Boolean(existing && !existing.onDate && !existing.startDate && !existing.endDate);
-  const checked = checkSession(input, mine.filter((session) => session.id !== id), today, { keepOpenRange });
+  // A new one-off today, or one moved to start at another time today, must not start in the past.
+  const wall = practiceWallClock(now());
+  const startMoved = !existing || existing.startTime !== input.startTime || (existing.onDate ?? null) !== input.onDate;
+  const checked = checkSession(input, mine.filter((session) => session.id !== id), today, {
+    keepOpenRange,
+    nowMinutes: startMoved ? wall.hour * 60 + wall.minute : undefined,
+  });
   if (!checked.ok) return fail(checked.message);
 
   const at = now().toISOString();
@@ -124,10 +135,18 @@ export async function saveDoctorSession(user: PublicUser, request: SessionSaveRe
   // Elastic scheduling: hour changes must not strand booked visits. Expansion is always safe; a
   // shrink that would leave a booking outside the new hours is refused, unless the doctor explicitly
   // confirms "Notify them and offer new times" (displaced patient rebooking).
-  const stranded = existing ? displacedBy(appointments, existing, session, today) : [];
+  const tentativeOccupying = appointments
+    .filter((visit) => occupiesTime(visit) && visit.date >= today && (!existing || visit.sessionId !== existing.id || stillFits(visit, session)))
+    .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime ?? null, sessionId: visit.sessionId ?? null }));
+  const tentativePlan = planAbsorption(session, mine.filter((item) => item.id !== session.id), tentativeOccupying, today, storedTrims);
+  const potentialTrims = tentativePlan.ok ? tentativePlan.trims : [];
+
+  const stranded = existing
+    ? displacedBy(appointments, existing, session, today, potentialTrims)
+    : displacedBy(appointments, session, session, today, potentialTrims);
   const confirmed = request.displace;
   if (stranded.length > 0) {
-    const total = appointments.filter((visit) => visit.status === "booked" && visit.sessionId === existing!.id && visit.date >= today).length;
+    const total = appointments.filter((visit) => visit.status === "booked" && (existing ? visit.sessionId === existing.id : true) && visit.date >= today).length;
     const times = timesOf(stranded);
     const more = stranded.length > 3 ? ` and ${stranded.length - 3} more` : "";
     const message = structural
@@ -174,6 +193,10 @@ export async function saveDoctorSession(user: PublicUser, request: SessionSaveRe
     }
   }
   if (!plan.ok) return fail(plan.message);
+  // Taking free hours from another session (possibly all of them) needs an explicit yes from the doctor.
+  if (moves.length === 0 && request.absorbConfirmed === false && newAbsorptions(plan.trims, storedTrims, session.id).length > 0) {
+    return fail(`${plan.notice ?? "This change takes free hours from another session."} Tick the confirmation to save.`);
+  }
 
   const hoursChanged = Boolean(existing && (existing.startTime !== session.startTime || existing.endTime !== session.endTime));
   if ((hoursChanged || plan.trims.length > 0) && process.env.DATA_STORE !== "supabase" && process.env.BLOB_READ_WRITE_TOKEN) {

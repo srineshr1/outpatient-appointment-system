@@ -21,7 +21,7 @@ export function DoneNotice({ message }: { message: string }) {
   }, [message]);
 
   return (
-    <div className="mb-6 flex items-start gap-2 rounded-lg border border-[#b9dcc3] bg-[#e2f1e6] px-4 py-3 text-sm text-[#215631]">
+    <div className="mb-6 flex items-start gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/12 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
       <CheckCircleIcon size={18} className="mt-px shrink-0" />
       <p aria-hidden="true">{message}</p>
       <output className="sr-only">{announced}</output>

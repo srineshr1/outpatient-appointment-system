@@ -10,7 +10,7 @@ import { archiveSession } from "@/server/profile-actions";
 /** Row accent colour per booking mode, matching the calendar legend. */
 const modeStrip: Record<string, string> = {
   stream: "bg-accent",
-  wave: "bg-amber-500",
+  wave: "bg-warn",
 };
 
 /**
@@ -39,7 +39,7 @@ export function SessionList({
     <section aria-labelledby="your-sessions">
       <h2 id="your-sessions" className="text-title3 font-semibold text-ink">
         Your sessions{" "}
-        <span className="rounded-full bg-fill px-2 py-0.5 align-middle text-caption font-semibold text-ink-2">
+        <span className="rounded-full border border-hairline bg-fill px-2 py-0.5 align-middle text-caption font-semibold text-ink-2">
           {sessions.length}
         </span>
       </h2>
@@ -53,7 +53,7 @@ export function SessionList({
             <li
               key={session.id}
               data-editable={picking ? "true" : undefined}
-              className={`rounded-card bg-surface shadow-card ${selected ? "ring-2 ring-accent" : picking ? "ring-2 ring-accent/70" : ""}`}
+              className={`rounded-card border border-hairline bg-surface shadow-card ${selected ? "ring-2 ring-accent" : picking ? "ring-2 ring-accent/70" : ""}`}
             >
               <div className="flex items-center gap-4 px-4 py-3.5 md:px-5">
                 <span
@@ -63,11 +63,17 @@ export function SessionList({
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 text-body font-semibold text-ink">
                     {session.label || "Consulting session"}
-                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-caption font-semibold text-accent">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-caption font-semibold ${
+                        wave
+                          ? "border border-warn/30 bg-warn-soft text-warn"
+                          : "border border-accent/30 bg-accent-soft text-accent"
+                      }`}
+                    >
                       {wave ? "Wave" : "Stream"}
                     </span>
                     {session.room ? (
-                      <span className="rounded-full bg-fill px-2 py-0.5 text-caption font-medium text-ink-2">
+                      <span className="rounded-full border border-hairline bg-fill px-2 py-0.5 text-caption font-medium text-ink-2">
                         Room {session.room}
                       </span>
                     ) : null}

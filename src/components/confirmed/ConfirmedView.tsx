@@ -12,12 +12,12 @@ import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ShinyText } from "@/components/ui/ShinyText";
 import { practice, reasons, type Doctor } from "@/lib/data";
 import { dayOfMonth } from "@/lib/clock";
 import { formatMoney } from "@/lib/fees";
 import { ageLabel, formatPhone, monthLong, weekdayLong } from "@/lib/format";
 import { downloadIcs } from "@/lib/ics";
-import { spring } from "@/lib/motion";
 
 function waveMinutes(from: string, to: string): number {
   const at = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
@@ -29,8 +29,8 @@ function SuccessMark() {
     <motion.div
       initial={{ scale: 0.6, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ ...spring.gentle, delay: 0.05 }}
-      className="grid size-16 place-items-center rounded-full bg-success text-white md:size-20"
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      className="grid size-16 place-items-center rounded-full border border-emerald-400/35 bg-emerald-400/15 text-emerald-700 dark:text-emerald-300 shadow-[0_0_32px_rgba(52,211,153,0.25)] md:size-20"
       aria-hidden="true"
     >
       <svg viewBox="0 0 24 24" className="size-8 md:size-10" fill="none" stroke="currentColor" strokeWidth={2.6}>
@@ -40,7 +40,7 @@ function SuccessMark() {
           strokeLinejoin="round"
           initial={{ pathLength: 0 }}
           animate={{ pathLength: 1 }}
-          transition={{ duration: 0.45, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.34, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
         />
       </svg>
     </motion.div>
@@ -81,18 +81,20 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
         <div className="flex justify-center">
           <SuccessMark />
         </div>
-        <PageHeading className="mt-6 text-title1 font-semibold text-ink md:text-hero">You’re booked</PageHeading>
+        <PageHeading className="mt-6 text-title1 font-semibold text-ink md:text-hero">
+          <ShinyText>You’re booked</ShinyText>
+        </PageHeading>
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ ...spring.gentle, delay: 0.15 }}
+          transition={{ duration: 0.3, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
           <p className="mt-3 text-title3 font-normal text-ink-2">
             {patient ? `We’ll see ${patient.name.trim().split(/\s+/)[0]}` : "We’ll see you"}{" "}
             {slot.date === window.today
               ? "today"
               : `on ${weekdayLong(slot.date)} ${dayOfMonth(slot.date)} ${monthLong(slot.date)}`}{" "}
-            at <span className="tabular">{slotTimeLabel(slot)}</span> with {doctor.short}.
+            at <span className="tabular text-ink">{slotTimeLabel(slot)}</span> with {doctor.short}.
           </p>
           {slot.mode === "wave" && booking.token ? (
             <p className="mt-3 text-callout text-ink-2">
@@ -101,9 +103,11 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
             </p>
           ) : null}
           <p className="mt-6 text-callout text-muted">Booking reference</p>
-          <p className="tabular mt-1 text-title2 font-semibold tracking-wide text-ink select-all">{reference}</p>
+          <p className="tabular mt-2 inline-block rounded-xl border border-accent/25 dark:border-cyan-400/25 bg-accent/10 dark:bg-cyan-400/10 px-4 py-1.5 text-title2 font-bold tracking-wider text-accent dark:text-cyan-300 select-all">
+            {reference}
+          </p>
           <p className="mt-4 text-callout">
-            <Link href="/appointments" className="text-accent hover:underline underline-offset-4">
+            <Link href="/appointments" className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
               View your appointments
             </Link>
           </p>
@@ -136,13 +140,13 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ ...spring.gentle, delay: 0.3 }}
+        transition={{ duration: 0.32, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
         className="mx-auto mt-12 grid max-w-4xl gap-4 md:grid-cols-2"
       >
-        <AppointmentSummary doctor={doctor} slot={slot} reason={reason} token={booking.token} />
-        <Card className="p-5 md:p-6">
+        <AppointmentSummary doctor={doctor} slot={slot} reason={reason} token={booking.token} accent />
+        <Card className="border-ink/10 p-5 backdrop-blur-md md:p-6">
           <h2 className="text-callout font-semibold text-muted">Before you come</h2>
           <dl className="mt-4 grid gap-4 text-body">
             {patient ? (
@@ -164,11 +168,11 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
             </Item>
             <Item term="Can’t make it?">
               Cancel the visit from{" "}
-              <Link href="/appointments" className="text-accent hover:underline underline-offset-4">
+              <Link href="/appointments" className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                 your appointments
               </Link>
               , or call{" "}
-              <a href={practice.phoneHref} className="tabular text-accent hover:underline underline-offset-4">
+              <a href={practice.phoneHref} className="tabular text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                 {practice.phoneDisplay}
               </a>{" "}
               with at least two hours’ notice, so someone else can have the time.

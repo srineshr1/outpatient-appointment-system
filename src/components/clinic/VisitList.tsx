@@ -5,8 +5,11 @@ import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
 import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
 import { slotTimeLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
+import { ButtonLink } from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-styles";
+import { Card } from "@/components/ui/Card";
 import { PendingButton } from "@/components/ui/PendingButton";
+import { SpotlightCard } from "@/components/ui/SpotlightCard";
 
 type Mode = "patient" | "clinic";
 
@@ -25,6 +28,13 @@ function statusLabel(status: AppointmentRecord["status"]): string {
   if (status === "expired") return "Hold expired";
   if (status === "displaced") return "Hours removed, new time pending";
   return "Booked";
+}
+
+function statusPillClass(status: AppointmentRecord["status"]): string {
+  if (status === "completed") return "border-success/25 bg-success-soft text-success";
+  if (status === "pending_payment" || status === "displaced") return "border-warn/25 bg-warn-soft text-warn";
+  if (status === "cancelled" || status === "expired") return "border-hairline bg-fill text-muted";
+  return "border-accent/25 bg-accent-soft text-accent";
 }
 
 function whenLabel(visit: AppointmentRecord): string {
@@ -86,12 +96,26 @@ export function VisitList({
     ["Cancelled, expired or displaced", groups.cancelled],
   ] as const;
   const any = sections.some(([, items]) => items.length > 0);
+  const nextVisitId =
+    mode === "patient"
+      ? ([...groups.todayVisits, ...groups.upcoming].find((visit) => visit.status === "booked")?.id ?? null)
+      : null;
 
   if (!any) {
+    if (mode === "clinic") {
+      return (
+        <p className="mt-8 max-w-prose rounded-card border border-hairline bg-surface-2 px-5 py-6 text-body text-ink-2">
+          No visits on this book yet. They appear here as soon as a patient books.
+        </p>
+      );
+    }
     return (
-      <p className="mt-8 max-w-prose text-body text-ink-2">
-        {mode === "clinic" ? "No visits on this book yet. They appear here as soon as a patient books." : "You have no visits yet."}
-      </p>
+      <Card className="mt-8 flex max-w-prose flex-col items-start gap-4 p-6">
+        <p className="text-body text-ink-2">You have no visits yet.</p>
+        <ButtonLink href="/book" size="lg">
+          Book an appointment
+        </ButtonLink>
+      </Card>
     );
   }
 
@@ -108,14 +132,25 @@ export function VisitList({
               </span>
             </h2>
             <ul className="mt-4 grid gap-3">
-              {items.map((visit) => (
-                <li key={visit.id}>
-                  <article className="rounded-card bg-surface p-5 shadow-card">
+              {items.map((visit) => {
+                const isNext = visit.id === nextVisitId;
+                const cardBody = (
+                  <div className="relative z-10">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h3 className="text-body font-semibold text-ink">
                         {mode === "clinic" ? visit.patientName : doctorName(visit.doctorId)}
                       </h3>
-                      <p className="text-callout font-medium text-muted">{statusLabel(visit.status)}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isNext ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success-soft px-2.5 py-0.5 text-caption font-semibold text-success">
+                            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
+                            Next visit
+                          </span>
+                        ) : null}
+                        <p className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption font-semibold ${statusPillClass(visit.status)}`}>
+                          {statusLabel(visit.status)}
+                        </p>
+                      </div>
                     </div>
                     <p className="mt-1 text-body text-ink-2">
                       <span className="tabular">{formatWhen({ date: visit.date, time: whenLabel(visit) }, today)}</span>
@@ -223,9 +258,19 @@ export function VisitList({
                         </form>
                       </div>
                     ) : null}
-                  </article>
-                </li>
-              ))}
+                  </div>
+                );
+                return (
+                  <li key={visit.id}>
+                    <SpotlightCard
+                      as="article"
+                      className={`rounded-card! p-5 ${isNext ? "border-accent/40 shadow-raised ring-1 ring-accent/20" : ""}`}
+                    >
+                      {cardBody}
+                    </SpotlightCard>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ),

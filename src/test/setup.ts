@@ -47,3 +47,22 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   }
   globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
 }
+
+// jsdom lacks IntersectionObserver, which Motion's useInView reads in CountUp / BlurText.
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  globalThis.IntersectionObserver = class IntersectionObserver {
+    readonly root = null;
+    readonly rootMargin = "0px";
+    readonly scrollMargin = "0px";
+    readonly thresholds = [0];
+    constructor(private callback: IntersectionObserverCallback) {}
+    observe(target: Element) {
+      this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this);
+    }
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+  };
+}

@@ -34,7 +34,7 @@ export function PatientProfileForm({
   const v = (key: keyof typeof initial) => state?.values?.[key] ?? initial[key];
   const e = state?.errors ?? {};
   return (
-    <form action={action} className="group mt-8 grid gap-5 rounded-card bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
+    <form action={action} className="group mt-8 grid gap-5 rounded-card border border-hairline bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
       <input type="hidden" name="welcome" value={welcome ? "1" : ""} />
       <input type="hidden" name="next" value={next} />
       <Problem state={state} />
@@ -97,7 +97,7 @@ export function DoctorProfileForm({ initial, welcome }: { initial: DoctorFormVal
     </Field>
   );
   return (
-    <form action={action} className="group mt-8 grid gap-5 rounded-card bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
+    <form action={action} className="group mt-8 grid gap-5 rounded-card border border-hairline bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
       <input type="hidden" name="welcome" value={welcome ? "1" : ""} />
       <Problem state={state} />
       {text("name", "Your name", { hint: "Patients see this as Dr followed by your name.", wide: true })}

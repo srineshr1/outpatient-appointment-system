@@ -10,13 +10,13 @@ import { STATE_LABELS, type PaymentState } from "@/lib/payments";
 
 export type Tone = "success" | "warn" | "danger" | "info" | "neutral";
 
-// Every pair is at least 6.6:1 (WCAG AA needs 4.5:1).
+// Every pair exceeds WCAG AA 4.5:1 on the dark surface.
 const TONES: Record<Tone, string> = {
-  success: "bg-[#e2f1e6] text-[#215631]",
-  warn: "bg-[#fff0d5] text-[#774b06]",
-  danger: "bg-[#fdeded] text-[#a51c22]",
-  info: "bg-[#e8f1fb] text-[#0b4f8a]",
-  neutral: "bg-fill text-ink-2",
+  success: "border border-emerald-400/25 bg-emerald-400/12 text-emerald-700 dark:text-emerald-300",
+  warn: "border border-amber-400/25 bg-amber-400/12 text-amber-700 dark:text-amber-300",
+  danger: "border border-red-400/25 bg-red-400/12 text-red-700 dark:text-red-300",
+  info: "border border-accent/25 dark:border-cyan-400/25 bg-accent/12 dark:bg-cyan-400/12 text-accent dark:text-cyan-300",
+  neutral: "border border-ink/10 bg-ink/[0.05] text-ink-2",
 };
 
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
@@ -77,13 +77,13 @@ export interface KpiItem {
 
 export function Kpis({ items }: { items: readonly KpiItem[] }) {
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-hairline bg-hairline lg:grid-cols-4">
+    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-hairline bg-hairline lg:grid-cols-4">
       {items.map((item) => (
         <div key={item.label} className="bg-surface p-4">
           <dt className="text-[13px] font-medium text-muted">{item.label}</dt>
           <dd
             className={`mt-1 text-xl font-semibold tabular-nums ${
-              item.tone === "danger" ? "text-[#a51c22]" : item.tone === "warn" ? "text-[#774b06]" : "text-ink"
+              item.tone === "danger" ? "text-red-700 dark:text-red-300" : item.tone === "warn" ? "text-amber-700 dark:text-amber-300" : "text-ink"
             }`}
           >
             {item.value}
@@ -112,7 +112,10 @@ export function Panel({
 }) {
   const headingId = id ? `${id}-title` : undefined;
   return (
-    <section aria-labelledby={headingId} className={`min-w-0 rounded-lg border border-hairline bg-surface ${className}`}>
+    <section
+      aria-labelledby={headingId}
+      className={`min-w-0 rounded-xl border border-hairline bg-surface [box-shadow:inset_0_1px_0_rgba(255,255,255,0.04)] ${className}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-4 py-3">
         <div className="min-w-0">
           <h2 id={headingId} className="text-base font-semibold text-ink">
@@ -160,7 +163,7 @@ export function SectionHeading({
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-lg border border-dashed border-hairline px-4 py-8 text-center text-sm text-muted">{children}</p>;
+  return <p className="rounded-xl border border-dashed border-hairline bg-surface/50 px-4 py-8 text-center text-sm text-muted">{children}</p>;
 }
 
 /* ---------- Tables ---------- */
@@ -173,14 +176,14 @@ export function Empty({ children }: { children: ReactNode }) {
 export function TableWrap({ label, children }: { label: string; children: ReactNode }) {
   return (
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrollable region must be reachable by keyboard
-    <section aria-label={label} tabIndex={0} className="relative overflow-x-auto rounded-lg border border-hairline bg-surface contain-inline-size">
+    <section aria-label={label} tabIndex={0} className="relative overflow-x-auto rounded-xl border border-hairline bg-surface [box-shadow:inset_0_1px_0_rgba(255,255,255,0.04)] contain-inline-size">
       {children}
     </section>
   );
 }
 
 export const tableClass = "w-full border-collapse text-left text-sm";
-export const theadClass = "bg-[#f6f8fa] text-[13px] text-ink-2";
+export const theadClass = "bg-surface/90 dark:bg-zinc-900/90 text-[13px] text-ink-2 border-b border-hairline";
 export const tbodyClass = "divide-y divide-hairline";
 
 export function Th({ children, align = "left", className = "" }: { children?: ReactNode; align?: "left" | "right"; className?: string }) {
@@ -212,7 +215,7 @@ export function Td({
 /** A link in a table row: at least 24px tall (WCAG 2.5.8). */
 export function RowLink({ href, children, label }: { href: string; children: ReactNode; label?: string }) {
   return (
-    <Link href={href} aria-label={label} className="inline-flex min-h-6 items-center font-medium text-accent hover:underline underline-offset-4">
+    <Link href={href} aria-label={label} className="inline-flex min-h-6 items-center font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
       {children}
     </Link>
   );
@@ -227,21 +230,22 @@ export function Money({ pence, signed = false }: { pence: number; signed?: boole
 export type AdminButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 
 const BUTTONS: Record<AdminButtonVariant, string> = {
-  primary: "bg-accent text-white hover:bg-accent-hover",
-  secondary: "border border-hairline bg-surface text-ink hover:bg-fill",
-  danger: "bg-danger text-white hover:bg-[#a51c22]",
-  ghost: "text-accent hover:bg-accent-soft",
+  primary:
+    "bg-cyan-400 bg-gradient-to-r from-cyan-400 to-blue-500 text-zinc-950 font-semibold hover:from-cyan-300 hover:to-blue-400 shadow-[0_0_14px_rgba(34,211,238,0.2)]",
+  secondary: "border border-ink/12 bg-ink/[0.04] font-medium text-ink hover:bg-ink/[0.08]",
+  danger: "bg-red-600 font-medium text-white hover:bg-red-700",
+  ghost: "font-medium text-accent dark:text-cyan-300 hover:bg-accent/10 dark:hover:bg-cyan-400/10",
 };
 
 export function adminButton(variant: AdminButtonVariant = "secondary", extra = ""): string {
-  return `inline-flex min-h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium whitespace-nowrap no-underline transition-colors aria-disabled:cursor-wait aria-disabled:opacity-70 ${BUTTONS[variant]} ${extra}`.trim();
+  return `inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm whitespace-nowrap no-underline transition-colors aria-disabled:cursor-wait aria-disabled:opacity-70 ${BUTTONS[variant]} ${extra}`.trim();
 }
 
 export const inputClass =
-  "block h-9 w-full rounded-md border border-control bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-2 focus-visible:border-accent";
+  "block h-9 w-full rounded-md border border-control bg-surface-2 px-3 text-sm text-ink placeholder:text-muted transition-colors hover:border-control dark:hover:border-zinc-400 focus-visible:border-accent dark:focus-visible:border-cyan-400";
 
 export const textareaClass =
-  "block min-h-20 w-full rounded-md border border-control bg-surface px-3 py-2 text-sm text-ink transition-colors hover:border-ink-2 focus-visible:border-accent";
+  "block min-h-20 w-full rounded-md border border-control bg-surface-2 px-3 py-2 text-sm text-ink placeholder:text-muted transition-colors hover:border-control dark:hover:border-zinc-400 focus-visible:border-accent dark:focus-visible:border-cyan-400";
 
 export function AdminField({
   id,
