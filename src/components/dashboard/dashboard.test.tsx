@@ -145,7 +145,7 @@ describe("Doctor Dashboard Redesign", () => {
     expect(screen.getByRole("link", { name: /View sessions/ })).toHaveAttribute("href", "/dashboard/sessions");
     expect(screen.getByRole("link", { name: /Edit sessions/ })).toHaveAttribute("href", "/dashboard/sessions/manage");
     expect(screen.getByRole("button", { name: /Mark complete/ })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Add / Edit panel" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^Add \/ Edit/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
   });
 
@@ -192,7 +192,7 @@ describe("Doctor Dashboard Redesign", () => {
     );
   });
 
-  it("SessionStudio renders Add / Edit panel and toggles Date range calendar when Recurring is clicked", async () => {
+  it("SessionStudio renders Add / Edit header and toggles Date range calendar when Recurring is clicked", async () => {
     renderWithProviders(
       <SessionStudio
         doctorId="doc-1"
@@ -216,7 +216,7 @@ describe("Doctor Dashboard Redesign", () => {
     const returnInputs = document.querySelectorAll('input[name="returnTo"]') as NodeListOf<HTMLInputElement>;
     expect(returnInputs.length).toBeGreaterThan(0);
     expect(Array.from(returnInputs).every((el) => el.value === "/dashboard/sessions/manage")).toBe(true);
-    expect(screen.getByRole("heading", { name: "Add / Edit panel" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Add / Edit" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Calendar Preview" })).not.toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "Weeks of the month" })).toBeInTheDocument();
     const weekDots = screen.getAllByRole("tab", { name: /Week \d+/i });

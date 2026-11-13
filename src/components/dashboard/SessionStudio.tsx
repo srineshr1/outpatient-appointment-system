@@ -698,40 +698,38 @@ export function SessionStudio({
 
   return (
     <div className="mx-auto max-w-[92rem] px-4 pt-6 pb-16 md:px-6 xl:px-8">
-      {/* 1. Outer Studio Header ("Add / Edit panel") */}
+      {/* 1. Outer Studio Header */}
       <section
         aria-label="Add or edit sessions"
-        className="rounded-sheet border border-hairline bg-surface p-5 shadow-card md:p-6"
+        className="flex flex-wrap items-center justify-between gap-4"
       >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-caption text-muted">
-              <Sliders size={14} className="text-accent" />
-              <span>{doctorName}</span>
-              <span aria-hidden="true">·</span>
-              <span className="tabular">
-                {sessions.length} active {sessions.length === 1 ? "session" : "sessions"}
-              </span>
-            </div>
-            <h1 className="mt-1.5 text-title2 font-semibold tracking-tight text-ink md:text-title1">
-              Add / Edit panel
-            </h1>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-caption text-muted">
+            <Sliders size={14} className="text-accent" />
+            <span>{doctorName}</span>
+            <span aria-hidden="true">·</span>
+            <span className="tabular">
+              {sessions.length} active {sessions.length === 1 ? "session" : "sessions"}
+            </span>
           </div>
+          <h1 className="mt-1.5 text-title2 font-semibold tracking-tight text-ink md:text-title1">
+            Add / Edit
+          </h1>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Button
-              variant={isCreateMode ? "primary" : "secondary"}
-              size="md"
-              onClick={() => startCreate()}
-            >
-              <Plus size={16} />
-              New session
-            </Button>
-            <ButtonLink href="/dashboard/sessions" variant="secondary" size="md">
-              <Calendar size={16} />
-              View schedule
-            </ButtonLink>
-          </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            variant={isCreateMode ? "primary" : "secondary"}
+            size="md"
+            onClick={() => startCreate()}
+          >
+            <Plus size={16} />
+            New session
+          </Button>
+          <ButtonLink href="/dashboard/sessions" variant="secondary" size="md">
+            <Calendar size={16} />
+            View schedule
+          </ButtonLink>
         </div>
       </section>
 
