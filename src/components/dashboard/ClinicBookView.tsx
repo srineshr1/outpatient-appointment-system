@@ -13,7 +13,6 @@ import {
   Clock,
   Close,
   Phone,
-  Pin,
   Plus,
   Search,
   Sliders,
@@ -163,7 +162,7 @@ function groupVisits(visits: readonly AppointmentRecord[], today: string) {
 export function ClinicBookView({
   userName,
   userRole,
-  room,
+  room: _room,
   expiresAt,
   expiresLabel,
   setup,
@@ -270,11 +269,6 @@ export function ClinicBookView({
   const unreadInboxCount = inboxItems.filter((item) => !item.readAt).length;
   const isOwnDoctor = userRole === "doctor" && Boolean(setup);
 
-  const firstIncompleteStep = setup?.steps.find((step) => !step.done);
-  const firstIncompleteHref =
-    firstIncompleteStep?.id === "session"
-      ? "/dashboard/sessions/manage"
-      : (firstIncompleteStep?.href ?? "/dashboard/profile");
   const defaultStepperIndex = setup
     ? Math.max(0, setup.steps.findIndex((step) => !step.done))
     : 0;
@@ -296,43 +290,9 @@ export function ClinicBookView({
       >
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2.5">
-              {setup ? (
-                setup.visible ? (
-                  <Link
-                    href="/dashboard/sessions"
-                    className="inline-flex items-center gap-2 rounded-full border border-success/30 bg-success-soft px-3 py-1 text-caption font-semibold text-success no-underline transition-colors hover:bg-success-soft/80"
-                  >
-                    <span aria-hidden="true" className="size-2 rounded-full bg-success" />
-                    Visible to patients
-                  </Link>
-                ) : (
-                  <Link
-                    href={firstIncompleteHref}
-                    className="inline-flex items-center gap-2 rounded-full border border-warn/35 bg-warn-soft px-3 py-1 text-caption font-semibold text-warn no-underline transition-colors hover:bg-warn-soft/80"
-                  >
-                    <span aria-hidden="true" className="size-2 rounded-full bg-warn" />
-                    Setup required
-                  </Link>
-                )
-              ) : (
-                <span className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface-2 px-3 py-1 text-caption font-semibold text-ink">
-                  <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
-                  {userRole === "admin" ? "Admin clinic book" : "Reception desk"}
-                </span>
-              )}
-
-              {room ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-2 px-3 py-1 text-caption font-medium text-ink-2">
-                  <Pin size={13} className="text-muted" />
-                  {room}
-                </span>
-              ) : null}
-            </div>
-
             <h1
               id="clinic-book-heading"
-              className="mt-3 text-title2 font-bold tracking-tight text-ink md:text-title1"
+              className="text-title2 font-bold tracking-tight text-ink md:text-title1"
             >
               Hello {greetingName(userName, userRole)}
             </h1>

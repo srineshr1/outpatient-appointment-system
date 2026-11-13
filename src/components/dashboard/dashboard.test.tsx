@@ -145,6 +145,7 @@ describe("Doctor Dashboard Redesign", () => {
     expect(screen.getByRole("link", { name: /Edit sessions/ })).toHaveAttribute("href", "/dashboard/sessions/manage");
     expect(screen.getByRole("button", { name: /Mark complete/ })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Add / Edit panel" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
   });
 
   it("SessionsViewer renders read-only schedule controls and Session Directory switcher", async () => {
@@ -176,6 +177,18 @@ describe("Doctor Dashboard Redesign", () => {
     );
 
     expect(screen.getByRole("link", { name: /Edit in Session Studio/ })).toHaveAttribute("href", "/dashboard/sessions/manage");
+    expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
+
+    // Full week vs Active days toggle
+    expect(screen.getByRole("button", { name: /Full week/ })).toBeInTheDocument();
+    const activeDaysBtn = screen.getByRole("button", { name: /Active days/ });
+    expect(activeDaysBtn).toBeInTheDocument();
+    await userEvent.click(activeDaysBtn);
+
+    // Inspector is rendered below with booked visits and session stats
+    expect(screen.getByRole("region", { name: /Session and patient inspector/ })).toBeInTheDocument();
+    expect(screen.getByText("Priya Nair")).toBeInTheDocument();
+
     await userEvent.click(screen.getByRole("radio", { name: /Session Directory/ }));
     expect(screen.getByText("Morning clinic")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Edit in Studio/ })).toHaveAttribute(
