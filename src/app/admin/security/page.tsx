@@ -42,7 +42,7 @@ export default async function SignedInPage({ searchParams }: { searchParams: Pro
       />
 
       {supabaseConfigured() ? (
-        <p className="mb-4 rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-200">
+        <p className="mb-4 rounded-xl border border-accent/25 dark:border-cyan-400/25 bg-accent/10 dark:bg-cyan-400/10 px-4 py-3 text-sm text-accent dark:text-cyan-200">
           Supabase is on, so most sign-ins are held by Supabase and don’t appear here. “Sign out everywhere” on a person’s page still
           works: the app refuses any of their sessions that started before it.
         </p>
@@ -74,12 +74,12 @@ export default async function SignedInPage({ searchParams }: { searchParams: Pro
                 const person = snapshot.usersById.get(session.userId);
                 const mine = session.id === admin.sessionId;
                 return (
-                  <tr key={session.id} className="transition-colors hover:bg-white/[0.03]">
+                  <tr key={session.id} className="transition-colors hover:bg-ink/[0.03]">
                     <Td>
                       {person ? (
                         <>
                           <RowLink href={`/admin/people/${person.id}`}>{person.name}</RowLink>
-                          <span className="block text-[13px] break-all text-zinc-400">{person.email}</span>
+                          <span className="block text-[13px] break-all text-muted">{person.email}</span>
                         </>
                       ) : (
                         "Deleted account"

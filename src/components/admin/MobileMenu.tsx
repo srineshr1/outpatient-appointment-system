@@ -31,7 +31,7 @@ export function MobileMenu({ children }: { children: ReactNode }) {
         type="button"
         aria-haspopup="dialog"
         onClick={() => dialogRef.current?.showModal()}
-        className="-ml-2 inline-grid size-10 place-items-center rounded-md text-ink transition-colors hover:bg-white/[0.06] lg:hidden"
+        className="-ml-2 inline-grid size-10 place-items-center rounded-md text-ink transition-colors hover:bg-ink/[0.06] lg:hidden"
       >
         <MenuIcon size={20} />
         <span className="sr-only">Menu</span>
@@ -45,14 +45,14 @@ export function MobileMenu({ children }: { children: ReactNode }) {
           const target = event.target as HTMLElement;
           if (target === event.currentTarget || target.closest("a")) dialogRef.current?.close();
         }}
-        className="m-0 h-dvh max-h-none w-[min(18rem,85vw)] border-r border-white/[0.08] bg-[#0c0c0f] p-0 text-zinc-100 backdrop:bg-black/70"
+        className="m-0 h-dvh max-h-none w-[min(18rem,85vw)] border-r border-ink/[0.08] bg-surface dark:bg-[#0c0c0f] p-0 text-ink backdrop:bg-black/70"
       >
         <div className="flex h-full flex-col">
           <div className="flex justify-end px-2 pt-2">
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
-              className="inline-grid size-10 place-items-center rounded-md text-zinc-300 transition-colors hover:bg-white/5 hover:text-zinc-100"
+              className="inline-grid size-10 place-items-center rounded-md text-ink-2 transition-colors hover:bg-ink/5 hover:text-ink"
             >
               <CloseIcon size={20} />
               <span className="sr-only">Close menu</span>

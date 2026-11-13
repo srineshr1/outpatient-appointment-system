@@ -65,6 +65,23 @@ function recognitionCtor(): (new () => SpeechRec) | null {
 export function AssistantDock({ user }: { user: DockUser }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
+  // On a phone the floating launcher sits over the page's right edge (toggles, Submit buttons).
+  // It tucks away while the page scrolls down and comes back on the way up or at the very bottom.
+  const [tucked, setTucked] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const narrow = window.innerWidth < 768;
+      const atBottom = window.innerHeight + y >= document.documentElement.scrollHeight - 4;
+      if (!narrow || atBottom || y < 24) setTucked(false);
+      else if (y > last + 6) setTucked(true);
+      else if (y < last - 6) setTucked(false);
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingCard | null>(null);
   const [draft, setDraft] = useState("");
@@ -390,7 +407,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
           padding={24}
           magnetStrength={2}
           maxOffset={5}
-          wrapperClassName="fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40"
+          wrapperClassName={`fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 transition-[transform,opacity] duration-200 ${
+            tucked ? "pointer-events-none translate-y-24 opacity-0" : ""
+          }`}
           style={{ position: "fixed" }}
         >
           <button

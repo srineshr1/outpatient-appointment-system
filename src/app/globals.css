@@ -28,6 +28,7 @@ ul, ol {
   --v-ink-2: #3f3f46;
   --v-muted: #52525b;
   --v-hairline: #e4e4e7;
+  --v-hairline-strong: #d4d4d8;
   --v-control: #71717a;
   --v-accent: #0369a1;
   --v-accent-hover: #075985;
@@ -57,6 +58,7 @@ html.dark {
   --v-ink-2: #d4d4d8;
   --v-muted: #a1a1aa;
   --v-hairline: rgba(255, 255, 255, 0.1);
+  --v-hairline-strong: rgba(255, 255, 255, 0.22);
   --v-control: #71717a;
   --v-accent: #38bdf8;
   --v-accent-hover: #7dd3fc;
@@ -91,6 +93,7 @@ html.dark {
   --color-ink-2: var(--v-ink-2);
   --color-muted: var(--v-muted);
   --color-hairline: var(--v-hairline);
+  --color-hairline-strong: var(--v-hairline-strong);
   --color-control: var(--v-control);
   --color-accent: var(--v-accent);
   --color-accent-hover: var(--v-accent-hover);

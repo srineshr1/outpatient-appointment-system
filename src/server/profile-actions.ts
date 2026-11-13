@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordEvent, actorOf } from "@/lib/audit";
 import type { ConsultSession, PublicUser } from "@/lib/clinic-types";
-import { now, todayIso } from "@/lib/clock";
+import { now, practiceWallClock, todayIso } from "@/lib/clock";
 import { loadDoctors } from "@/lib/doctors";
-import { occupiesTime, sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
+import { isUpcomingVisit, occupiesTime, sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
 import { getOps } from "@/lib/ops";
 import type { FormState } from "@/lib/form-state";
 import {
@@ -20,7 +20,7 @@ import {
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
 import { BLOB_NO_REBOOKING } from "@/lib/blob-store";
 import { displaceAndSave, displacedBy } from "@/lib/rebooking";
-import { checkSession, planAbsorption, planStreamShift, type SessionInput, type StreamMove } from "@/lib/sessions";
+import { checkSession, newAbsorptions, visitWhenLabel, planAbsorption, planStreamShift, studioDateAfterSave, type SessionInput, type StreamMove } from "@/lib/sessions";
 import { shiftAndSave, shiftCandidates, shiftLines, shiftMovable } from "@/lib/stream-shift";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
@@ -162,12 +162,12 @@ function sessionInput(formData: FormData): SessionInput {
 async function upcomingIn(doctorId: string, sessionId: string): Promise<number> {
   const today = todayIso(now());
   const visits = await (await getStore()).listAppointments({ doctorId });
-  return visits.filter((visit) => occupiesTime(visit) && visit.sessionId === sessionId && visit.date >= today).length;
+  return visits.filter((visit) => isUpcomingVisit(visit) && visit.sessionId === sessionId && visit.date >= today).length;
 }
 
-/** "2099-01-05 11:30" for the first few displaced visits. */
+/** "5 Jan, 11:30" for the first few displaced visits. */
 function timesOf(visits: readonly { date: string; time: string }[]): string[] {
-  return visits.map((visit) => `${visit.date} ${visit.time}`);
+  return visits.map(visitWhenLabel);
 }
 
 /** Whether the doctor confirmed "Notify them and offer new times", and for how many patients. */
@@ -202,7 +202,13 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   const today = todayIso(now());
   // A weekly session saved before dates were required may stay open-ended, so it can still be resized.
   const keepOpenRange = Boolean(existing && !existing.onDate && !existing.startDate && !existing.endDate);
-  const checked = checkSession(input, mine.filter((session) => session.id !== id), today, { keepOpenRange });
+  // A new one-off today, or one moved to start at another time today, must not start in the past.
+  const wall = practiceWallClock(now());
+  const startMoved = !existing || existing.startTime !== input.startTime || (existing.onDate ?? null) !== input.onDate;
+  const checked = checkSession(input, mine.filter((session) => session.id !== id), today, {
+    keepOpenRange,
+    nowMinutes: startMoved ? wall.hour * 60 + wall.minute : undefined,
+  });
   if (!checked.ok) return fail(checked.message);
 
   const at = now().toISOString();
@@ -289,6 +295,10 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
     }
   }
   if (!plan.ok) return fail(plan.message);
+  // Taking free hours from another session (possibly all of them) needs an explicit yes from the doctor.
+  if (moves.length === 0 && newAbsorptions(plan.trims, storedTrims, session.id).length > 0 && text(formData, "absorb") !== "confirm") {
+    return fail(`${plan.notice ?? "This change takes free hours from another session."} Tick the confirmation to save.`);
+  }
 
   const hoursChanged = Boolean(existing && (existing.startTime !== session.startTime || existing.endTime !== session.endTime));
   if ((hoursChanged || plan.trims.length > 0) && process.env.DATA_STORE !== "supabase" && process.env.BLOB_READ_WRITE_TOKEN) {
@@ -336,7 +346,9 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   // A unique stamp: the workspace form resets only on a save that actually landed.
   const lent = plan.notice ? `&lent=${encodeURIComponent(plan.notice)}` : "";
   const moved = `${displaced > 0 ? `&displaced=${displaced}` : ""}${shifted > 0 ? `&shifted=${shifted}` : ""}`;
-  redirect(`${returnBase}?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${lent}${moved}`);
+  // Stay on the session just saved, on the day the doctor was looking at (or the next day it runs).
+  const place = `&session=${encodeURIComponent(session.id)}&date=${studioDateAfterSave(session, text(formData, "viewDate"), today)}`;
+  redirect(`${returnBase}?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${place}${lent}${moved}`);
 }
 
 export async function archiveSession(formData: FormData): Promise<void> {

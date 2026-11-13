@@ -140,7 +140,7 @@ export default async function PersonPage({
                   </thead>
                   <tbody className={tbodyClass}>
                     {sessions.map((session) => (
-                      <tr key={session.id} className="transition-colors hover:bg-white/[0.03]">
+                      <tr key={session.id} className="transition-colors hover:bg-ink/[0.03]">
                         <Td>
                           {session.device || "Unknown device"}
                           {session.id === admin.sessionId ? <span className="ml-2"><Badge tone="info">This session</Badge></span> : null}

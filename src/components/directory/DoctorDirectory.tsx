@@ -108,11 +108,11 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
     >
       {heading ? null : (
         <div className="mx-auto max-w-page px-5 md:px-8">
-          <p className="text-callout font-bold tracking-wide text-cyan-300 uppercase">Our team</p>
-          <h2 id="doctors-title" className="mt-2 text-title1 font-bold text-zinc-50">
+          <p className="text-callout font-bold tracking-wide text-accent dark:text-cyan-300 uppercase">Our team</p>
+          <h2 id="doctors-title" className="mt-2 text-title1 font-bold text-ink">
             Meet our doctors
           </h2>
-          <p className="mt-3 max-w-prose text-body text-zinc-300">
+          <p className="mt-3 max-w-prose text-body text-ink-2">
             Five GPs, each with something they’re especially good at. Pick the one that fits, then choose a time.
           </p>
         </div>
@@ -129,7 +129,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
         data-stuck={stuck ? "" : undefined}
         className={`top-(--header-h) z-20 border-b transition-[background-color,border-color,box-shadow] duration-200 tall:sticky ${
           stuck
-            ? "border-white/[0.08] bg-canvas/85 shadow-[0_12px_32px_-16px_rgb(0_0_0/0.8)] backdrop-blur-xl backdrop-saturate-150"
+            ? "border-ink/[0.08] bg-canvas/85 shadow-[0_12px_32px_-16px_rgb(0_0_0/0.8)] backdrop-blur-xl backdrop-saturate-150"
             : "border-transparent bg-canvas"
         }`}
       >
@@ -140,7 +140,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
               <label htmlFor="doctor-search" className="sr-only">
                 Search by name, specialty or language
               </label>
-              <Search size={20} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-zinc-400" />
+              <Search size={20} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted" />
               <input
                 ref={searchRef}
                 id="doctor-search"
@@ -150,7 +150,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
                 placeholder="Name, specialty or language"
                 autoComplete="off"
                 enterKeyHint="search"
-                className={`field h-12 rounded-full! border-white/12! bg-surface-2! pl-11 text-zinc-50 text-ellipsis placeholder:text-zinc-400 hover:border-white/25! focus-visible:border-accent! ${
+                className={`field h-12 rounded-full! border-ink/12! bg-surface-2! pl-11 text-ink text-ellipsis placeholder:text-muted hover:border-ink/25! focus-visible:border-accent! ${
                   query ? "pr-12" : "pr-4"
                 }`}
               />
@@ -167,7 +167,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.6 }}
                     transition={spring.press}
-                    className="absolute top-1/2 right-1 grid size-11 -translate-y-1/2 place-items-center text-zinc-400 transition-colors hover:text-zinc-200"
+                    className="absolute top-1/2 right-1 grid size-11 -translate-y-1/2 place-items-center text-muted transition-colors hover:text-ink-2 dark:hover:text-zinc-200"
                   >
                     <XCircle size={20} />
                   </motion.button>
@@ -194,7 +194,7 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
         {lead ? <div className="mt-5 grid gap-4 md:mt-6">{lead}</div> : null}
 
         <div ref={resultsRef} className="mt-5 flex min-h-11 items-center justify-between gap-4 md:mt-6">
-          <p className="text-callout text-zinc-400" aria-live="polite" aria-atomic="true">
+          <p className="text-callout text-muted" aria-live="polite" aria-atomic="true">
             {pluralise(shown.length, "doctor")}
             {specialty ? ` in ${specialty.toLowerCase()}` : ""}
           </p>
@@ -245,10 +245,10 @@ export function DoctorDirectory({ doctors, upcoming, heading, labelledBy, lead, 
               transition={reduceMotion ? { duration: 0 } : { duration: 0.25 }}
             >
               <SpotlightCard className="rounded-card px-6 py-10 text-center">
-                <p className="relative z-10 text-title3 font-semibold text-zinc-50">No doctors found</p>
-                <p className="relative z-10 mx-auto mt-2 max-w-sm text-callout text-zinc-400">
+                <p className="relative z-10 text-title3 font-semibold text-ink">No doctors found</p>
+                <p className="relative z-10 mx-auto mt-2 max-w-sm text-callout text-muted">
                   {emptyCopy(query, specialty)} Or call the desk on{" "}
-                  <a href={practice.phoneHref} className="tabular text-cyan-300 hover:text-cyan-200">
+                  <a href={practice.phoneHref} className="tabular text-accent dark:text-cyan-300 hover:text-accent dark:hover:text-cyan-200">
                     {practice.phoneDisplay}
                   </a>
                   .
@@ -322,51 +322,51 @@ function CardBody({ doctor, next, today, action }: { doctor: Doctor; next: Slot 
           doctor={doctor}
           size={80}
           shape="rounded"
-          className="ring-1 ring-white/10 transition-transform duration-300 ease-out-quint group-hover:scale-105 group-hover:-rotate-2"
+          className="ring-1 ring-ink/10 transition-transform duration-300 ease-out-quint group-hover:scale-105 group-hover:-rotate-2"
         />
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2 text-title3 font-bold text-zinc-50">
+          <span className="flex flex-wrap items-center gap-2 text-title3 font-bold text-ink">
             {doctor.name}
             {doctor.verified ? (
               <span
-                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/12 px-2 py-0.5 text-caption font-bold text-emerald-300"
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/12 px-2 py-0.5 text-caption font-bold text-emerald-700 dark:text-emerald-300"
                 title="Verified by the practice"
               >
                 ✓ Verified
               </span>
             ) : null}
           </span>
-          <span className="mt-1.5 inline-flex rounded-full border border-cyan-400/25 bg-cyan-400/12 px-2.5 py-0.5 text-caption font-bold text-cyan-300">
+          <span className="mt-1.5 inline-flex rounded-full border border-accent/25 dark:border-cyan-400/25 bg-accent/12 dark:bg-cyan-400/12 px-2.5 py-0.5 text-caption font-bold text-accent dark:text-cyan-300">
             {doctor.interest}
           </span>
-          <span className="mt-1.5 block text-callout text-zinc-400">
+          <span className="mt-1.5 block text-callout text-muted">
             {doctor.qualification} · {yearsLabel(doctor.years)}
           </span>
         </span>
       </span>
-      <span className="mt-4 block text-callout text-zinc-300">{doctor.bio}</span>
-      <span className="mt-3 mb-4 grid gap-1 text-caption text-zinc-400">
+      <span className="mt-4 block text-callout text-ink-2">{doctor.bio}</span>
+      <span className="mt-3 mb-4 grid gap-1 text-caption text-muted">
         <span>
-          <span className="font-semibold text-zinc-200">Speaks</span> {doctor.languages.join(", ")}
+          <span className="font-semibold text-ink-2 dark:text-zinc-200">Speaks</span> {doctor.languages.join(", ")}
         </span>
         <span>
-          <span className="font-semibold text-zinc-200">In clinic</span> {doctor.days} · {doctor.room}
+          <span className="font-semibold text-ink-2 dark:text-zinc-200">In clinic</span> {doctor.days} · {doctor.room}
         </span>
       </span>
-      <span className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-white/[0.08] pt-4">
+      <span className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-ink/[0.08] pt-4">
         {next ? (
-          <span id={`next-${doctor.id}`} className="tabular inline-flex items-center gap-2 text-callout text-zinc-50">
+          <span id={`next-${doctor.id}`} className="tabular inline-flex items-center gap-2 text-callout text-ink">
             <span aria-hidden="true" className="relative flex size-2">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
               <span className="relative inline-flex size-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
             </span>
             <span>
-              <span className="text-zinc-400">Next available </span>
-              <span className="font-semibold text-zinc-50">{formatWhen(next, today)}</span>
+              <span className="text-muted">Next available </span>
+              <span className="font-semibold text-ink">{formatWhen(next, today)}</span>
             </span>
           </span>
         ) : (
-          <span id={`next-${doctor.id}`} className="text-callout text-zinc-400">
+          <span id={`next-${doctor.id}`} className="text-callout text-muted">
             No times online. Call the desk.
           </span>
         )}
@@ -392,7 +392,7 @@ function DoctorCard({ doctor, next, today }: { doctor: Doctor; next: Slot | null
           next={next}
           today={today}
           action={
-            <span className="inline-flex items-center gap-0.5 text-callout font-bold text-cyan-300">
+            <span className="inline-flex items-center gap-0.5 text-callout font-bold text-accent dark:text-cyan-300">
               See times
               <ChevronRight size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
             </span>
@@ -429,7 +429,7 @@ function ExpandableDoctorCard({
   const initialWeek = clampWeek(null, window, firstOpen?.date);
   return (
     <SpotlightCard
-      className={`overflow-clip! transition-shadow duration-300 ${open ? "shadow-raised ring-1 ring-cyan-400/35" : ""}`}
+      className={`overflow-clip! transition-shadow duration-300 ${open ? "shadow-raised ring-1 ring-accent/35 dark:ring-cyan-400/35" : ""}`}
       data-expanded={open ? "true" : undefined}
     >
       <button
@@ -448,7 +448,7 @@ function ExpandableDoctorCard({
           next={next}
           today={today}
           action={
-            <span className="inline-flex items-center gap-1 text-callout font-bold text-cyan-300">
+            <span className="inline-flex items-center gap-1 text-callout font-bold text-accent dark:text-cyan-300">
               {open ? "Hide times" : "See times"}
               <motion.span
                 aria-hidden="true"
@@ -481,11 +481,11 @@ function ExpandableDoctorCard({
                 : { height: { type: "spring", stiffness: 320, damping: 32 }, opacity: { duration: 0.2 } }
             }
           >
-            <div className="relative z-10 border-t border-white/[0.08] px-5 pt-5 pb-5 md:px-6 md:pb-6">
+            <div className="relative z-10 border-t border-ink/[0.08] px-5 pt-5 pb-5 md:px-6 md:pb-6">
               <WeekPicker doctor={doctor} slots={slots} initialWeek={initialWeek} signedIn={signedIn} headingLevel={3} />
               <Link
                 href={`/doctors/${doctor.id}`}
-                className="mt-4 inline-flex min-h-11 items-center gap-0.5 text-callout font-medium text-cyan-300 hover:text-cyan-200"
+                className="mt-4 inline-flex min-h-11 items-center gap-0.5 text-callout font-medium text-accent dark:text-cyan-300 hover:text-accent dark:hover:text-cyan-200"
               >
                 Open {doctor.short}’s full page
                 <ChevronRight size={18} />

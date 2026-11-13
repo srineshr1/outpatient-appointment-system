@@ -23,15 +23,15 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
   return (
     <Card
       className={`p-5 backdrop-blur-md md:p-6 ${
-        accent ? "border-cyan-400/25 shadow-[0_0_24px_rgba(34,211,238,0.08)]" : "border-white/10"
+        accent ? "border-accent/25 dark:border-cyan-400/25 shadow-[0_0_24px_rgba(34,211,238,0.08)]" : "border-ink/10"
       }`}
     >
-      <h2 className="text-callout font-semibold text-zinc-400">{title}</h2>
+      <h2 className="text-callout font-semibold text-muted">{title}</h2>
       <div className="mt-4 flex items-center gap-3">
-        <DoctorPortrait doctor={doctor} size={44} className="ring-1 ring-white/10" />
+        <DoctorPortrait doctor={doctor} size={44} className="ring-1 ring-ink/10" />
         <div>
-          <p className="text-body font-semibold text-zinc-50">{doctor.name}</p>
-          <p className="text-callout text-zinc-400">{doctor.interest}</p>
+          <p className="text-body font-semibold text-ink">{doctor.name}</p>
+          <p className="text-callout text-muted">{doctor.interest}</p>
         </div>
       </div>
       <dl className="mt-5 grid gap-3 border-t border-hairline pt-5 text-body">
@@ -42,7 +42,7 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
           {slot.mode === "wave" ? (
             <>
               <span className="tabular">{slotTimeLabel(slot)}</span>
-              <span className="text-zinc-400">
+              <span className="text-muted">
                 {token ? ` · token ${token}, seen in token order` : " · seen in token order"}
               </span>
             </>
@@ -52,7 +52,7 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
                 {slot.time}
                 {reason ? `–${addMinutes(slot.time, reason.minutes)}` : ""}
               </span>
-              <span className="text-zinc-400">{reason ? ` · ${reason.minutes} minutes` : " · length depends on the reason"}</span>
+              <span className="text-muted">{reason ? ` · ${reason.minutes} minutes` : " · length depends on the reason"}</span>
             </>
           )}
         </Row>
@@ -68,11 +68,11 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
 function Row({ icon, term, children }: { icon: ReactNode; term: string; children: ReactNode }) {
   return (
     <div className="flex gap-3">
-      <dt className="mt-0.5 shrink-0 text-cyan-400/80">
+      <dt className="mt-0.5 shrink-0 text-accent/80 dark:text-cyan-400/80">
         {icon}
         <span className="sr-only">{term}</span>
       </dt>
-      <dd className="text-zinc-100">{children}</dd>
+      <dd className="text-ink">{children}</dd>
     </div>
   );
 }

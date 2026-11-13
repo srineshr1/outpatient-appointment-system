@@ -55,16 +55,16 @@ function SectionNav({ current, counts, label }: { current: SectionId; counts: Na
                 aria-current={active ? "page" : undefined}
                 className={`flex min-h-9 items-center gap-2.5 rounded-lg border px-2.5 text-sm no-underline transition-colors ${
                   active
-                    ? "border-cyan-400/20 bg-cyan-400/12 font-semibold text-cyan-300"
-                    : "border-transparent text-zinc-300 hover:bg-white/[0.05] hover:text-zinc-100"
+                    ? "border-accent/20 dark:border-cyan-400/20 bg-accent/12 dark:bg-cyan-400/12 font-semibold text-accent dark:text-cyan-300"
+                    : "border-transparent text-ink-2 hover:bg-ink/[0.05] hover:text-ink"
                 }`}
               >
-                <Icon size={18} className={active ? "text-cyan-400" : "text-zinc-400"} />
+                <Icon size={18} className={active ? "text-accent dark:text-cyan-400" : "text-muted"} />
                 <span className="flex-1">{section.label}</span>
                 {count ? (
                   <span
                     className={`rounded px-1.5 text-xs font-medium tabular-nums ${
-                      count.tone === "warn" ? "border border-amber-400/25 bg-amber-400/12 text-amber-300" : "text-zinc-400"
+                      count.tone === "warn" ? "border border-amber-400/25 bg-amber-400/12 text-amber-700 dark:text-amber-300" : "text-muted"
                     }`}
                   >
                     <span className="sr-only">, </span>
@@ -94,7 +94,7 @@ function Brand() {
       </span>
       <span className="min-w-0 leading-tight">
         <span className="block truncate text-sm font-semibold text-ink">{practice.name}</span>
-        <span className="block text-xs text-zinc-400">Admin console</span>
+        <span className="block text-xs text-muted">Admin console</span>
       </span>
     </Link>
   );
@@ -102,29 +102,29 @@ function Brand() {
 
 function AccountFooter({ admin }: { admin: SessionUser }) {
   return (
-    <div className="mt-auto border-t border-white/[0.08] p-3">
+    <div className="mt-auto border-t border-ink/[0.08] p-3">
       <div className="flex items-center gap-2.5 px-1">
         <span
           aria-hidden="true"
-          className="grid size-8 shrink-0 place-items-center rounded-full border border-white/10 bg-zinc-800 text-xs font-semibold text-zinc-100"
+          className="grid size-8 shrink-0 place-items-center rounded-full border border-ink/10 bg-fill-strong dark:bg-zinc-800 text-xs font-semibold text-ink"
         >
           {monogram(admin.name)}
         </span>
         <span className="min-w-0 leading-tight">
           <span className="block truncate text-sm font-medium text-ink">{admin.name}</span>
-          <span className="block truncate text-xs text-zinc-400">{admin.email}</span>
+          <span className="block truncate text-xs text-muted">{admin.email}</span>
         </span>
       </div>
       <div className="mt-3 grid gap-1">
         <Link
           href="/"
-          className="flex min-h-9 items-center gap-2 rounded-lg px-2.5 text-sm text-zinc-300 no-underline transition-colors hover:bg-white/[0.05] hover:text-zinc-100"
+          className="flex min-h-9 items-center gap-2 rounded-lg px-2.5 text-sm text-ink-2 no-underline transition-colors hover:bg-ink/[0.05] hover:text-ink"
         >
-          <ExternalIcon size={16} className="text-zinc-400" />
+          <ExternalIcon size={16} className="text-muted" />
           Practice website
         </Link>
         <form action={signOutAction}>
-          <SignOutButton className="flex min-h-9 w-full items-center rounded-lg px-2.5 text-left text-sm text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-zinc-100">
+          <SignOutButton className="flex min-h-9 w-full items-center rounded-lg px-2.5 text-left text-sm text-ink-2 transition-colors hover:bg-ink/[0.05] hover:text-ink">
             Sign out
           </SignOutButton>
         </form>
@@ -164,7 +164,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
         Skip to page content
       </a>
 
-      <div className="hidden border-r border-white/[0.08] bg-[#0c0c0f] lg:block print:hidden">
+      <div className="hidden border-r border-ink/[0.08] bg-surface dark:bg-[#0c0c0f] lg:block print:hidden">
         <div className="sticky top-0 flex h-dvh flex-col overflow-y-auto">
           <div className="px-3 pt-4 pb-5">
             <Brand />
@@ -175,7 +175,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
       </div>
 
       <div className="min-w-0">
-        <div className="sticky top-0 z-20 border-b border-white/[0.08] bg-zinc-950/80 backdrop-blur-xl print:hidden">
+        <div className="sticky top-0 z-20 border-b border-ink/[0.08] bg-surface/80 dark:bg-zinc-950/80 backdrop-blur-xl print:hidden">
           <div className="flex h-14 items-center gap-3 px-4 md:px-8">
             <MobileMenu>
               <div className="px-3 pb-5">
@@ -188,7 +188,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
               <ol className="flex items-center gap-2 text-sm">
                 <li className={crumb ? "hidden min-w-0 sm:block" : "min-w-0"}>
                   {crumb ? (
-                    <Link href={current.href} className="truncate text-zinc-400 no-underline hover:text-zinc-100 hover:underline underline-offset-4">
+                    <Link href={current.href} className="truncate text-muted no-underline hover:text-ink hover:underline underline-offset-4">
                       {current.label}
                     </Link>
                   ) : (
@@ -199,7 +199,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
                 </li>
                 {crumb ? (
                   <li className="flex min-w-0 items-center gap-2">
-                    <span aria-hidden="true" className="hidden text-zinc-500 sm:inline">
+                    <span aria-hidden="true" className="hidden text-muted dark:text-zinc-500 sm:inline">
                       ›
                     </span>
                     <span aria-current="page" className="truncate font-medium text-ink">
@@ -209,9 +209,9 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
                 ) : null}
               </ol>
             </nav>
-            <p className="hidden items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-zinc-300 xl:flex">
+            <p className="hidden items-center gap-1.5 rounded-lg border border-ink/10 bg-ink/[0.03] px-2.5 py-1 text-xs text-ink-2 xl:flex">
               Acting as
-              <span className="rounded border border-cyan-400/25 bg-cyan-400/12 px-1.5 py-0.5 font-medium text-cyan-300">Admin</span>
+              <span className="rounded border border-accent/25 dark:border-cyan-400/25 bg-accent/12 dark:bg-cyan-400/12 px-1.5 py-0.5 font-medium text-accent dark:text-cyan-300">Admin</span>
               <span className="max-w-40 truncate font-medium text-ink">{admin.name}</span>
             </p>
             <CommandPalette />
@@ -219,7 +219,7 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
         </div>
 
         {tabs && tabs.length > 0 ? (
-          <div className="border-b border-white/[0.08] px-4 md:px-8 print:hidden">
+          <div className="border-b border-ink/[0.08] px-4 md:px-8 print:hidden">
             <nav aria-label={`${current.label} pages`} className="relative -mb-px overflow-x-auto [scrollbar-width:none]">
               <ul className="flex gap-1">
                 {tabs.map((tab) => {
@@ -230,12 +230,12 @@ export function AdminShell({ admin, section, crumb, tabs, activeTab, counts, not
                         href={tab.href}
                         aria-current={active ? "page" : undefined}
                         className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-2 text-sm font-medium no-underline transition-colors ${
-                          active ? "border-cyan-400 text-cyan-300" : "border-transparent text-zinc-400 hover:border-white/20 hover:text-zinc-100"
+                          active ? "border-accent dark:border-cyan-400 text-accent dark:text-cyan-300" : "border-transparent text-muted hover:border-ink/20 hover:text-ink"
                         }`}
                       >
                         {tab.label}
                         {tab.count !== undefined ? (
-                          <span className="rounded bg-fill px-1.5 text-xs text-zinc-300 tabular-nums">
+                          <span className="rounded bg-fill px-1.5 text-xs text-ink-2 tabular-nums">
                             <span className="sr-only">, </span>
                             {tab.count}
                           </span>

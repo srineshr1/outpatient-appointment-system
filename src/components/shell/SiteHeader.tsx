@@ -234,7 +234,7 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
         <div className="mx-auto flex h-(--header-h) max-w-page items-center gap-1.5 px-3 min-[360px]:gap-2 min-[400px]:px-5 md:gap-4 md:px-6 lg:gap-8 lg:px-8">
           <Brand href={homeHref} />
 
-          <div className="hidden md:block">
+          <div className="hidden min-w-0 md:block">
             <PathnameContext.Provider value={pathname}>
               <PillNav
                 items={links}
@@ -628,10 +628,11 @@ function AccountMenu({
             openMenu();
           }
         }}
-        className="flex min-h-10 items-center gap-2 rounded-full border border-hairline bg-surface py-1 pr-3 pl-1.5 text-callout font-medium text-ink transition-[background-color,border-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-control/70 hover:bg-surface-2 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-expanded:border-control aria-expanded:bg-surface-2 aria-expanded:outline-none"
+        className="flex min-h-10 items-center gap-1 rounded-full border border-hairline bg-surface py-1 pr-2 pl-1.5 lg:gap-2 lg:pr-3 text-callout font-medium text-ink transition-[background-color,border-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-control/70 hover:bg-surface-2 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-expanded:border-control aria-expanded:bg-surface-2 aria-expanded:outline-none"
       >
         <Avatar name={name} email={user.email} />
-        <span className="max-w-24 truncate lg:max-w-40">{name}</span>
+        {/* Tablets and phones held sideways have no room for the name beside the nav: avatar only. */}
+        <span className="hidden max-w-40 truncate lg:inline">{name}</span>
         <ChevronDown
           size={15}
           className={`text-muted transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${open ? "rotate-180" : ""}`}

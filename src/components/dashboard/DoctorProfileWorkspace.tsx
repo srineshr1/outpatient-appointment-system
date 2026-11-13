@@ -9,6 +9,7 @@ import { buttonClass } from "@/components/ui/button-styles";
 import { Card, Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { PendingButton } from "@/components/ui/PendingButton";
+import { doctorTitle } from "@/lib/names";
 import { parseFee } from "@/lib/profiles";
 import { saveDoctorProfile } from "@/server/profile-actions";
 
@@ -174,7 +175,7 @@ export function DoctorProfileWorkspace({
       {/* Two-column studio layout */}
       <div className="grid items-start gap-6 lg:grid-cols-12">
         {/* Left / Main: Profile Form */}
-        <Card className="rounded-sheet p-5 sm:p-6 md:p-7 lg:col-span-7">
+        <Card className="min-w-0 rounded-sheet p-5 sm:p-6 md:p-7 lg:col-span-7">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-2 border-b border-hairline pb-4">
               <div>
                 <h2 className="text-title3 font-semibold text-ink">Practice details</h2>
@@ -364,7 +365,7 @@ export function DoctorProfileWorkspace({
           </Card>
 
           {/* Right Rail: Live Patient Card Preview + Notifications Link */}
-          <div className="space-y-5 lg:sticky lg:top-24 lg:col-span-5">
+          <div className="min-w-0 space-y-5 lg:sticky lg:top-24 lg:col-span-5">
             <div className="flex items-center justify-between px-1">
               <span className="inline-flex items-center gap-2 text-callout font-semibold text-ink">
                 <Eye size={16} className="text-accent" />
@@ -381,11 +382,11 @@ export function DoctorProfileWorkspace({
                     aria-hidden="true"
                     className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-accent/25 bg-accent-soft text-title3 font-semibold text-accent"
                   >
-                    {initialsOf(displayName)}
+                    {initialsOf(displayName.replace(/^(dr|doctor)\.?\s+/i, ""))}
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-title3 font-semibold text-ink">
-                      {`Dr ${displayName || "Your Name"}`}
+                      {doctorTitle(displayName, "Dr Your Name")}
                     </h3>
                     <div className="mt-1.5 inline-flex items-center rounded-full border border-accent/20 bg-accent-soft px-3 py-0.5 text-caption font-semibold text-accent">
                       {displaySpecialty}

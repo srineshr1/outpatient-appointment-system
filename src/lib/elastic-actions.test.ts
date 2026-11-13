@@ -41,7 +41,7 @@ describe("doctor elastic scheduling action", () => {
     const booked = visit({ status: "booked" }); expect(await state.store!.createAppointment(booked)).toBe("ok");
     expect(await saveSession(null, form({ endTime: "11:00" }))).toMatchObject({
       ok: false,
-      message: expect.stringContaining("1 of 1 booked visit falls outside the new hours (2099-01-05 11:30)"),
+      message: expect.stringContaining("1 of 1 booked visit falls outside the new hours (5 Jan, 11:30)"),
     });
     expect((await state.store!.getConsultSession(session.id))?.endTime).toBe("12:00");
     expect(await state.store!.getAppointment(booked.id)).toEqual(booked);
@@ -81,7 +81,10 @@ describe("doctor elastic scheduling action", () => {
   it("rejects an invalid range and absorbs an empty neighbour without moving its row", async () => {
     expect(await saveSession(null, form({ endTime: "09:00" }))).toMatchObject({ ok: false });
     await state.store!.putConsultSession({ ...session, id: "other", startTime: "09:00", endTime: "10:00" });
-    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    // Taking another session's hours needs an explicit confirmation; nothing is saved without it.
+    expect(await saveSession(null, form({ startTime: "09:00" }))).toMatchObject({ ok: false, message: expect.stringContaining("Tick the confirmation") });
+    expect(await state.store!.listSessionTrims("doctor")).toEqual([]);
+    await expect(saveSession(null, form({ startTime: "09:00", absorb: "confirm" }))).rejects.toThrow("REDIRECT:");
     const trims = await state.store!.listSessionTrims("doctor");
     expect(trims.some((trim) => trim.sessionId === "other" && trim.date === "2099-01-05" && trim.startTime === "09:00" && trim.endTime === "10:00")).toBe(true);
     expect(await state.store!.getConsultSession("other")).toMatchObject({ startTime: "09:00", endTime: "10:00" });
@@ -99,7 +102,7 @@ describe("doctor elastic scheduling action", () => {
   });
   it("books the lent slot on the extended session only", async () => {
     await state.store!.putConsultSession({ ...session, id: "other", startTime: "09:00", endTime: "10:00" });
-    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    await expect(saveSession(null, form({ startTime: "09:00", absorb: "confirm" }))).rejects.toThrow("REDIRECT:");
     expect(await state.store!.createAppointment(visit({
       id: "neighbour-slot", reference: "HSP-200011", sessionId: "other", slotId: "doctor-2099-01-05-0900", time: "09:00", endTime: "09:30",
     }))).toBe("taken");
@@ -110,16 +113,30 @@ describe("doctor elastic scheduling action", () => {
   });
   it("gives the free edge back when the session shrinks or is removed", async () => {
     await state.store!.putConsultSession({ ...session, id: "other", startTime: "09:00", endTime: "10:00" });
-    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    await expect(saveSession(null, form({ startTime: "09:00", absorb: "confirm" }))).rejects.toThrow("REDIRECT:");
+    // Saving again with the same hours keeps what it already holds: no second confirmation needed.
+    await expect(saveSession(null, form({ startTime: "09:00", label: "Renamed" }))).rejects.toThrow("REDIRECT:");
     await expect(saveSession(null, form({ startTime: "10:00" }))).rejects.toThrow("REDIRECT:");
     expect(await state.store!.listSessionTrims("doctor")).toEqual([]);
     expect(await state.store!.createAppointment(visit({
       id: "returned", reference: "HSP-200013", sessionId: "other", slotId: "doctor-2099-01-05-0900", time: "09:00", endTime: "09:30",
     }))).toBe("ok");
     await state.store!.updateStatus("returned", "cancelled");
-    await expect(saveSession(null, form({ startTime: "09:00" }))).rejects.toThrow("REDIRECT:");
+    await expect(saveSession(null, form({ startTime: "09:00", absorb: "confirm" }))).rejects.toThrow("REDIRECT:");
     await expect(archiveSession(form())).rejects.toThrow("saved=removed");
     expect(await state.store!.listSessionTrims("doctor")).toEqual([]);
+  });
+  it("returns to the saved session and the day being viewed", async () => {
+    await expect(saveSession(null, form({ label: "Renamed", viewDate: "2099-01-12" }))).rejects.toThrow(
+      /REDIRECT:\/dashboard\/sessions\?saved=updated&v=[^&]+&session=elastic-action&date=2099-01-12/,
+    );
+    // A viewed day the session does not run on falls through to its next clinic day.
+    await expect(saveSession(null, form({ label: "Again", viewDate: "2099-01-13" }))).rejects.toThrow("&session=elastic-action&date=2099-01-19");
+  });
+  it("removes a session whose only visit is already completed, without calling it upcoming", async () => {
+    await state.store!.createAppointment(visit({ status: "completed" }));
+    await expect(archiveSession(form())).rejects.toThrow("saved=removed");
+    expect((await state.store!.getConsultSession(session.id))?.archivedAt).not.toBeNull();
   });
   it("enforces doctor ownership and refuses patient access", async () => {
     state.user = { ...state.user!, id: "other", doctorId: "other" };

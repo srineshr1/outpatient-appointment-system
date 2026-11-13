@@ -125,6 +125,7 @@ export default async function DashboardPage({
       moves={moves}
       pendingDisplacedCount={pendingDisplaced.length}
       noticeSlot={noticeSlot}
+      verificationPending={ownBook && !user.verifiedAt}
       displacedSlot={displacedSlot}
     />
   );

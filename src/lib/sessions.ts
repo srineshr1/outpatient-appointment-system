@@ -49,6 +49,42 @@ export function waveSlotId(sessionId: string, date: string, time: string): strin
   return `w-${sessionId}-${date}-${time.replace(":", "")}`;
 }
 
+/** The id of a whole-session wave (no wave length) on one date. Never depends on free-edge cuts. */
+export function wholeWaveSlotId(session: Pick<ConsultSession, "id" | "startTime">, date: string): string {
+  return waveSlotId(session.id, date, session.startTime);
+}
+
+/**
+ * The canonical held id for a visit in a whole-session wave. Visits booked while a cut moved the
+ * wave's start (or before the doctor moved it) carry that older start in their id; they still hold a
+ * token in the same single wave of that date.
+ */
+export function canonicalWholeWaveHeld(
+  held: string,
+  session: Pick<ConsultSession, "id" | "startTime" | "mode" | "waveMinutes"> | undefined,
+  date: string,
+): string {
+  if (!session || session.mode !== "wave" || session.waveMinutes) return held;
+  const prefix = `w-${session.id}-${date}-`;
+  const base = baseSlotId(held);
+  if (!base.startsWith(prefix) || !/^\d{4}$/.test(base.slice(prefix.length))) return held;
+  const canonical = wholeWaveSlotId(session, date);
+  if (base === canonical) return held;
+  const token = tokenOfHeld(held);
+  return token === null ? canonical : heldId(canonical, token);
+}
+
+/** Held ids with whole-wave aliases for `slot`'s session folded onto the slot's own id (for token picks). */
+export function canonicalHeldIds(
+  heldIds: readonly string[],
+  sessions: readonly Pick<ConsultSession, "id" | "startTime" | "mode" | "waveMinutes">[],
+  slot: { sessionId?: string; date: string; mode?: "stream" | "wave" },
+): string[] {
+  const session = slot.mode === "wave" && slot.sessionId ? sessions.find((item) => item.id === slot.sessionId) : undefined;
+  if (!session) return [...heldIds];
+  return heldIds.map((held) => canonicalWholeWaveHeld(held, session, slot.date));
+}
+
 /** What a wave booking holds: the wave plus the patient's token. */
 export function heldId(waveId: string, token: number): string {
   return `${waveId}#${token}`;
@@ -161,6 +197,18 @@ export function sessionCalendar(sessions: readonly ConsultSession[], first: stri
     if (entries.length) days.set(date, entries);
   }
   return days;
+}
+
+/**
+ * The day Session Studio shows after a save: a one-off's own date; else the day the doctor was viewing
+ * when the session runs then; else the next day it runs from that day (or today).
+ */
+export function studioDateAfterSave(session: Dated, viewed: string | null | undefined, today: string): string {
+  if (session.onDate) return session.onDate;
+  const asked = isIsoDate(viewed) ? viewed : null;
+  if (asked && sessionRunsOn(session, asked)) return asked;
+  const from = asked && asked > today ? asked : today;
+  return firstRunDate(session, from) ?? asked ?? today;
 }
 
 /** Inclusive hour window that covers the given times, never narrower than floor–ceil (clinic day defaults). */
@@ -290,7 +338,16 @@ export function hoursOnDate(
   const overridden = overriddenDates(roster.length ? roster : [session]);
   if (!sessionShownOn(session, date, overridden)) return null;
   const covered = trimsCovering(session.id, date, trims, roster);
-  if (covered.length === 0) return { startTime: session.startTime, endTime: session.endTime };
+  if (covered.length === 0) {
+    // Without cuts the session still only offers whole slots: a 09:00–10:50 session with 20-minute
+    // slots ends its last slot at 10:40, the same edge a cut session reports.
+    if (session.mode === "wave" && !session.waveMinutes) return { startTime: session.startTime, endTime: session.endTime };
+    const blocks = sessionBlocks(session);
+    const first = blocks[0];
+    const last = blocks[blocks.length - 1];
+    if (!first || !last) return { startTime: session.startTime, endTime: session.endTime };
+    return { startTime: first.time, endTime: last.endTime };
+  }
 
   if (session.mode === "wave" && !session.waveMinutes) {
     let start = toMinutes(session.startTime);
@@ -339,7 +396,9 @@ export function slotsForSession(
       const hours = hoursOnDate(session, date, trims, roster);
       if (!hours) continue;
       slots.push({
-        id: waveSlotId(session.id, date, hours.startTime),
+        // The id stays on the session's own start, so visits keep matching their wave when a
+        // neighbour's free-edge cut is applied or lifted (the wave's hours move, its id does not).
+        id: wholeWaveSlotId(session, date),
         doctorId,
         date,
         time: hours.startTime,
@@ -582,6 +641,23 @@ function absorptionNotice(candidate: ConsultSession, others: readonly ConsultSes
     }
   }
   return parts.join(" ");
+}
+
+/**
+ * Free hours this save would newly take from other sessions: cuts in `planned` that `absorberId` does
+ * not already hold in `stored` (compared by session and clock interval, so later dates entering the
+ * horizon do not count as new). A non-empty result needs the doctor's explicit confirmation.
+ */
+export function newAbsorptions(planned: readonly SessionTrim[], stored: readonly SessionTrim[], absorberId: string): SessionTrim[] {
+  const key = (trim: SessionTrim) => `${trim.sessionId}|${trim.startTime}|${trim.endTime}`;
+  const held = new Set(stored.filter((trim) => trim.absorbedBy === absorberId).map(key));
+  const seen = new Set<string>();
+  return planned.filter((trim) => {
+    const k = key(trim);
+    if (held.has(k) || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 interface EdgeLimit {
@@ -842,6 +918,11 @@ export interface CheckSessionOptions {
    * date). It may stay open-ended when both dates are left blank, so its hours can still be resized.
    */
   keepOpenRange?: boolean;
+  /**
+   * Minutes past midnight now (practice time). When given, a one-off session today must start
+   * later than this; leave it out for an edit that keeps a session's existing start.
+   */
+  nowMinutes?: number;
 }
 
 export function checkSession(input: SessionInput, _others: readonly ConsultSession[], today?: string, options: CheckSessionOptions = {}): SessionCheck {
@@ -875,6 +956,9 @@ export function checkSession(input: SessionInput, _others: readonly ConsultSessi
   }
   if (!isTime(input.startTime) || !isTime(input.endTime)) return { ok: false, message: "Enter the start and end time as HH:MM." };
   if (toMinutes(input.startTime) >= toMinutes(input.endTime)) return { ok: false, message: "The session must end after it starts." };
+  if (once && today && onDate === today && typeof options.nowMinutes === "number" && toMinutes(input.startTime) <= options.nowMinutes) {
+    return { ok: false, message: `${input.startTime} has already passed today. Choose a later start time or another day.` };
+  }
   const room = input.room.trim().slice(0, 60);
   if (!room) return { ok: false, message: "Add the room or clinic for this session." };
   const label = input.label.trim().slice(0, 60);
@@ -982,14 +1066,23 @@ export function defaultSession(doctorId: string, room: string, now: string): Con
   };
 }
 
+/** "1 Dec, 09:40": a visit's date and time for doctor-facing lists (practice time, no year). */
+export function visitWhenLabel(visit: { date: string; time: string }): string {
+  if (!isIsoDate(visit.date)) return `${visit.date} ${visit.time}`.trim();
+  const [, month, day] = visit.date.split("-").map(Number);
+  return `${day} ${MONTHS[(month ?? 1) - 1]}, ${visit.time}`;
+}
+
 /** "09:20–09:40": every slot and wave shows when it starts and ends. */
 export function slotTimeLabel(slot: Pick<Slot, "time" | "endTime" | "mode">): string {
   return slot.endTime ? `${slot.time}–${slot.endTime}` : slot.time;
 }
 
 /** "3 of 8 places left" for a wave, "" for a stream slot. */
-export function placesLabel(slot: Pick<Slot, "mode" | "capacity" | "booked">): string {
+export function placesLabel(slot: Pick<Slot, "mode" | "capacity" | "booked"> & Partial<Pick<Slot, "taken">>): string {
   if (slot.mode !== "wave") return "";
+  // A wave closed by an overlapping reservation takes nobody, whatever its token count says.
+  if (slot.taken) return "Full";
   const left = remainingPlaces(slot);
   return left === 0 ? "Full" : `${left} of ${slot.capacity ?? 1} places left`;
 }

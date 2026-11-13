@@ -135,9 +135,10 @@ describe("Doctor Dashboard Redesign", () => {
     expect(screen.getByRole("heading", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument();
     expect(screen.getByText("New booking from Priya Nair")).toBeInTheDocument();
+    // The link names the day, so a weekly session opens on a day it runs.
     expect(screen.getAllByRole("link", { name: /Morning clinic/ })[0]).toHaveAttribute(
       "href",
-      "/dashboard/sessions/manage?session=s-morning",
+      "/dashboard/sessions/manage?session=s-morning&date=2026-10-26",
     );
     expect(screen.getByText("Priya Nair")).toBeInTheDocument();
     expect(screen.getByText("WB-101")).toBeInTheDocument();
@@ -290,7 +291,38 @@ describe("Doctor Dashboard Redesign", () => {
     await userEvent.type(endInput, "13:00");
 
     expect(screen.queryByText(/so you don't cut a slot/i)).not.toBeInTheDocument();
+    // Taking the wave's free hours is spelled out and must be confirmed before saving.
+    expect(screen.getByText("This change takes hours from another session.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit changes" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox", { name: /take these hours from the other session/i }));
     expect(screen.getByRole("button", { name: "Submit changes" })).toBeEnabled();
+  });
+
+  it("SessionStudio drops a save notice once the doctor moves to another day", async () => {
+    renderWithProviders(
+      <SessionStudio
+        doctorId="doc-1"
+        doctorName="Dr Asha Rao"
+        sessions={[SESSION_STREAM]}
+        visits={[]}
+        trims={[]}
+        today="2026-10-26"
+        nowMinutes={480}
+        room="Room 6"
+        initialSessionId="s-morning"
+        startInCreateMode={false}
+        profileComplete
+        verificationPending
+        notice="Session changed."
+        noticeTone="success"
+        removingSession={null}
+        removingCount={0}
+      />,
+    );
+    expect(screen.getByText("Session changed.")).toBeInTheDocument();
+    expect(screen.getByText(/waiting for the practice to verify it/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: /Wed/i }));
+    expect(screen.queryByText("Session changed.")).not.toBeInTheDocument();
   });
 
   it("DoctorProfileWorkspace updates live patient card preview as fields change", async () => {

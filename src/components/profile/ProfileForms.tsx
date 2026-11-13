@@ -50,12 +50,12 @@ export function PatientProfileForm({
       </Field>
       <Field id="dob" label="Date of birth" optional error={e.dob}>
         {({ id, describedBy, invalid }) => (
-          <input id={id} name="dob" type="date" min="1900-01-01" max={today} defaultValue={v("dob")} aria-invalid={invalid} aria-describedby={describedBy} className="field tabular [color-scheme:dark]" />
+          <input id={id} name="dob" type="date" min="1900-01-01" max={today} defaultValue={v("dob")} aria-invalid={invalid} aria-describedby={describedBy} className="field tabular" />
         )}
       </Field>
       <Field id="gender" label="Gender" optional error={e.gender}>
         {({ id, describedBy, invalid }) => (
-          <select id={id} name="gender" defaultValue={v("gender")} aria-invalid={invalid} aria-describedby={describedBy} className="field [color-scheme:dark]">
+          <select id={id} name="gender" defaultValue={v("gender")} aria-invalid={invalid} aria-describedby={describedBy} className="field">
             <option value="">Prefer not to say</option>
             {GENDERS.filter((item) => item.id !== "prefer-not").map((item) => (
               <option key={item.id} value={item.id}>

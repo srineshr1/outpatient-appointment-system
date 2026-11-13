@@ -12,11 +12,11 @@ export type Tone = "success" | "warn" | "danger" | "info" | "neutral";
 
 // Every pair exceeds WCAG AA 4.5:1 on the dark surface.
 const TONES: Record<Tone, string> = {
-  success: "border border-emerald-400/25 bg-emerald-400/12 text-emerald-300",
-  warn: "border border-amber-400/25 bg-amber-400/12 text-amber-300",
-  danger: "border border-red-400/25 bg-red-400/12 text-red-300",
-  info: "border border-cyan-400/25 bg-cyan-400/12 text-cyan-300",
-  neutral: "border border-white/10 bg-white/[0.05] text-zinc-300",
+  success: "border border-emerald-400/25 bg-emerald-400/12 text-emerald-700 dark:text-emerald-300",
+  warn: "border border-amber-400/25 bg-amber-400/12 text-amber-700 dark:text-amber-300",
+  danger: "border border-red-400/25 bg-red-400/12 text-red-700 dark:text-red-300",
+  info: "border border-accent/25 dark:border-cyan-400/25 bg-accent/12 dark:bg-cyan-400/12 text-accent dark:text-cyan-300",
+  neutral: "border border-ink/10 bg-ink/[0.05] text-ink-2",
 };
 
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
@@ -80,15 +80,15 @@ export function Kpis({ items }: { items: readonly KpiItem[] }) {
     <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-hairline bg-hairline lg:grid-cols-4">
       {items.map((item) => (
         <div key={item.label} className="bg-surface p-4">
-          <dt className="text-[13px] font-medium text-zinc-400">{item.label}</dt>
+          <dt className="text-[13px] font-medium text-muted">{item.label}</dt>
           <dd
             className={`mt-1 text-xl font-semibold tabular-nums ${
-              item.tone === "danger" ? "text-red-300" : item.tone === "warn" ? "text-amber-300" : "text-zinc-50"
+              item.tone === "danger" ? "text-red-700 dark:text-red-300" : item.tone === "warn" ? "text-amber-700 dark:text-amber-300" : "text-ink"
             }`}
           >
             {item.value}
           </dd>
-          {item.sub ? <dd className="mt-0.5 text-[13px] text-zinc-400">{item.sub}</dd> : null}
+          {item.sub ? <dd className="mt-0.5 text-[13px] text-muted">{item.sub}</dd> : null}
         </div>
       ))}
     </dl>
@@ -121,7 +121,7 @@ export function Panel({
           <h2 id={headingId} className="text-base font-semibold text-ink">
             {title}
           </h2>
-          {description ? <p className="mt-0.5 text-[13px] text-zinc-400">{description}</p> : null}
+          {description ? <p className="mt-0.5 text-[13px] text-muted">{description}</p> : null}
         </div>
         {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
       </div>
@@ -149,13 +149,13 @@ export function SectionHeading({
         <h2 id={id} className="text-lg font-semibold text-ink">
           {title}
           {count !== undefined ? (
-            <span className="ml-2 text-sm font-normal text-zinc-400 tabular-nums">
+            <span className="ml-2 text-sm font-normal text-muted tabular-nums">
               <span className="sr-only">, </span>
               {count}
             </span>
           ) : null}
         </h2>
-        {description ? <p className="mt-0.5 text-sm text-zinc-400">{description}</p> : null}
+        {description ? <p className="mt-0.5 text-sm text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
     </div>
@@ -163,7 +163,7 @@ export function SectionHeading({
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-xl border border-dashed border-hairline bg-surface/50 px-4 py-8 text-center text-sm text-zinc-400">{children}</p>;
+  return <p className="rounded-xl border border-dashed border-hairline bg-surface/50 px-4 py-8 text-center text-sm text-muted">{children}</p>;
 }
 
 /* ---------- Tables ---------- */
@@ -183,7 +183,7 @@ export function TableWrap({ label, children }: { label: string; children: ReactN
 }
 
 export const tableClass = "w-full border-collapse text-left text-sm";
-export const theadClass = "bg-zinc-900/90 text-[13px] text-zinc-300 border-b border-hairline";
+export const theadClass = "bg-surface/90 dark:bg-zinc-900/90 text-[13px] text-ink-2 border-b border-hairline";
 export const tbodyClass = "divide-y divide-hairline";
 
 export function Th({ children, align = "left", className = "" }: { children?: ReactNode; align?: "left" | "right"; className?: string }) {
@@ -215,7 +215,7 @@ export function Td({
 /** A link in a table row: at least 24px tall (WCAG 2.5.8). */
 export function RowLink({ href, children, label }: { href: string; children: ReactNode; label?: string }) {
   return (
-    <Link href={href} aria-label={label} className="inline-flex min-h-6 items-center font-medium text-cyan-300 hover:underline underline-offset-4">
+    <Link href={href} aria-label={label} className="inline-flex min-h-6 items-center font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
       {children}
     </Link>
   );
@@ -232,9 +232,9 @@ export type AdminButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 const BUTTONS: Record<AdminButtonVariant, string> = {
   primary:
     "bg-cyan-400 bg-gradient-to-r from-cyan-400 to-blue-500 text-zinc-950 font-semibold hover:from-cyan-300 hover:to-blue-400 shadow-[0_0_14px_rgba(34,211,238,0.2)]",
-  secondary: "border border-white/12 bg-white/[0.04] font-medium text-zinc-100 hover:bg-white/[0.08]",
+  secondary: "border border-ink/12 bg-ink/[0.04] font-medium text-ink hover:bg-ink/[0.08]",
   danger: "bg-red-600 font-medium text-white hover:bg-red-700",
-  ghost: "font-medium text-cyan-300 hover:bg-cyan-400/10",
+  ghost: "font-medium text-accent dark:text-cyan-300 hover:bg-accent/10 dark:hover:bg-cyan-400/10",
 };
 
 export function adminButton(variant: AdminButtonVariant = "secondary", extra = ""): string {
@@ -242,10 +242,10 @@ export function adminButton(variant: AdminButtonVariant = "secondary", extra = "
 }
 
 export const inputClass =
-  "block h-9 w-full rounded-md border border-control bg-surface-2 px-3 text-sm text-ink placeholder:text-zinc-400 [color-scheme:dark] transition-colors hover:border-zinc-400 focus-visible:border-cyan-400";
+  "block h-9 w-full rounded-md border border-control bg-surface-2 px-3 text-sm text-ink placeholder:text-muted transition-colors hover:border-control dark:hover:border-zinc-400 focus-visible:border-accent dark:focus-visible:border-cyan-400";
 
 export const textareaClass =
-  "block min-h-20 w-full rounded-md border border-control bg-surface-2 px-3 py-2 text-sm text-ink placeholder:text-zinc-400 [color-scheme:dark] transition-colors hover:border-zinc-400 focus-visible:border-cyan-400";
+  "block min-h-20 w-full rounded-md border border-control bg-surface-2 px-3 py-2 text-sm text-ink placeholder:text-muted transition-colors hover:border-control dark:hover:border-zinc-400 focus-visible:border-accent dark:focus-visible:border-cyan-400";
 
 export function AdminField({
   id,
@@ -266,7 +266,7 @@ export function AdminField({
         {label}
       </label>
       {hint ? (
-        <p id={`${id}-hint`} className="mt-0.5 text-[13px] text-zinc-400">
+        <p id={`${id}-hint`} className="mt-0.5 text-[13px] text-muted">
           {hint}
         </p>
       ) : null}
@@ -281,7 +281,7 @@ export function Facts({ items }: { items: readonly { term: string; value: ReactN
     <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
       {items.map((item) => (
         <div key={item.term} className="min-w-0">
-          <dt className="text-[13px] font-medium text-zinc-400">{item.term}</dt>
+          <dt className="text-[13px] font-medium text-muted">{item.term}</dt>
           <dd className="mt-0.5 text-sm break-words text-ink">{item.value}</dd>
         </div>
       ))}

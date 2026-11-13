@@ -129,7 +129,7 @@ export default async function VisitPage({
                 {
                   term: "Account",
                   value: patient ? (
-                    <Link href={`/admin/people/${patient.id}`} className="text-cyan-300 hover:underline underline-offset-4">
+                    <Link href={`/admin/people/${patient.id}`} className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                       {patient.email}
                     </Link>
                   ) : (
@@ -161,7 +161,7 @@ export default async function VisitPage({
                 />
                 <h3 className="mt-6 mb-2 text-sm font-semibold text-ink">Payments and refunds</h3>
                 {charge.entries.length === 0 ? (
-                  <p className="text-sm text-zinc-400">Nothing paid yet.</p>
+                  <p className="text-sm text-muted">Nothing paid yet.</p>
                 ) : (
                   <TableWrap label="Payments and refunds for this visit">
                     <table className={tableClass}>
@@ -176,14 +176,14 @@ export default async function VisitPage({
                       </thead>
                       <tbody className={tbodyClass}>
                         {[...charge.entries].reverse().map((entry) => (
-                          <tr key={entry.id} className="transition-colors hover:bg-white/[0.03]">
+                          <tr key={entry.id} className="transition-colors hover:bg-ink/[0.03]">
                             <Td className="whitespace-nowrap tabular-nums">{instantLabel(entry.at, today)}</Td>
                             <Td>
                               {entry.kind === "payment" ? <Badge tone="success">Payment</Badge> : <Badge tone="info">Refund</Badge>}
-                              {entry.note ? <span className="mt-1 block text-[13px] text-zinc-400">{entry.note}</span> : null}
+                              {entry.note ? <span className="mt-1 block text-[13px] text-muted">{entry.note}</span> : null}
                             </Td>
                             <Td className="whitespace-nowrap">{METHOD_LABELS[entry.method]}</Td>
-                            <Td align="right" className={entry.kind === "refund" ? "text-red-300" : ""}>
+                            <Td align="right" className={entry.kind === "refund" ? "text-red-700 dark:text-red-300" : ""}>
                               <Money pence={entry.kind === "refund" ? -entry.amountPence : entry.amountPence} />
                             </Td>
                             <Td className="whitespace-nowrap">{entry.byName || "—"}</Td>

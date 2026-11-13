@@ -39,7 +39,7 @@ import { notifyDisplaced, notifyOfferClosed, notifyRebooked } from "./rebooking-
 import { refundForCancellation, type CancellationRefund } from "./payments/service";
 import { getSlot } from "./repository";
 import { slotStart, slotStatus } from "./schedule";
-import { baseSlotId, freeToken, heldId, isTime, minutesOverlap, overriddenDates, slotsForSession, toMinutes, tokenOfHeld } from "./sessions";
+import { baseSlotId, canonicalHeldIds, freeToken, heldId, isTime, minutesOverlap, overriddenDates, slotsForSession, toMinutes, tokenOfHeld } from "./sessions";
 import { getStore } from "./store";
 
 /** How long the offered times stay held for the patient. */
@@ -148,8 +148,8 @@ export function openSlotsFor(input: Omit<AlternativeInput, "visit" | "count"> & 
 }
 
 /** The place a slot offers next: a stream slot itself, or a wave's lowest free token. Null when full. */
-export function placementFor(slot: Slot, heldIds: readonly string[]): Placement | null {
-  const token = slot.mode === "wave" ? freeToken(slot.id, slot.capacity ?? 1, heldIds) : null;
+export function placementFor(slot: Slot, heldIds: readonly string[], sessions: readonly ConsultSession[] = []): Placement | null {
+  const token = slot.mode === "wave" ? freeToken(slot.id, slot.capacity ?? 1, canonicalHeldIds(heldIds, sessions, slot)) : null;
   if (slot.mode === "wave" && token === null) return null;
   return {
     slotId: token === null ? slot.id : heldId(slot.id, token),
@@ -175,7 +175,7 @@ export function pickAlternatives(input: AlternativeInput): Placement[] {
   const picked: Placement[] = [];
   for (const slot of open) {
     if (picked.length >= count) break;
-    const place = placementFor(slot, heldIds);
+    const place = placementFor(slot, heldIds, input.sessions);
     if (place) picked.push(place);
   }
   return picked;
@@ -315,7 +315,7 @@ export async function moreTimes(offer: RebookingOffer, limit = 20): Promise<Plac
   for (const slot of openSlotsFor({ doctorId: offer.doctorId, sessions, trims, reserved, instant })) {
     if (places.length >= limit) break;
     if (offered.has(slot.id)) continue;
-    const place = placementFor(slot, heldIds);
+    const place = placementFor(slot, heldIds, sessions);
     if (place) places.push(place);
   }
   return sortByTime(places);
@@ -350,7 +350,7 @@ export async function acceptOffer(token: string, slotId: string): Promise<Accept
     const slot = await getSlot(baseSlotId(slotId));
     if (!slot || slot.doctorId !== offer.doctorId || slotStatus(slot, [], now()) !== "open") return { ok: false, reason: "missing" };
     const own = new Set(offer.slots.map((item) => item.slotId));
-    to = placementFor(slot, (await store.listBlockedSlotIds()).filter((id) => !own.has(id)));
+    to = placementFor(slot, (await store.listBlockedSlotIds()).filter((id) => !own.has(id)), await store.listConsultSessions(offer.doctorId));
     if (!to) return { ok: false, reason: "taken" };
   }
   if (slotStart(to).getTime() <= now().getTime()) return { ok: false, reason: "missing" };

@@ -39,11 +39,11 @@ export default async function ReceiptPage({ params }: { params: Promise<{ paymen
         className="rounded-card border border-hairline bg-surface p-6 shadow-card print:rounded-none print:border print:border-zinc-300 print:bg-white print:text-black print:shadow-none md:p-8"
         aria-labelledby="receipt-title"
       >
-        <p className="text-callout font-semibold text-zinc-400 print:text-zinc-600">{practice.name}</p>
-        <h1 id="receipt-title" className="mt-1 text-title2 font-semibold text-zinc-50 print:text-black">
+        <p className="text-callout font-semibold text-muted print:text-zinc-600">{practice.name}</p>
+        <h1 id="receipt-title" className="mt-1 text-title2 font-semibold text-ink print:text-black">
           Payment receipt
         </h1>
-        <p className="mt-1 text-callout text-zinc-400 print:text-zinc-600">{practice.address}</p>
+        <p className="mt-1 text-callout text-muted print:text-zinc-600">{practice.address}</p>
 
         <dl className="mt-6 grid gap-3 text-body sm:grid-cols-2">
           <Row term="Receipt number" value={payment.id.slice(0, 8).toUpperCase()} />
@@ -57,21 +57,21 @@ export default async function ReceiptPage({ params }: { params: Promise<{ paymen
         </dl>
 
         <div className="mt-6 flex items-baseline justify-between border-t border-hairline pt-4 print:border-zinc-300">
-          <p className="text-body font-semibold text-zinc-50 print:text-black">Amount paid</p>
-          <p className="tabular text-title3 font-semibold text-cyan-300 print:text-black">{formatMoney(payment.amountMinor)}</p>
+          <p className="text-body font-semibold text-ink print:text-black">Amount paid</p>
+          <p className="tabular text-title3 font-semibold text-accent dark:text-cyan-300 print:text-black">{formatMoney(payment.amountMinor)}</p>
         </div>
         {refunds.length > 0 ? (
           <div className="mt-4 border-t border-hairline pt-4 print:border-zinc-300">
-            <p className="text-body font-semibold text-zinc-50 print:text-black">Refunds</p>
-            <ul className="mt-2 grid gap-1 text-callout text-zinc-300 print:text-zinc-800">
+            <p className="text-body font-semibold text-ink print:text-black">Refunds</p>
+            <ul className="mt-2 grid gap-1 text-callout text-ink-2 print:text-zinc-800">
               {refunds.map((refund) => (
                 <li key={refund.id}>{refundStatusLabel(refund)}</li>
               ))}
             </ul>
-            {refunded > 0 ? <p className="mt-2 text-callout text-zinc-300 print:text-zinc-800">Refunded so far: {formatMoney(refunded)}</p> : null}
+            {refunded > 0 ? <p className="mt-2 text-callout text-ink-2 print:text-zinc-800">Refunded so far: {formatMoney(refunded)}</p> : null}
           </div>
         ) : null}
-        <p className="mt-6 text-caption text-zinc-400 print:text-zinc-600">Amounts are in Indian rupees. Keep this receipt for your records.</p>
+        <p className="mt-6 text-caption text-muted print:text-zinc-600">Amounts are in Indian rupees. Keep this receipt for your records.</p>
       </article>
       <div className="mt-6 print:hidden">
         <PrintButton />
@@ -83,8 +83,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ paymen
 function Row({ term, value }: { term: string; value: string }) {
   return (
     <div>
-      <dt className="text-callout text-zinc-400 print:text-zinc-600">{term}</dt>
-      <dd className="tabular break-words text-zinc-100 print:text-black">{value || "—"}</dd>
+      <dt className="text-callout text-muted print:text-zinc-600">{term}</dt>
+      <dd className="tabular break-words text-ink print:text-black">{value || "—"}</dd>
     </div>
   );
 }

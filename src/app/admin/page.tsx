@@ -121,13 +121,13 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
                 <li key={item.key}>
                   <Link
                     href={item.href}
-                    className={`flex min-h-11 items-center gap-3 rounded-lg border px-3 text-sm no-underline transition-colors hover:bg-white/[0.03] ${
+                    className={`flex min-h-11 items-center gap-3 rounded-lg border px-3 text-sm no-underline transition-colors hover:bg-ink/[0.03] ${
                       item.tone === "danger" ? "border-red-400/30 bg-red-400/[0.04]" : "border-amber-400/30 bg-amber-400/[0.04]"
                     }`}
                   >
-                    <AlertIcon size={18} className={item.tone === "danger" ? "shrink-0 text-red-300" : "shrink-0 text-amber-300"} />
+                    <AlertIcon size={18} className={item.tone === "danger" ? "shrink-0 text-red-700 dark:text-red-300" : "shrink-0 text-amber-700 dark:text-amber-300"} />
                     <span className="flex-1 text-ink">{item.text}</span>
-                    <ArrowRightIcon size={16} className="shrink-0 text-zinc-400" />
+                    <ArrowRightIcon size={16} className="shrink-0 text-muted" />
                   </Link>
                 </li>
               ))}
@@ -174,7 +174,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
                 {load.doctors.map((doctor) => {
                   const full = percent(doctor.taken, doctor.capacity);
                   return (
-                    <tr key={doctor.doctorId} className="transition-colors hover:bg-white/[0.03]">
+                    <tr key={doctor.doctorId} className="transition-colors hover:bg-ink/[0.03]">
                       <Td className="whitespace-nowrap font-medium">{doctor.name}</Td>
                       <Td align="right">{doctor.online}</Td>
                       <Td align="right">

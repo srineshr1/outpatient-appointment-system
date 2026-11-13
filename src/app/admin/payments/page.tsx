@@ -98,14 +98,14 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                       · {row.visit.patientName} · {slotLabel(row.visit.date, row.visit.time, today)}
                     </span>
                   </span>
-                  <span className="font-medium text-red-300">
+                  <span className="font-medium text-red-700 dark:text-red-300">
                     <Money pence={row.money.refundDuePence} /> to give back
                   </span>
                 </li>
               ))}
             </ul>
             {refundsDue.length > 6 ? (
-              <Link href="/admin/payments/invoices?money=refund_due" className="mt-3 inline-flex min-h-9 items-center text-sm text-cyan-300 hover:underline underline-offset-4">
+              <Link href="/admin/payments/invoices?money=refund_due" className="mt-3 inline-flex min-h-9 items-center text-sm text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                 All {refundsDue.length} refunds due
               </Link>
             ) : null}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Calendar,
   ChevronLeft,
@@ -38,7 +38,7 @@ import {
   type WeekModel,
 } from "@/components/doctors/schedule-model";
 import type { AppointmentStatus, ConsultSession, SessionTrim } from "@/lib/clinic-types";
-import { addDays, dayOfMonth } from "@/lib/clock";
+import { addDays, dayOfMonth, practiceWallClock } from "@/lib/clock";
 import {
   describeSession,
   hoursOnDate,
@@ -267,6 +267,22 @@ export function SessionsViewer({
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
+  // The "Live" pill follows the practice clock (IST) on this device, not the time the page loaded.
+  const [clock, setClock] = useState({ date: today, minutes: nowMinutes });
+  useEffect(() => {
+    const tick = () => {
+      const wall = practiceWallClock(new Date());
+      setClock((prev) =>
+        prev.date === wall.date && prev.minutes === wall.hour * 60 + wall.minute
+          ? prev
+          : { date: wall.date, minutes: wall.hour * 60 + wall.minute },
+      );
+    };
+    tick();
+    const timer = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const [view, setView] = useState<ViewMode>("week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -318,7 +334,7 @@ export function SessionsViewer({
         <BentoCard spotlightColor="transparent">
           <p className="text-caption font-medium text-muted">Active sessions</p>
           <p className="mt-2 text-title2 font-semibold text-ink tabular">
-            <CountUp to={sessions.length} duration={0.7} trigger="load" />
+            {sessions.length}
           </p>
           <p className="mt-1 text-caption text-ink-2">
             {streamCount} stream · {waveCount} wave
@@ -485,9 +501,9 @@ export function SessionsViewer({
                           ? Math.min(100, Math.round((item.booked / item.capacity) * 100))
                           : 0;
                       const isLiveNow =
-                        day.isToday &&
-                        nowMinutes >= item.startMin &&
-                        nowMinutes < item.endMin;
+                        day.date === clock.date &&
+                        clock.minutes >= item.startMin &&
+                        clock.minutes < item.endMin;
 
                       return (
                         <button

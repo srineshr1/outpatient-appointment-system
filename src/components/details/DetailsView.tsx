@@ -183,8 +183,8 @@ export function DetailsView({
 
   return (
     <div className="mx-auto max-w-page px-5 pt-8 pb-20 md:px-8 md:pt-12">
-      <PageHeading className="text-title2 font-semibold text-zinc-50 md:text-title1">Your details</PageHeading>
-      <p className="mt-2 max-w-prose text-body text-zinc-300">
+      <PageHeading className="text-title2 font-semibold text-ink md:text-title1">Your details</PageHeading>
+      <p className="mt-2 max-w-prose text-body text-ink-2">
         Tell us who’s coming in, so we can find the right record.
       </p>
       <Notice tone="info" className="mt-6">
@@ -198,7 +198,7 @@ export function DetailsView({
             slot={heldSlot}
             reason={reason}
             footer={
-              <Link href={backHref} className="inline-flex min-h-11 items-center text-body text-cyan-300 hover:underline underline-offset-4">
+              <Link href={backHref} className="inline-flex min-h-11 items-center text-body text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                 Change time
               </Link>
             }
@@ -216,8 +216,8 @@ export function DetailsView({
                 transition={spring.gentle}
               >
                 <Notice tone="danger" role="alert" aria-labelledby="error-summary-title">
-                  <p id="error-summary-title" className="flex items-center gap-2 font-semibold text-zinc-50">
-                    <Alert size={20} className="text-red-300" />
+                  <p id="error-summary-title" className="flex items-center gap-2 font-semibold text-ink">
+                    <Alert size={20} className="text-red-700 dark:text-red-300" />
                     {errorEntries.length === 1 ? "There’s 1 thing to fix" : `There are ${errorEntries.length} things to fix`}
                   </p>
                   <ul className="mt-2 grid gap-1 pl-7">
@@ -229,7 +229,7 @@ export function DetailsView({
                             event.preventDefault();
                             document.getElementById(targetId(key))?.focus();
                           }}
-                          className="text-red-300 underline underline-offset-4"
+                          className="text-red-700 dark:text-red-300 underline underline-offset-4"
                         >
                           {message}
                         </a>
@@ -241,8 +241,8 @@ export function DetailsView({
             ) : null}
           </AnimatePresence>
 
-          <Card className="grid gap-5 border-white/10 p-5 backdrop-blur-md md:grid-cols-2 md:p-6">
-            <h2 className="text-title3 font-semibold text-zinc-50 md:col-span-2">Who’s attending</h2>
+          <Card className="grid gap-5 border-ink/10 p-5 backdrop-blur-md md:grid-cols-2 md:p-6">
+            <h2 className="text-title3 font-semibold text-ink md:col-span-2">Who’s attending</h2>
             <Field id="name" label="Full name" error={errors.name} className="md:col-span-2">
               {({ id, describedBy, invalid }) => (
                 <input
@@ -273,7 +273,7 @@ export function DetailsView({
                   aria-describedby={describedBy}
                   aria-required="true"
                   onChange={(event) => update({ dob: event.target.value })}
-                  className="field tabular [color-scheme:dark]"
+                  className="field tabular"
                 />
               )}
             </Field>
@@ -321,9 +321,9 @@ export function DetailsView({
             </Field>
           </Card>
 
-          <Card className="border-white/10 p-5 backdrop-blur-md md:p-6">
+          <Card className="border-ink/10 p-5 backdrop-blur-md md:p-6">
             <fieldset aria-describedby={errors.reasonId ? "reason-error" : undefined}>
-              <legend className="text-title3 font-semibold text-zinc-50">What’s the visit for?</legend>
+              <legend className="text-title3 font-semibold text-ink">What’s the visit for?</legend>
               <div className="mt-4 grid gap-2" role="presentation">
                 {reasons.map((item) => {
                   const checked = form.reasonId === item.id;
@@ -341,21 +341,21 @@ export function DetailsView({
                       <span
                         className={`flex min-h-13 items-center justify-between gap-4 rounded-field px-4 py-3 transition-[background-color,box-shadow] duration-200 peer-focus-visible:outline-3 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent/55 ${
                           checked
-                            ? "bg-cyan-400/10 shadow-[inset_0_0_0_2px_var(--color-accent)]"
+                            ? "bg-accent/10 dark:bg-cyan-400/10 shadow-[inset_0_0_0_2px_var(--color-accent)]"
                             : errors.reasonId
-                              ? "bg-white/[0.02] shadow-[inset_0_0_0_1px_var(--color-danger)] hover:bg-white/[0.04]"
-                              : "bg-white/[0.02] shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-white/[0.04]"
+                              ? "bg-ink/[0.02] shadow-[inset_0_0_0_1px_var(--color-danger)] hover:bg-ink/[0.04]"
+                              : "bg-ink/[0.02] shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:bg-ink/[0.04]"
                         }`}
                       >
-                        <span className="text-body text-zinc-50">{item.label}</span>
+                        <span className="text-body text-ink">{item.label}</span>
                         <span className="flex items-center gap-3">
-                          <span className={`tabular text-callout ${checked ? "text-zinc-200" : "text-zinc-400 group-hover:text-zinc-200"}`}>
+                          <span className={`tabular text-callout ${checked ? "text-ink-2 dark:text-zinc-200" : "text-muted group-hover:text-ink-2 dark:group-hover:text-zinc-200"}`}>
                             {item.minutes} min
                           </span>
                           <span
                             aria-hidden="true"
                             className={`grid size-6 place-items-center rounded-full transition-colors duration-200 ${
-                              checked ? "bg-accent text-zinc-950" : "shadow-[inset_0_0_0_1.5px_var(--color-control)]"
+                              checked ? "bg-accent text-accent-ink" : "shadow-[inset_0_0_0_1.5px_var(--color-control)]"
                             }`}
                           >
                             <AnimatePresence initial={false}>
@@ -378,7 +378,7 @@ export function DetailsView({
                 })}
               </div>
               {errors.reasonId ? (
-                <p id="reason-error" className="mt-3 flex items-center gap-1.5 text-callout text-red-300">
+                <p id="reason-error" className="mt-3 flex items-center gap-1.5 text-callout text-red-700 dark:text-red-300">
                   <Alert size={18} />
                   {errors.reasonId}
                 </p>
@@ -403,7 +403,7 @@ export function DetailsView({
                   <p
                     id="note-count"
                     className={`tabular mt-2 text-right text-caption transition-colors ${
-                      form.note.length >= NOTE_LIMIT ? "text-red-300" : form.note.length >= NOTE_LIMIT - 20 ? "text-amber-300" : "text-zinc-400"
+                      form.note.length >= NOTE_LIMIT ? "text-red-700 dark:text-red-300" : form.note.length >= NOTE_LIMIT - 20 ? "text-amber-700 dark:text-amber-300" : "text-muted"
                     }`}
                   >
                     {form.note.length} of {NOTE_LIMIT} characters
@@ -414,10 +414,10 @@ export function DetailsView({
           </Card>
 
           {fee > 0 ? (
-            <Card className="border-white/10 p-5 backdrop-blur-md md:p-6">
+            <Card className="border-ink/10 p-5 backdrop-blur-md md:p-6">
               <fieldset>
-                <legend className="text-title3 font-semibold text-zinc-50">Payment</legend>
-                <p className="mt-1 text-callout text-zinc-300">
+                <legend className="text-title3 font-semibold text-ink">Payment</legend>
+                <p className="mt-1 text-callout text-ink-2">
                   {reason ? `${reason.label}: ${formatMoney(fee)}.` : "The fee depends on what the visit is for."}{" "}
                   {onlinePayments
                     ? "Pay online to confirm your place straight away, or pay at the desk when you arrive."
@@ -432,7 +432,7 @@ export function DetailsView({
                   ].map((option) => (
                     <label
                       key={option.label}
-                      className="flex min-h-13 cursor-pointer items-center gap-3 rounded-field bg-white/[0.02] px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-white/[0.04] has-checked:bg-cyan-400/10 has-checked:shadow-[inset_0_0_0_2px_var(--color-accent)]"
+                      className="flex min-h-13 cursor-pointer items-center gap-3 rounded-field bg-ink/[0.02] px-4 py-3 shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors hover:bg-ink/[0.04] has-checked:bg-accent/10 dark:has-checked:bg-cyan-400/10 has-checked:shadow-[inset_0_0_0_2px_var(--color-accent)]"
                     >
                       <input
                         type="radio"
@@ -442,8 +442,8 @@ export function DetailsView({
                         className="size-5 shrink-0 accent-accent"
                       />
                       <span>
-                        <span className="block text-body text-zinc-50">{option.label}</span>
-                        <span className="block text-callout text-zinc-300">{option.hint}</span>
+                        <span className="block text-body text-ink">{option.label}</span>
+                        <span className="block text-callout text-ink-2">{option.hint}</span>
                       </span>
                     </label>
                   ))}
@@ -452,7 +452,7 @@ export function DetailsView({
             </Card>
           ) : null}
 
-          <Card className="border-white/10 p-5 backdrop-blur-md md:p-6">
+          <Card className="border-ink/10 p-5 backdrop-blur-md md:p-6">
             <Switch
               checked={form.isNew}
               onChange={(isNew) => update({ isNew })}
@@ -470,7 +470,7 @@ export function DetailsView({
                 >
                   <Notice tone="info" role="status" className="mt-4">
                     Please register first by calling{" "}
-                    <a href={practice.phoneHref} className="tabular font-semibold text-cyan-300">
+                    <a href={practice.phoneHref} className="tabular font-semibold text-accent dark:text-cyan-300">
                       {practice.phoneDisplay}
                     </a>
                     . We can book your first visit on the same call.
@@ -482,13 +482,13 @@ export function DetailsView({
 
           {failure ? (
             <Notice tone="danger" role="alert" className="flex items-start gap-2">
-              <Alert size={20} className="mt-px shrink-0 text-red-300" />
+              <Alert size={20} className="mt-px shrink-0 text-red-700 dark:text-red-300" />
               {failure}
             </Notice>
           ) : null}
 
           <div className="flex flex-col-reverse gap-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="flex items-center gap-2 text-callout text-zinc-400">
+            <p className="flex items-center gap-2 text-callout text-muted">
               <Lock size={18} />
               {reason
                 ? fee <= 0

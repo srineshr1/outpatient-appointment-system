@@ -172,13 +172,13 @@ export function PayButton({
   return (
     <div className="grid gap-4">
       {seconds !== null && !expired ? (
-        <p className="text-callout text-zinc-300" role="timer" aria-live="off">
-          Your place is held for <span className="tabular font-semibold text-zinc-50">{clock(seconds)}</span>. After that it is released.
+        <p className="text-callout text-ink-2" role="timer" aria-live="off">
+          Your place is held for <span className="tabular font-semibold text-ink">{clock(seconds)}</span>. After that it is released.
         </p>
       ) : null}
       {message ? (
         <Notice tone={phase === "waiting" ? "info" : "danger"} role={phase === "waiting" ? "status" : "alert"} className="flex items-start gap-2">
-          {phase === "waiting" ? null : <Alert size={20} className="mt-px shrink-0 text-red-300" />}
+          {phase === "waiting" ? null : <Alert size={20} className="mt-px shrink-0 text-red-700 dark:text-red-300" />}
           {message}
         </Notice>
       ) : null}

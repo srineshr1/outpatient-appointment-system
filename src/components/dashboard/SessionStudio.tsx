@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useRef, useState } from "react";
 import { TimeWheelPicker } from "@/components/doctors/TimeWheel";
 import { CLINIC_END, CLINIC_START, clinicWeekday, sessionIsPast } from "@/components/doctors/schedule-model";
 import { Alert, Calendar, Check, ChevronLeft, ChevronRight, Clock, Edit, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
-import { CountUp } from "@/components/reactbits/CountUp";
 import { GlideSelect } from "@/components/reactbits/GlideSelect";
 import { RubberSegment } from "@/components/reactbits/RubberSegment";
 import { SquishSwitch } from "@/components/reactbits/SquishSwitch";
@@ -16,9 +15,9 @@ import { Field } from "@/components/ui/Field";
 import { PendingButton } from "@/components/ui/PendingButton";
 import type { AppointmentStatus, ConsultSession, SessionTrim } from "@/lib/clinic-types";
 import { addDays, dayOfMonth, mondayOf, weekdayIndex } from "@/lib/clock";
-import { occupiesTime, sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
+import { isUpcomingVisit, occupiesTime, sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
 import type { FormState } from "@/lib/form-state";
-import { defaultsFor, type SessionDefaults } from "@/lib/session-defaults";
+import { addBlockedReason, defaultsFor, toRecurringDraft, type SessionDefaults } from "@/lib/session-defaults";
 import {
   checkSession,
   daysLabel,
@@ -28,12 +27,14 @@ import {
   isTime,
   MAX_WAVE_CAPACITY,
   minutesOverlap,
+  newAbsorptions,
   planAbsorption,
   planStreamShift,
   sessionBlocks,
   sessionRunsOn,
   STREAM_SLOT_MINUTES,
   toMinutes,
+  visitWhenLabel,
   WAVE_MINUTES,
   WEEKDAY_NAMES,
   type SessionInput,
@@ -69,11 +70,23 @@ function createDraft(
   room: string,
   today: string,
   initialDate?: string | null,
+  nowMinutes?: number,
 ): StudioDraft {
   const base = defaultsFor(session, room);
   if (!session) {
-    const start = initialDate && clinicWeekday(initialDate) !== null ? initialDate : nextClinicDay(today);
+    const start =
+      initialDate && clinicWeekday(initialDate) !== null && initialDate >= today ? initialDate : nextClinicDay(today);
     const wd = clinicWeekday(start);
+    // A draft for today starts at the next half hour, not at a time that has already gone.
+    if (start === today && typeof nowMinutes === "number" && toMinutes(base.startTime) <= nowMinutes) {
+      const begin = Math.ceil((nowMinutes + 1) / 30) * 30;
+      const length = toMinutes(base.endTime) - toMinutes(base.startTime);
+      const fits = begin + length <= 23 * 60 + 45 ? length : 60;
+      if (begin + fits <= 23 * 60 + 45) {
+        base.startTime = fromMinutes(begin);
+        base.endTime = fromMinutes(begin + fits);
+      }
+    }
     return {
       ...base,
       kind: "once",
@@ -184,6 +197,17 @@ function formatDateHeading(iso: string): string {
   return `${dayName}, ${day} ${monthName}`;
 }
 
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2–8 Nov", or "30 Nov – 6 Dec" across months: Monday to Sunday, the whole strip. */
+export function weekSpanLabel(monday: string): string {
+  const sunday = addDays(monday, 6);
+  const month = (iso: string) => SHORT_MONTHS[Number(iso.slice(5, 7)) - 1];
+  return month(monday) === month(sunday)
+    ? `${dayOfMonth(monday)}–${dayOfMonth(sunday)} ${month(sunday)}`
+    : `${dayOfMonth(monday)} ${month(monday)} – ${dayOfMonth(sunday)} ${month(sunday)}`;
+}
+
 function weekOffsetForDate(target: string, baseToday: string): number {
   try {
     const mTarget = new Date(mondayOf(target) + "T00:00:00Z").getTime();
@@ -222,12 +246,10 @@ function getMonthWeeks(currentMonday: string): { monthTitle: string; weeks: Mont
   const weeks: MonthWeek[] = [];
   let idx = 1;
   while (scanMonday.startsWith(targetPrefix) || addDays(scanMonday, 3).startsWith(targetPrefix)) {
-    const startNum = dayOfMonth(scanMonday);
-    const endNum = dayOfMonth(addDays(scanMonday, 5));
     weeks.push({
       monday: scanMonday,
       weekIndex: idx,
-      label: `Week ${idx} (${startNum}–${endNum})`,
+      label: `Week ${idx} (${weekSpanLabel(scanMonday)})`,
     });
     scanMonday = addDays(scanMonday, 7);
     idx++;
@@ -249,6 +271,7 @@ export function SessionStudio({
   initialDate = null,
   startInCreateMode,
   profileComplete,
+  verificationPending = false,
   notice,
   noticeTone,
   removingSession,
@@ -266,6 +289,7 @@ export function SessionStudio({
   initialDate?: string | null;
   startInCreateMode: boolean;
   profileComplete: boolean;
+  verificationPending?: boolean;
   notice: string | null;
   noticeTone: "info" | "success" | "danger" | "neutral";
   removingSession: ConsultSession | null;
@@ -280,7 +304,7 @@ export function SessionStudio({
   const [editingId, setEditingId] = useState<string | null>(() => initialSession?.id ?? null);
   const [isCreateMode, setIsCreateMode] = useState<boolean>(() => startInCreateMode || sessions.length === 0);
   const [draft, setDraft] = useState<StudioDraft>(() =>
-    createDraft(initialSession, room, today, initialDate),
+    createDraft(initialSession, room, today, initialDate, nowMinutes),
   );
   const [showWheels, setShowWheels] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
@@ -290,7 +314,20 @@ export function SessionStudio({
   const [selectedDate, setSelectedDate] = useState<string>(() => initialTarget);
   const [showAllSessions, setShowAllSessions] = useState(false);
 
-  const [state, formAction] = useActionState(saveSession, null as FormState);
+  const [savedState, formAction] = useActionState(saveSession, null as FormState);
+  // A save result (error, "notify patients" or "move patients" banner) belongs to the session and day
+  // it was sent from. Selecting another session, starting a new one or changing the day hides it, so a
+  // banner's confirm button can never submit a different session's form.
+  const [bannerEpoch, setBannerEpoch] = useState(0);
+  const [submittedEpoch, setSubmittedEpoch] = useState<number | null>(null);
+  const state = submittedEpoch === bannerEpoch ? savedState : null;
+  const clearBanners = () => setBannerEpoch((epoch) => epoch + 1);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const revealEditor = () => {
+    // On a phone the editor sits above the day strip: bring it into view after picking a session.
+    if (typeof window === "undefined" || window.matchMedia?.("(min-width: 1024px)").matches) return;
+    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   const editing = useMemo(
     () => (isCreateMode ? null : sessions.find((s) => s.id === editingId) ?? null),
@@ -300,32 +337,47 @@ export function SessionStudio({
   const upcomingCountBySession = useMemo(() => {
     const counts = new Map<string, number>();
     for (const visit of visits) {
-      if (!visit.sessionId || visit.date < today || !occupiesTime(visit)) continue;
+      if (!visit.sessionId || visit.date < today || !isUpcomingVisit(visit)) continue;
       counts.set(visit.sessionId, (counts.get(visit.sessionId) ?? 0) + 1);
     }
     return counts;
   }, [visits, today]);
+
+  const showDate = (date: string) => {
+    setSelectedDate(date);
+    setStudioWeekOffset(weekOffsetForDate(date, today));
+  };
 
   const selectSession = (session: ConsultSession) => {
     setIsCreateMode(false);
     setEditingId(session.id);
     setDraft(createDraft(session, room, today));
     setConfirmRetire(false);
-    if (session.onDate) {
-      setSelectedDate(session.onDate);
-      setStudioWeekOffset(weekOffsetForDate(session.onDate, today));
-    }
+    clearBanners();
+    if (session.onDate) showDate(session.onDate);
+    revealEditor();
   };
 
-  const startCreate = () => {
+  /** A new draft on `date` when sessions can be added then, else on the next clinic day (shown in the strip). */
+  const startCreate = (date: string = selectedDate) => {
+    const target = addBlockedReason(date, today) === null ? date : nextClinicDay(date > today ? date : today);
     setIsCreateMode(true);
     setEditingId(null);
-    setDraft(createDraft(null, room, today, initialDate));
+    setDraft(createDraft(null, room, today, target, nowMinutes));
     setConfirmRetire(false);
-    if (initialDate) {
-      setSelectedDate(initialDate);
-      setStudioWeekOffset(weekOffsetForDate(initialDate, today));
-    }
+    clearBanners();
+    showDate(target);
+    setShowAllSessions(false);
+  };
+
+  const moveWeek = (delta: number) => {
+    const nextOffset = studioWeekOffset + delta;
+    const nextMonday = addDays(mondayOf(today), nextOffset * 7);
+    setStudioWeekOffset(nextOffset);
+    // Keep the same weekday in the new week, so the strip always has a day picked.
+    setSelectedDate((prev) => addDays(nextMonday, (weekdayIndex(prev) + 6) % 7));
+    setShowAllSessions(false);
+    clearBanners();
   };
 
   const studioMonday = useMemo(
@@ -396,27 +448,17 @@ export function SessionStudio({
     if (editing) {
       setDraft(createDraft(editing, room, today));
     } else {
-      setDraft(createDraft(null, room, today, initialDate));
+      setDraft(createDraft(null, room, today, selectedDate, nowMinutes));
     }
     setConfirmRetire(false);
+    clearBanners();
   };
 
   const isRecurring = draft.kind === "recurring";
 
   const toggleRecurring = (nextRecurring: boolean) => {
     setDraft((prev) => {
-      if (nextRecurring) {
-        const baseDate = prev.onDate || prev.startDate || nextClinicDay(today);
-        const wd = clinicWeekday(baseDate);
-        const weekdays = prev.weekdays.length > 0 ? prev.weekdays : wd ? [wd] : [1, 2, 3, 4, 5];
-        return {
-          ...prev,
-          kind: "recurring",
-          weekdays,
-          startDate: prev.startDate || baseDate,
-          endDate: prev.endDate || addDays(baseDate, 84),
-        };
-      }
+      if (nextRecurring) return toRecurringDraft(prev, nextClinicDay(today), editing);
       return {
         ...prev,
         kind: "once",
@@ -425,13 +467,9 @@ export function SessionStudio({
     });
   };
 
-  const past = useMemo(
-    () =>
-      editing
-        ? sessionIsPast(editing, today)
-        : draft.kind === "once" && Boolean(draft.onDate) && draft.onDate < today,
-    [editing, draft.kind, draft.onDate, today],
-  );
+  // Only a saved session that has ended is read-only. A new draft on a past date stays editable: the
+  // schedule check below asks for today or a later date instead of locking the Date field.
+  const past = useMemo(() => (editing ? sessionIsPast(editing, today) : false), [editing, today]);
 
   const dirty = useMemo(() => (!editing ? true : !isSameDraft(editing, draft)), [editing, draft]);
 
@@ -442,9 +480,10 @@ export function SessionStudio({
 
   const keepOpenRange = Boolean(editing && !editing.onDate && !editing.startDate && !editing.endDate);
   const input = useMemo(() => toSessionInput(draft), [draft]);
+  const startMoved = !editing || editing.startTime !== draft.startTime || (editing.onDate ?? "") !== (draft.kind === "once" ? draft.onDate : "");
   const checked = useMemo(
-    () => checkSession(input, others, today, { keepOpenRange }),
-    [input, others, today, keepOpenRange],
+    () => checkSession(input, others, today, { keepOpenRange, nowMinutes: startMoved ? nowMinutes : undefined }),
+    [input, others, today, keepOpenRange, startMoved, nowMinutes],
   );
 
   const proposed = useMemo(
@@ -539,12 +578,23 @@ export function SessionStudio({
   }, [checked.ok, plan, affected.length, proposed, others, visits, today, trims, nowMinutes]);
 
   const shiftMoves = useMemo(() => (shift && shift.ok ? shift.moves : []), [shift]);
+  // Hours this save would newly take from other sessions: shown as a warning that must be ticked.
+  const absorbKey = useMemo(() => {
+    if (!plan || !plan.ok || shiftMoves.length > 0) return "";
+    return newAbsorptions(plan.trims, trims, proposed.id)
+      .map((trim) => `${trim.sessionId}|${trim.startTime}|${trim.endTime}`)
+      .sort()
+      .join(",");
+  }, [plan, shiftMoves.length, trims, proposed.id]);
+  const [absorbConfirmedKey, setAbsorbConfirmedKey] = useState("");
+  const absorbing = absorbKey !== "";
+  const absorbConfirmed = absorbing && absorbConfirmedKey === absorbKey;
   const blocked = past || !checked.ok || Boolean(plan && !plan.ok && shiftMoves.length === 0);
 
   const showDisplaceBanner = Boolean(state?.displace) || (!blocked && dirty && affected.length > 0);
   const displaceCount = state?.displace?.count ?? affected.length;
   const displaceTimes =
-    state?.displace?.times ?? affected.map((visit) => `${visit.date} ${visit.time}`);
+    state?.displace?.times ?? affected.map(visitWhenLabel);
 
   const showShiftBanner = Boolean(state?.shift) || (!blocked && dirty && shiftMoves.length > 0);
   const shiftCount = state?.shift?.count ?? shiftMoves.length;
@@ -554,7 +604,8 @@ export function SessionStudio({
     return shiftMoves.map((m) => `${names.get(m.visitId) ?? "Patient"} ${m.fromTime} → ${m.toTime}`);
   }, [state?.shift?.lines, visits, shiftMoves]);
 
-  const canSimpleSave = !past && dirty && !blocked && !showDisplaceBanner && !showShiftBanner;
+  const canSimpleSave =
+    !past && dirty && !blocked && !showDisplaceBanner && !showShiftBanner && (!absorbing || absorbConfirmed);
 
   const startMin = toMinutes(draft.startTime);
   const endMin = toMinutes(draft.endTime);
@@ -628,8 +679,7 @@ export function SessionStudio({
               <span>{doctorName}</span>
               <span aria-hidden="true">·</span>
               <span className="tabular">
-                <CountUp to={sessions.length} duration={0.5} trigger="load" /> active{" "}
-                {sessions.length === 1 ? "session" : "sessions"}
+                {sessions.length} active {sessions.length === 1 ? "session" : "sessions"}
               </span>
             </div>
             <h1 className="mt-1.5 text-title2 font-semibold tracking-tight text-ink md:text-title1">
@@ -641,7 +691,7 @@ export function SessionStudio({
             <Button
               variant={isCreateMode ? "primary" : "secondary"}
               size="md"
-              onClick={startCreate}
+              onClick={() => startCreate()}
             >
               <Plus size={16} />
               New session
@@ -665,8 +715,15 @@ export function SessionStudio({
         </Notice>
       ) : null}
 
-      {/* Feedback notice from server action redirects */}
-      {notice ? (
+      {verificationPending ? (
+        <Notice tone="info" className="mt-4">
+          Your account is waiting for the practice to verify it. You can set up your profile and sessions now. Patients can find and book you once an admin verifies you.
+        </Notice>
+      ) : null}
+
+      {/* Feedback notice from server action redirects. A result notice belongs to the save that made it,
+          so it goes once the doctor moves to another session or day. */}
+      {notice && (noticeTone === "info" || bannerEpoch === 0) ? (
         noticeTone === "danger" ? (
           <Notice tone="danger" role="alert" className="mt-4">
             {notice}
@@ -721,14 +778,15 @@ export function SessionStudio({
       {/* 2. Sketch 2 Two-Column Body: Left = "X session" form, Right = "Calendar Preview" */}
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:items-start">
         {/* LEFT PANEL — "X session" form */}
-        <Card className="rounded-sheet p-5 md:p-7">
+        <div ref={editorRef} className="min-w-0 scroll-mt-[calc(var(--header-h)+1rem)]">
+        <Card className="min-w-0 rounded-sheet p-5 md:p-7">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline pb-4">
-            <div className="min-w-0">
+            <div className="min-w-0 max-w-full flex-1">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-2 px-2.5 py-0.5 text-caption font-medium text-ink-2">
                 {editing ? <Edit size={12} /> : <Plus size={12} />}
                 {editing ? "Editing session" : "Creating session"}
               </span>
-              <h2 className="mt-2 truncate text-title2 font-semibold text-ink">
+              <h2 className="mt-2 truncate text-title2 font-semibold text-ink" title={sessionHeading}>
                 {sessionHeading}
               </h2>
             </div>
@@ -763,8 +821,9 @@ export function SessionStudio({
             </Notice>
           ) : null}
 
-          <form action={formAction} className="mt-5 space-y-5">
+          <form action={formAction} onSubmit={() => setSubmittedEpoch(bannerEpoch)} className="mt-5 space-y-5">
             <input type="hidden" name="returnTo" value="/dashboard/sessions/manage" />
+            <input type="hidden" name="viewDate" value={selectedDate} />
             <input type="hidden" name="id" value={editing?.id ?? ""} />
             <input type="hidden" name="kind" value={draft.kind} />
             <input type="hidden" name="mode" value={draft.mode} />
@@ -1068,7 +1127,7 @@ export function SessionStudio({
                 className={`rounded-card border p-4 ${
                   !checked.ok || (plan && !plan.ok && shiftMoves.length === 0)
                     ? "border-danger/35 bg-danger-soft/60"
-                    : showDisplaceBanner || showShiftBanner
+                    : showDisplaceBanner || showShiftBanner || absorbing
                       ? "border-warn/40 bg-warn-soft/60"
                       : "border-hairline bg-surface-2/70"
                 }`}
@@ -1076,7 +1135,7 @@ export function SessionStudio({
                 <div className="flex items-center gap-2 text-callout font-semibold text-ink">
                   {!checked.ok || (plan && !plan.ok && shiftMoves.length === 0) ? (
                     <Alert size={16} className="text-danger" />
-                  ) : showDisplaceBanner || showShiftBanner ? (
+                  ) : showDisplaceBanner || showShiftBanner || absorbing ? (
                     <Alert size={16} className="text-warn" />
                   ) : (
                     <Info size={16} className="text-accent" />
@@ -1130,6 +1189,22 @@ export function SessionStudio({
                     >
                       Confirm move and save
                     </PendingButton>
+                  </div>
+                ) : absorbing && plan?.ok ? (
+                  <div className="mt-2 space-y-2.5">
+                    <p className="text-callout font-semibold text-warn">This change takes hours from another session.</p>
+                    <p className="text-callout text-ink-2">{plan.notice}</p>
+                    <label className="flex cursor-pointer items-start gap-2.5 text-callout font-medium text-ink">
+                      <input
+                        type="checkbox"
+                        name="absorb"
+                        value="confirm"
+                        checked={absorbConfirmed}
+                        onChange={(e) => setAbsorbConfirmedKey(e.target.checked ? absorbKey : "")}
+                        className="mt-0.5 size-4 shrink-0 accent-[var(--v-accent)]"
+                      />
+                      <span>Yes, take these hours from the other session.</span>
+                    </label>
                   </div>
                 ) : (
                   <p className="mt-1.5 text-callout text-ink-2">
@@ -1188,6 +1263,7 @@ export function SessionStudio({
               </div>
               <form action={archiveSession} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="returnTo" value="/dashboard/sessions/manage" />
+                <input type="hidden" name="viewDate" value={selectedDate} />
                 <input type="hidden" name="id" value={editing.id} />
                 {!confirmRetire ? (
                   <Button
@@ -1221,14 +1297,15 @@ export function SessionStudio({
             </div>
           ) : null}
         </Card>
+        </div>
 
         {/* RIGHT PANEL — Week Day Strip & Sessions on Date */}
         <aside aria-label="Schedule calendar and sessions" className="min-w-0 space-y-4">
           <Card className="min-w-0 overflow-hidden rounded-sheet p-5">
             {/* Week navigation row with month title & week dots */}
-            <div className="flex items-center justify-between gap-2 border-b border-hairline pb-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-callout font-bold text-ink truncate">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b border-hairline pb-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="whitespace-nowrap text-callout font-bold text-ink">
                   {monthTitle}
                 </span>
                 {isCurrentWeek ? (
@@ -1242,6 +1319,7 @@ export function SessionStudio({
                       setStudioWeekOffset(0);
                       setSelectedDate(today);
                       setShowAllSessions(false);
+                      clearBanners();
                     }}
                     className="rounded-full border border-hairline bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2 hover:bg-surface hover:text-ink transition-colors shrink-0"
                   >
@@ -1251,12 +1329,12 @@ export function SessionStudio({
               </div>
 
               {/* Right: <  ● ● ● ● ●  > */}
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
                 <Button
                   type="button"
                   variant="secondary"
                   size="md"
-                  onClick={() => setStudioWeekOffset((v) => v - 1)}
+                  onClick={() => moveWeek(-1)}
                   aria-label="Previous week"
                   className="!min-h-8 !px-2 rounded-full"
                 >
@@ -1286,6 +1364,7 @@ export function SessionStudio({
                             return m === w.monday ? prevDate : w.monday;
                           });
                           setShowAllSessions(false);
+                          clearBanners();
                         }}
                         className="group relative flex items-center justify-center p-0.5 transition-all focus:outline-none"
                       >
@@ -1293,7 +1372,7 @@ export function SessionStudio({
                           className={`block rounded-full transition-all duration-200 ${
                             active
                               ? "h-2.5 w-6 bg-accent shadow-sm"
-                              : "size-2.5 bg-hairline-strong hover:bg-muted group-hover:scale-125"
+                              : "size-2.5 bg-control/55 hover:bg-muted group-hover:scale-125"
                           }`}
                         />
                       </button>
@@ -1305,7 +1384,7 @@ export function SessionStudio({
                   type="button"
                   variant="secondary"
                   size="md"
-                  onClick={() => setStudioWeekOffset((v) => v + 1)}
+                  onClick={() => moveWeek(1)}
                   aria-label="Next week"
                   className="!min-h-8 !px-2 rounded-full"
                 >
@@ -1325,6 +1404,7 @@ export function SessionStudio({
                     aria-selected={day.isSelected}
                     aria-label={`${day.dow} ${day.num}, ${day.sessionCount} ${day.sessionCount === 1 ? "session" : "sessions"}`}
                     onClick={() => {
+                      if (day.date !== selectedDate) clearBanners();
                       setSelectedDate(day.date);
                       setShowAllSessions(false);
                     }}
@@ -1473,24 +1553,25 @@ export function SessionStudio({
                       <p className="text-callout font-semibold text-ink">
                         No sessions on {formatDateHeading(selectedDate)}
                       </p>
-                      <p className="mt-1 text-caption text-muted">
-                        No consulting hours scheduled for this date.
-                      </p>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="md"
-                        onClick={() => {
-                          setIsCreateMode(true);
-                          setEditingId(null);
-                          setDraft(createDraft(null, room, today, selectedDate));
-                          setConfirmRetire(false);
-                        }}
-                        className="mt-3 inline-flex items-center gap-1.5"
-                      >
-                        <Plus size={14} />
-                        Add session on this date
-                      </Button>
+                      {addBlockedReason(selectedDate, today) ? (
+                        <p className="mt-1 text-caption text-muted">{addBlockedReason(selectedDate, today)}</p>
+                      ) : (
+                        <>
+                          <p className="mt-1 text-caption text-muted">
+                            No consulting hours scheduled for this date.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="md"
+                            onClick={() => startCreate(selectedDate)}
+                            className="mt-3 inline-flex items-center gap-1.5"
+                          >
+                            <Plus size={14} />
+                            Add session on this date
+                          </Button>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <AnimatedList className="gap-2 w-full min-w-0 max-w-full p-0 m-0 list-none">
@@ -1544,12 +1625,12 @@ export function SessionStudio({
                                   : `Repeats ${daysLabel(session)}`}
                               </p>
 
-                              <div className="mt-2.5 flex items-center justify-between border-t border-hairline/60 pt-2 text-caption text-muted">
-                                <span className="inline-flex items-center gap-1">
-                                  <Pin size={12} />
-                                  {session.room || "Room pending"}
+                              <div className="mt-2.5 flex min-w-0 items-center justify-between gap-2 border-t border-hairline/60 pt-2 text-caption text-muted">
+                                <span className="inline-flex min-w-0 items-center gap-1" title={session.room || undefined}>
+                                  <Pin size={12} className="shrink-0" />
+                                  <span className="truncate">{session.room || "Room pending"}</span>
                                 </span>
-                                <span className="inline-flex items-center gap-1 tabular">
+                                <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap tabular">
                                   <Users size={12} />
                                   <span>{upcoming} upcoming</span>
                                 </span>

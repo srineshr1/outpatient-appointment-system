@@ -341,7 +341,7 @@ export function staffDoctorProfile(
       hairStyle: pick(PALETTE.hairStyle, `${account.id}#style`),
       shirt: pick(PALETTE.shirt, `${account.id}#shirt`),
     },
-    ...(profile?.feePence ? { feePence: profile.feePence } : {}),
+    ...(typeof profile?.feePence === "number" ? { feePence: profile.feePence } : {}),
     ...(account.verifiedAt ? { verified: true } : {}),
   };
 }

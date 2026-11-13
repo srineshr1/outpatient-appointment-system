@@ -19,13 +19,14 @@ import {
 } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
 import { CountUp } from "@/components/reactbits/CountUp";
+import { doctorTitle } from "@/lib/names";
 import { BentoCard, MagicBento } from "@/components/reactbits/MagicBento";
 import { RubberSegment } from "@/components/reactbits/RubberSegment";
 import { Step, Stepper, type StepItem } from "@/components/reactbits/Stepper";
 import { buildWeek, minutesLabel, weekMonday, weekTitle } from "@/components/doctors/schedule-model";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-styles";
-import { Card } from "@/components/ui/Card";
+import { Card, Notice } from "@/components/ui/Card";
 import { PendingButton } from "@/components/ui/PendingButton";
 import type {
   AppointmentRecord,
@@ -71,6 +72,8 @@ export interface ClinicBookViewProps {
   pendingDisplacedCount: number;
   noticeSlot?: ReactNode;
   displacedSlot?: ReactNode;
+  /** A doctor account an admin has not verified yet: patients cannot book it. */
+  verificationPending?: boolean;
 }
 
 type QueueTab = "today" | "upcoming" | "awaiting" | "earlier" | "cancelled" | "all";
@@ -137,10 +140,10 @@ function inboxWhen(at: string): string {
 function greetingName(name: string, role: UserAccount["role"]): string {
   const clean = name.trim() || "Doctor";
   if (role !== "doctor") return clean;
-  return /^dr\.?\s/i.test(clean) ? clean : `Dr ${clean}`;
+  return doctorTitle(clean);
 }
 
-function groupVisits(visits: readonly AppointmentRecord[], today: string) {
+export function groupVisits(visits: readonly AppointmentRecord[], today: string) {
   const todayVisits: AppointmentRecord[] = [];
   const upcoming: AppointmentRecord[] = [];
   const earlier: AppointmentRecord[] = [];
@@ -151,7 +154,9 @@ function groupVisits(visits: readonly AppointmentRecord[], today: string) {
   );
   for (const visit of ordered) {
     if (visit.status === "pending_payment") awaiting.push(visit);
-    else if (visit.status === "cancelled" || visit.status === "expired") cancelled.push(visit);
+    // A displaced visit (hours removed, new time pending) is not an active visit: it sits with the
+    // cancelled ones until the patient picks a new time, and is counted in "displaced" separately.
+    else if (visit.status === "cancelled" || visit.status === "expired" || visit.status === "displaced") cancelled.push(visit);
     else if (visit.date === today) todayVisits.push(visit);
     else if (visit.date > today) upcoming.push(visit);
     else earlier.push(visit);
@@ -181,6 +186,7 @@ export function ClinicBookView({
   pendingDisplacedCount,
   noticeSlot,
   displacedSlot,
+  verificationPending = false,
 }: ClinicBookViewProps) {
   const searchId = useId();
   const [search, setSearch] = useState("");
@@ -300,12 +306,14 @@ export function ClinicBookView({
             <p className="mt-1.5 text-body text-ink-2">
               You have{" "}
               <span className="font-semibold text-ink tabular">
-                <CountUp to={kpis.totalActiveAppointments} trigger="load" duration={0.6} />
+                {kpis.totalActiveAppointments}
               </span>{" "}
               {kpis.totalActiveAppointments === 1 ? "appointment" : "appointments"} scheduled (
-              <span className="tabular font-medium text-ink">{kpis.todayQueue}</span> today). Session
-              runs until{" "}
-              <time dateTime={expiresAt} className="tabular font-medium text-ink">
+              <span className="tabular font-medium text-ink">{kpis.todayQueue}</span> today).
+            </p>
+            <p className="mt-1 text-caption text-muted">
+              You&apos;ll be signed out at{" "}
+              <time dateTime={expiresAt} className="tabular font-medium text-ink-2">
                 {expiresLabel}
               </time>
               .
@@ -339,6 +347,12 @@ export function ClinicBookView({
           </div>
         </div>
       </section>
+
+      {verificationPending ? (
+        <Notice tone="info" className="mt-4">
+          Your account is waiting for the practice to verify it. You can set up your profile and sessions now. Patients can find and book you once an admin verifies you.
+        </Notice>
+      ) : null}
 
       {/* 2. Sketch 1 Main Grid: Left = Calendar (click item -> Edit sessions), Right = Notifications */}
       {isOwnDoctor ? (
@@ -400,23 +414,31 @@ export function ClinicBookView({
                     <span className="text-callout font-semibold text-ink">
                       {day.dow} <span className="tabular">{day.num}</span>
                     </span>
-                    {day.isToday ? (
-                      <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-accent-ink">
-                        Today
-                      </span>
-                    ) : (
-                      <Link
-                        href={`/dashboard/sessions/manage?date=${day.date}`}
-                        aria-label={`Add session on ${day.dow} ${day.num}`}
-                        className="inline-flex size-6 items-center justify-center rounded-full text-muted transition-colors hover:bg-fill hover:text-ink"
-                      >
-                        <Plus size={14} />
-                      </Link>
-                    )}
+                    <span className="flex items-center gap-1.5">
+                      {day.isToday ? (
+                        <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-accent-ink">
+                          Today
+                        </span>
+                      ) : null}
+                      {/* Past days can't take a new session, so they offer no "+". */}
+                      {day.date >= today ? (
+                        <Link
+                          href={`/dashboard/sessions/manage?date=${day.date}`}
+                          aria-label={`Add session on ${day.dow} ${day.num}`}
+                          className="inline-flex size-6 items-center justify-center rounded-full text-muted transition-colors hover:bg-fill hover:text-ink"
+                        >
+                          <Plus size={14} />
+                        </Link>
+                      ) : null}
+                    </span>
                   </div>
 
                   <div className="mt-2.5 flex flex-1 flex-col gap-2">
-                    {day.sessions.length === 0 ? (
+                    {day.sessions.length === 0 && day.date < today ? (
+                      <p className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-hairline px-2 py-4 text-center text-caption text-muted">
+                        No sessions
+                      </p>
+                    ) : day.sessions.length === 0 ? (
                       <Link
                         href={`/dashboard/sessions/manage?date=${day.date}`}
                         className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-hairline px-2 py-4 text-center text-caption text-muted no-underline transition-colors hover:border-control hover:bg-surface hover:text-ink"
@@ -429,7 +451,7 @@ export function ClinicBookView({
                         return (
                           <Link
                             key={item.key}
-                            href={`/dashboard/sessions/manage?session=${item.session.id}`}
+                            href={`/dashboard/sessions/manage?session=${encodeURIComponent(item.session.id)}&date=${day.date}`}
                             className={`group block rounded-xl border px-3 py-2 text-left no-underline transition-colors ${
                               isWave
                                 ? "border-warn/30 bg-surface hover:border-warn hover:bg-warn-soft/50"

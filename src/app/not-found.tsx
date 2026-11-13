@@ -17,7 +17,7 @@ export default function NotFound() {
           <p className="mt-4 text-body text-ink-2">
             The link may be out of date, or the doctor may no longer take online bookings. You can still book with
             anyone on the list, or call the desk on{" "}
-            <a href={practice.phoneHref} className="tabular font-medium text-cyan-300">
+            <a href={practice.phoneHref} className="tabular font-medium text-accent dark:text-cyan-300">
               {practice.phoneDisplay}
             </a>
             .

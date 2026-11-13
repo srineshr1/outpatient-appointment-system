@@ -40,7 +40,7 @@ export function ActionForm({
     <form onSubmit={onSubmit} noValidate aria-busy={pending || undefined} className={className}>
       <Pending.Provider value={pending}>{children}</Pending.Provider>
       {state && !state.ok ? (
-        <p id={errorId} role="alert" className="mt-3 flex items-start gap-1.5 text-sm text-red-300">
+        <p id={errorId} role="alert" className="mt-3 flex items-start gap-1.5 text-sm text-red-700 dark:text-red-300">
           <AlertIcon size={16} className="mt-0.5 shrink-0" />
           <span>{state.message}</span>
         </p>

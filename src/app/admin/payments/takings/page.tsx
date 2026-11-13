@@ -34,7 +34,7 @@ function TakingsTable({ label, first, lines, total }: { label: string; first: st
         </thead>
         <tbody className={tbodyClass}>
           {lines.map((line) => (
-            <tr key={line.key} className="transition-colors hover:bg-white/[0.03]">
+            <tr key={line.key} className="transition-colors hover:bg-ink/[0.03]">
               <Td className="font-medium">{line.label}</Td>
               <Td align="right">{line.payments}</Td>
               <Td align="right">
@@ -42,7 +42,7 @@ function TakingsTable({ label, first, lines, total }: { label: string; first: st
               </Td>
               <Td align="right">
                 {line.refundedPence > 0 ? <Money pence={-line.refundedPence} /> : <Money pence={0} />}
-                {line.refunds > 0 ? <span className="block text-[13px] text-zinc-400">{pluralise(line.refunds, "refund")}</span> : null}
+                {line.refunds > 0 ? <span className="block text-[13px] text-muted">{pluralise(line.refunds, "refund")}</span> : null}
               </Td>
               <Td align="right" className="font-medium">
                 <Money pence={line.netPence} />
@@ -50,7 +50,7 @@ function TakingsTable({ label, first, lines, total }: { label: string; first: st
             </tr>
           ))}
         </tbody>
-        <tfoot className="border-t border-hairline bg-zinc-900/80 font-semibold text-zinc-100">
+        <tfoot className="border-t border-hairline bg-surface/80 dark:bg-zinc-900/80 font-semibold text-ink">
           <tr>
             <Td>Total</Td>
             <Td align="right">{total.payments}</Td>
@@ -151,7 +151,7 @@ export default async function TakingsPage({ searchParams }: { searchParams: Prom
       <section aria-labelledby="by-doctor" className="mt-8 grid gap-3">
         <SectionHeading id="by-doctor" title="By doctor" description="Net taken for each doctor’s visits, by method." />
         {report.byDoctor.length === 0 ? (
-          <p className="text-sm text-zinc-400">Nothing taken on this day.</p>
+          <p className="text-sm text-muted">Nothing taken on this day.</p>
         ) : (
           <TableWrap label="Takings by doctor">
             <table className={tableClass}>
@@ -169,7 +169,7 @@ export default async function TakingsPage({ searchParams }: { searchParams: Prom
               </thead>
               <tbody className={tbodyClass}>
                 {report.byDoctor.map((line) => (
-                  <tr key={line.key} className="transition-colors hover:bg-white/[0.03]">
+                  <tr key={line.key} className="transition-colors hover:bg-ink/[0.03]">
                     <Td className="font-medium whitespace-nowrap">{line.label}</Td>
                     {PAYMENT_METHODS.map((method) => (
                       <Td key={method} align="right">
@@ -190,7 +190,7 @@ export default async function TakingsPage({ searchParams }: { searchParams: Prom
       <section aria-labelledby="by-staff" className="mt-8 grid gap-3">
         <SectionHeading id="by-staff" title="By member of staff" description="Who took each payment or gave each refund. Online covers payments made through the payment provider." />
         {report.byStaff.length === 0 ? (
-          <p className="text-sm text-zinc-400">Nothing taken on this day.</p>
+          <p className="text-sm text-muted">Nothing taken on this day.</p>
         ) : (
           <TakingsTable label="Takings by member of staff" first="Taken by" lines={report.byStaff} total={report.total} />
         )}

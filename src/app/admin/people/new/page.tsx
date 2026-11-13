@@ -77,7 +77,7 @@ export default async function NewStaffPage({ searchParams }: { searchParams: Pro
                         <label htmlFor={`staff-role-${option.value}`} className="font-medium">
                           {option.label}
                         </label>
-                        <span id={`staff-role-${option.value}-hint`} className="block text-[13px] text-zinc-400">
+                        <span id={`staff-role-${option.value}-hint`} className="block text-[13px] text-muted">
                           {option.hint}
                         </span>
                       </span>

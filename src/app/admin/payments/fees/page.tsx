@@ -47,7 +47,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
               </thead>
               <tbody className={tbodyClass}>
                 {feeTable().map(({ reason, pence }) => (
-                  <tr key={reason.id} className="transition-colors hover:bg-white/[0.03]">
+                  <tr key={reason.id} className="transition-colors hover:bg-ink/[0.03]">
                     <Td className="font-medium">{reason.label}</Td>
                     <Td align="right">{reason.minutes} min</Td>
                     <Td align="right" className="font-medium">
@@ -59,7 +59,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
               </tbody>
             </table>
           </TableWrap>
-          <p className="mt-3 text-[13px] text-zinc-400">
+          <p className="mt-3 text-[13px] text-muted">
             These are the practice’s fees for each reason. A doctor can set their own flat fee on their profile, and that fee is what is charged. Changes affect new bookings only.
           </p>
         </div>

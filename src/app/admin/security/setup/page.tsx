@@ -114,7 +114,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
           </thead>
           <tbody className={tbodyClass}>
             {checks.map((check) => (
-              <tr key={check.name} className="transition-colors hover:bg-white/[0.03]">
+              <tr key={check.name} className="transition-colors hover:bg-ink/[0.03]">
                 <Td className="font-medium whitespace-nowrap">{check.name}</Td>
                 <Td>
                   <code className="font-mono text-xs text-ink-2">{check.setting}</code>

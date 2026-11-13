@@ -103,14 +103,14 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   const footerLink = staff ? (
     <>
       Not a doctor?{" "}
-      <a href={withNext("/sign-in")} className="font-medium text-cyan-300 hover:underline underline-offset-4">
+      <a href={withNext("/sign-in")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
         Patient sign-in
       </a>
     </>
   ) : (
     <>
       Doctor or reception?{" "}
-      <a href={withNext("/sign-in?as=staff")} className="font-medium text-cyan-300 hover:underline underline-offset-4">
+      <a href={withNext("/sign-in?as=staff")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
         Sign in as a doctor
       </a>
     </>
@@ -120,12 +120,12 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   if (view === "forgot") {
     body = (
       <form onSubmit={submitForgot} noValidate>
-        <h2 className="px-2 text-title3 font-semibold text-zinc-50">Reset your password</h2>
-        <p className="mt-1 px-2 text-callout text-zinc-300">Enter your email and we’ll send you a link to choose a new password.</p>
+        <h2 className="px-2 text-title3 font-semibold text-ink">Reset your password</h2>
+        <p className="mt-1 px-2 text-callout text-ink-2">Enter your email and we’ll send you a link to choose a new password.</p>
         <TextField id="email" label="Email" type="email" autoComplete="email" value={email} onChange={setEmail} pending={pending} error={error} autoFocus />
         <ErrorText id="form-error" message={error} />
         {sent ? (
-          <p role="status" className="mt-3 rounded-card border border-emerald-400/25 bg-emerald-400/12 p-3 text-callout text-emerald-200">
+          <p role="status" className="mt-3 rounded-card border border-emerald-400/25 bg-emerald-400/12 p-3 text-callout text-emerald-700 dark:text-emerald-200">
             {sent}
           </p>
         ) : null}
@@ -140,17 +140,17 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   } else if (view === "signup") {
     body = (
       <form onSubmit={submitSignUp} noValidate>
-        <h2 className="px-2 text-title3 font-semibold text-zinc-50">Create your account</h2>
+        <h2 className="px-2 text-title3 font-semibold text-ink">Create your account</h2>
         <fieldset className="mt-3">
-          <legend className="px-2 text-callout font-medium text-zinc-200">I’m signing up as</legend>
+          <legend className="px-2 text-callout font-medium text-ink-2 dark:text-zinc-200">I’m signing up as</legend>
           <div className="mt-2 grid grid-cols-2 gap-2">
             {(["patient", "doctor"] as const).map((option) => (
               <label
                 key={option}
                 className={`cursor-pointer rounded-card border p-3 text-callout transition-colors has-focus-visible:border-accent ${
                   role === option
-                    ? "border-cyan-400/60 bg-cyan-400/10 shadow-[0_0_16px_rgba(34,211,238,0.12)]"
-                    : "border-white/12 bg-surface-2 hover:border-white/25"
+                    ? "border-accent/60 dark:border-cyan-400/60 bg-accent/10 dark:bg-cyan-400/10 shadow-[0_0_16px_rgba(34,211,238,0.12)]"
+                    : "border-ink/12 bg-surface-2 hover:border-ink/25"
                 }`}
               >
                 <input
@@ -161,8 +161,8 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
                   onChange={() => setRole(option)}
                   className="sr-only"
                 />
-                <span className="block font-semibold text-zinc-50">{option === "patient" ? "A patient" : "A doctor"}</span>
-                <span className="mt-0.5 block text-zinc-300">{option === "patient" ? "Book visits with our doctors." : "Set up sessions and take bookings."}</span>
+                <span className="block font-semibold text-ink">{option === "patient" ? "A patient" : "A doctor"}</span>
+                <span className="mt-0.5 block text-ink-2">{option === "patient" ? "Book visits with our doctors." : "Set up sessions and take bookings."}</span>
               </label>
             ))}
           </div>
@@ -208,9 +208,9 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
         <SubmitButton pending={pending} busyLabel={busyLabel}>
           {role === "doctor" ? "Create doctor account" : "Create account"}
         </SubmitButton>
-        <p className="mt-3 text-center text-callout text-zinc-300">
+        <p className="mt-3 text-center text-callout text-ink-2">
           Already have an account?{" "}
-          <button type="button" onClick={() => go("signin")} className="font-medium text-cyan-300 hover:underline underline-offset-4">
+          <button type="button" onClick={() => go("signin")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
             Sign in
           </button>
         </p>
@@ -242,7 +242,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           maxLength={200}
         />
         <div className="mt-1 flex justify-end px-2">
-          <button type="button" onClick={() => go("forgot")} className="min-h-11 text-callout text-cyan-300 hover:underline underline-offset-4">
+          <button type="button" onClick={() => go("forgot")} className="min-h-11 text-callout text-accent dark:text-cyan-300 hover:underline underline-offset-4">
             Forgot password?
           </button>
         </div>
@@ -251,9 +251,9 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           Sign in
         </SubmitButton>
         {staff ? null : (
-          <p className="mt-3 text-center text-callout text-zinc-300">
+          <p className="mt-3 text-center text-callout text-ink-2">
             New here?{" "}
-            <button type="button" onClick={() => go("signup")} className="font-medium text-cyan-300 hover:underline underline-offset-4">
+            <button type="button" onClick={() => go("signup")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
               Create an account
             </button>
           </p>
@@ -276,28 +276,28 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
               <path d="M5 1h4v4h4v4H9v4H5V9H1V5h4z" />
             </svg>
           </a>
-          <PageHeading className="mt-6 font-statement text-title1 font-bold tracking-[-0.02em] text-zinc-50">
+          <PageHeading className="mt-6 font-statement text-title1 font-bold tracking-[-0.02em] text-ink">
             Welcome to {practice.shortName}
           </PageHeading>
-          <p className="mt-1 text-title3 font-normal text-zinc-300">{staff ? "Clinic staff sign-in" : "Book your visit online"}</p>
+          <p className="mt-1 text-title3 font-normal text-ink-2">{staff ? "Clinic staff sign-in" : "Book your visit online"}</p>
           {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
         </div>
 
         {/* Right: Google, or, the form */}
-        <div className="w-full rounded-sheet border border-white/10 bg-surface/80 p-6 shadow-raised backdrop-blur-xl md:p-8">
+        <div className="w-full rounded-sheet border border-ink/10 bg-surface/80 p-6 shadow-raised backdrop-blur-xl md:p-8">
           {staff || view === "forgot" ? null : (
             <>
               <a
                 href={googleHref}
-                className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-white/15 bg-white/[0.04] px-6 text-body font-medium text-zinc-100 no-underline transition-colors hover:border-white/25 hover:bg-white/[0.08]"
+                className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-ink/[0.04] px-6 text-body font-medium text-ink no-underline transition-colors hover:border-ink/25 hover:bg-ink/[0.08]"
               >
                 <GoogleMark />
                 {view === "signup" ? "Sign up with Google" : "Sign in with Google"}
               </a>
-              <div className="my-4 flex items-center gap-3 text-caption text-zinc-400" aria-hidden="true">
-                <span className="h-px flex-1 bg-white/10" />
+              <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
+                <span className="h-px flex-1 bg-ink/10" />
                 OR
-                <span className="h-px flex-1 bg-white/10" />
+                <span className="h-px flex-1 bg-ink/10" />
               </div>
             </>
           )}
@@ -315,7 +315,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           <span role="status" aria-live="polite" className="sr-only">
             {pending ? busyLabel : ""}
           </span>
-          <p className="mt-8 text-center text-callout text-zinc-300">{footerLink}</p>
+          <p className="mt-8 text-center text-callout text-ink-2">{footerLink}</p>
         </div>
       </div>
     </AuroraBackground>
@@ -349,7 +349,7 @@ function TextField({
 }) {
   return (
     <div className="mt-3">
-      <label htmlFor={id} className="block px-2 text-callout font-medium text-zinc-200">
+      <label htmlFor={id} className="block px-2 text-callout font-medium text-ink-2 dark:text-zinc-200">
         {label}
       </label>
       <input
@@ -369,7 +369,7 @@ function TextField({
         className="field mt-1 h-12 rounded-full! px-5"
       />
       {hint ? (
-        <p id={`${id}-hint`} className="mt-1 px-2 text-caption text-zinc-400">
+        <p id={`${id}-hint`} className="mt-1 px-2 text-caption text-muted">
           {hint}
         </p>
       ) : null}
@@ -388,7 +388,7 @@ function SubmitButton({ pending, busyLabel, children }: { pending: boolean; busy
 
 function LinkButton({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className="mt-2 min-h-11 w-full text-callout text-cyan-300 hover:underline underline-offset-4">
+    <button type="button" onClick={onClick} disabled={disabled} className="mt-2 min-h-11 w-full text-callout text-accent dark:text-cyan-300 hover:underline underline-offset-4">
       {children}
     </button>
   );
@@ -397,7 +397,7 @@ function LinkButton({ onClick, disabled, children }: { onClick: () => void; disa
 function ErrorText({ id, message }: { id: string; message: string | null }) {
   if (!message) return null;
   return (
-    <p id={id} role="alert" className="mt-2 flex items-start gap-1.5 px-2 text-callout text-red-300">
+    <p id={id} role="alert" className="mt-2 flex items-start gap-1.5 px-2 text-callout text-red-700 dark:text-red-300">
       <Alert size={18} className="mt-px shrink-0" />
       <span>{message}</span>
     </p>
@@ -412,11 +412,11 @@ function HeldTime({ nextPath, doctors }: { nextPath: string; doctors: Doctor[] }
   const doctor = held ? doctors.find((item) => item.id === held.doctorId) : null;
   if (!ready || nextPath !== "/book/details" || !held || !doctor) return null;
   return (
-    <div className="mt-6 inline-flex items-center gap-3 rounded-card border border-cyan-400/25 bg-surface/90 p-3 pr-5 text-left shadow-card backdrop-blur-md">
-      <DoctorPortrait doctor={doctor} size={44} className="ring-1 ring-white/10" />
+    <div className="mt-6 inline-flex items-center gap-3 rounded-card border border-accent/25 dark:border-cyan-400/25 bg-surface/90 p-3 pr-5 text-left shadow-card backdrop-blur-md">
+      <DoctorPortrait doctor={doctor} size={44} className="ring-1 ring-ink/10" />
       <p className="text-callout">
-        <span className="block font-semibold text-zinc-50">Holding your time</span>
-        <span className="tabular text-zinc-300">
+        <span className="block font-semibold text-ink">Holding your time</span>
+        <span className="tabular text-ink-2">
           {doctor.short}, {formatWhen(held, window.today)}
         </span>
       </p>

@@ -87,7 +87,7 @@ export default async function AttemptsPage({ searchParams }: { searchParams: Pro
               </thead>
               <tbody className={tbodyClass}>
                 {failures.map((item) => (
-                  <tr key={item.email} className="transition-colors hover:bg-white/[0.03]">
+                  <tr key={item.email} className="transition-colors hover:bg-ink/[0.03]">
                     <Td className="break-all">{item.email}</Td>
                     <Td align="right">{item.failures}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{instantLabel(item.last, snapshot.today)}</Td>
@@ -129,7 +129,7 @@ export default async function AttemptsPage({ searchParams }: { searchParams: Pro
                 {codes.map((code) => {
                   const state = codeState(code, at);
                   return (
-                    <tr key={code.email} className="transition-colors hover:bg-white/[0.03]">
+                    <tr key={code.email} className="transition-colors hover:bg-ink/[0.03]">
                       <Td className="break-all">{recordKind(code.email).email}</Td>
                       <Td className="whitespace-nowrap tabular-nums">{instantLabel(code.sentAt, snapshot.today)}</Td>
                       <Td className="whitespace-nowrap tabular-nums">{instantLabel(code.expiresAt, snapshot.today)}</Td>

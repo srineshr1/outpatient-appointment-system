@@ -29,13 +29,13 @@ export default function ErrorPage({
           glowColor="rgba(248, 113, 113, 0.06)"
           className="p-8 text-center md:p-10"
         >
-          <p className="inline-flex items-center rounded-full border border-red-400/25 bg-red-950/60 px-3 py-1 text-caption font-semibold text-red-200">
+          <p className="inline-flex items-center rounded-full border border-red-400/25 bg-red-50 dark:bg-red-950/60 px-3 py-1 text-caption font-semibold text-red-700 dark:text-red-200">
             Something went wrong
           </p>
           <h1 className="mt-4 text-title1 font-semibold text-ink">We couldn’t load this page</h1>
           <p className="mt-4 text-body text-ink-2">
             Nothing has been booked. Try again, or call the desk on{" "}
-            <a href={practice.phoneHref} className="tabular font-medium text-cyan-300">
+            <a href={practice.phoneHref} className="tabular font-medium text-accent dark:text-cyan-300">
               {practice.phoneDisplay}
             </a>
             .

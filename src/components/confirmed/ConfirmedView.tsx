@@ -30,7 +30,7 @@ function SuccessMark() {
       initial={{ scale: 0.6, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="grid size-16 place-items-center rounded-full border border-emerald-400/35 bg-emerald-400/15 text-emerald-300 shadow-[0_0_32px_rgba(52,211,153,0.25)] md:size-20"
+      className="grid size-16 place-items-center rounded-full border border-emerald-400/35 bg-emerald-400/15 text-emerald-700 dark:text-emerald-300 shadow-[0_0_32px_rgba(52,211,153,0.25)] md:size-20"
       aria-hidden="true"
     >
       <svg viewBox="0 0 24 24" className="size-8 md:size-10" fill="none" stroke="currentColor" strokeWidth={2.6}>
@@ -81,7 +81,7 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
         <div className="flex justify-center">
           <SuccessMark />
         </div>
-        <PageHeading className="mt-6 text-title1 font-semibold text-zinc-50 md:text-hero">
+        <PageHeading className="mt-6 text-title1 font-semibold text-ink md:text-hero">
           <ShinyText>You’re booked</ShinyText>
         </PageHeading>
         <motion.div
@@ -89,25 +89,25 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
-          <p className="mt-3 text-title3 font-normal text-zinc-300">
+          <p className="mt-3 text-title3 font-normal text-ink-2">
             {patient ? `We’ll see ${patient.name.trim().split(/\s+/)[0]}` : "We’ll see you"}{" "}
             {slot.date === window.today
               ? "today"
               : `on ${weekdayLong(slot.date)} ${dayOfMonth(slot.date)} ${monthLong(slot.date)}`}{" "}
-            at <span className="tabular text-zinc-100">{slotTimeLabel(slot)}</span> with {doctor.short}.
+            at <span className="tabular text-ink">{slotTimeLabel(slot)}</span> with {doctor.short}.
           </p>
           {slot.mode === "wave" && booking.token ? (
-            <p className="mt-3 text-callout text-zinc-300">
-              Your token is <span className="tabular font-semibold text-zinc-50">{booking.token}</span>. Arrive any time in your
+            <p className="mt-3 text-callout text-ink-2">
+              Your token is <span className="tabular font-semibold text-ink">{booking.token}</span>. Arrive any time in your
               wave and you’ll be seen in token order.
             </p>
           ) : null}
-          <p className="mt-6 text-callout text-zinc-400">Booking reference</p>
-          <p className="tabular mt-2 inline-block rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-4 py-1.5 text-title2 font-bold tracking-wider text-cyan-300 select-all">
+          <p className="mt-6 text-callout text-muted">Booking reference</p>
+          <p className="tabular mt-2 inline-block rounded-xl border border-accent/25 dark:border-cyan-400/25 bg-accent/10 dark:bg-cyan-400/10 px-4 py-1.5 text-title2 font-bold tracking-wider text-accent dark:text-cyan-300 select-all">
             {reference}
           </p>
           <p className="mt-4 text-callout">
-            <Link href="/appointments" className="text-cyan-300 hover:underline underline-offset-4">
+            <Link href="/appointments" className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
               View your appointments
             </Link>
           </p>
@@ -146,13 +146,13 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
         className="mx-auto mt-12 grid max-w-4xl gap-4 md:grid-cols-2"
       >
         <AppointmentSummary doctor={doctor} slot={slot} reason={reason} token={booking.token} accent />
-        <Card className="border-white/10 p-5 backdrop-blur-md md:p-6">
-          <h2 className="text-callout font-semibold text-zinc-400">Before you come</h2>
+        <Card className="border-ink/10 p-5 backdrop-blur-md md:p-6">
+          <h2 className="text-callout font-semibold text-muted">Before you come</h2>
           <dl className="mt-4 grid gap-4 text-body">
             {patient ? (
               <Item term="Patient">
                 {patient.name.trim()}, {ageLabel(patient.dob, window.today)}
-                <span className="block text-callout text-zinc-400 tabular">{formatPhone(patient.mobile)}</span>
+                <span className="block text-callout text-muted tabular">{formatPhone(patient.mobile)}</span>
               </Item>
             ) : null}
             <Item term="Visit">{reason.label}</Item>
@@ -168,11 +168,11 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
             </Item>
             <Item term="Can’t make it?">
               Cancel the visit from{" "}
-              <Link href="/appointments" className="text-cyan-300 hover:underline underline-offset-4">
+              <Link href="/appointments" className="text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                 your appointments
               </Link>
               , or call{" "}
-              <a href={practice.phoneHref} className="tabular text-cyan-300 hover:underline underline-offset-4">
+              <a href={practice.phoneHref} className="tabular text-accent dark:text-cyan-300 hover:underline underline-offset-4">
                 {practice.phoneDisplay}
               </a>{" "}
               with at least two hours’ notice, so someone else can have the time.
@@ -180,8 +180,8 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
           </dl>
           {patient?.note.trim() ? (
             <div className="mt-4 border-t border-hairline pt-4">
-              <p className="text-callout font-semibold text-zinc-100">Your note for {doctor.short}</p>
-              <p className="mt-1 text-callout text-zinc-300 whitespace-pre-line">{patient.note.trim()}</p>
+              <p className="text-callout font-semibold text-ink">Your note for {doctor.short}</p>
+              <p className="mt-1 text-callout text-ink-2 whitespace-pre-line">{patient.note.trim()}</p>
             </div>
           ) : null}
         </Card>
@@ -193,8 +193,8 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
 function Item({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div>
-      <dt className="text-callout font-semibold text-zinc-100">{term}</dt>
-      <dd className="mt-0.5 text-zinc-300">{children}</dd>
+      <dt className="text-callout font-semibold text-ink">{term}</dt>
+      <dd className="mt-0.5 text-ink-2">{children}</dd>
     </div>
   );
 }
