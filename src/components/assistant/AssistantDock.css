@@ -1,25 +1,33 @@
-/* Dock-only contrast for the thinking line. The animation itself is unchanged. */
+/*
+ * Dock-only contrast for the thinking line.
+ *
+ * The published ThoughtLine fades the settled line and timer, and its working
+ * shimmer paints the label with background-clip: text and a transparent fill.
+ * On a white dock that erased "Checking the book…" and left only the timer.
+ * The dock turns the shimmer off (shimmer={false}) and keeps every part of the
+ * line in solid theme ink: working label, settled "Thought for", and timer.
+ */
 .clinic-thought-line {
   --tl-done: 1;
-  --tl-timer: 0.92;
+  --tl-timer: 1;
+  color: var(--color-ink, #1d1d1f);
+  font-weight: 600;
 }
 
-/*
- * The published shimmer trough is a 50% mix with transparent, which washes out on
- * a white surface. Keep the same sweep; just keep more ink in the trough.
- */
-.clinic-thought-line[data-working] .thought-line__breath[data-shimmer] {
-  background: linear-gradient(
-    100deg,
-    color-mix(in srgb, var(--tl-color) 82%, transparent) 30%,
-    var(--tl-color) 50%,
-    color-mix(in srgb, var(--tl-color) 82%, transparent) 70%
-  );
-  background-size: 250% 100%;
-  background-position: 125% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  animation: thought-line-shimmer var(--tl-shimmer) linear infinite;
+.clinic-thought-line .thought-line__text,
+.clinic-thought-line .thought-line__breath,
+.clinic-thought-line .thought-line__timer {
+  color: var(--color-ink, #1d1d1f);
+  -webkit-text-fill-color: currentColor;
+}
+
+/* Belt and braces: even if the shimmer attribute ever comes back, never clip the ink away. */
+.clinic-thought-line.thought-line[data-working] .thought-line__breath,
+.clinic-thought-line.thought-line[data-working] .thought-line__breath[data-shimmer] {
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: var(--color-ink, #1d1d1f);
+  -webkit-text-fill-color: currentColor;
+  animation: none;
 }

@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssistantDock, DOCK_SIZE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, QUICK_PROMPTS, clampDockSize } from "./AssistantDock";
+
+const dockCss = readFileSync(join(process.cwd(), "src/components/assistant/AssistantDock.css"), "utf8");
 
 const doctor = { name: "Dr Doom", role: "doctor" as const };
 const realMatchMedia = window.matchMedia;
@@ -813,28 +817,63 @@ describe("AssistantDock scrolling and thought line contrast", () => {
     // in the browser: the scroller shrinks, and the header and composer stay put.
   });
 
-  it("paints the thinking line in ink so the working and settled labels stay readable", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ reply: "You have two sessions today." }),
-    });
+  it("paints the thinking line in solid ink so the working and settled labels stay readable", async () => {
+    let finish: (value: unknown) => void = () => {};
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     openDock();
     const box = screen.getByLabelText("Message");
     fireEvent.change(box, { target: { value: "How many sessions today?" } });
     fireEvent.keyDown(box, { key: "Enter" });
 
-    const working = (await screen.findByRole("status")).closest(".thought-line") as HTMLElement;
-    expect(working).toHaveClass("clinic-thought-line");
-    expect(working.closest(".text-ink-2")).not.toBeNull();
-    expect(working.closest(".text-muted")).toBeNull();
+    function expectSolidInk(line: HTMLElement) {
+      expect(line).toHaveClass("clinic-thought-line");
+      expect(line.closest(".text-ink")).not.toBeNull();
+      expect(line.closest(".font-semibold")).not.toBeNull();
+      expect(line.closest(".text-ink-2")).toBeNull();
+      expect(line.closest(".text-muted")).toBeNull();
+      expect(line.style.getPropertyValue("--tl-color")).toBe("var(--color-ink, #1d1d1f)");
+      expect(line.style.getPropertyValue("--tl-font")).toBe("16px");
+      // No clipped, transparent shimmer: the working label is never painted through background-clip.
+      expect(line.querySelector("[data-shimmer]")).toBeNull();
+      const breath = line.querySelector(".thought-line__breath") as HTMLElement;
+      expect(breath.style.color).not.toBe("transparent");
+      expect(line.querySelector(".thought-line__timer")).not.toBeNull();
+    }
 
+    // Waiting: "Checking the book…" is on screen while the request is in flight.
+    const working = (await screen.findByRole("status")).closest(".thought-line") as HTMLElement;
+    expect(working).toHaveAttribute("data-working");
+    expect(working.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking the book…");
+    expectSolidInk(working);
+
+    await act(async () => {
+      finish({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
+    });
     await screen.findByText("You have two sessions today.");
+
+    // Settled: "Thought for" plus the frozen timer, same solid ink.
     const settled = screen.getByRole("status").closest(".thought-line") as HTMLElement;
-    expect(settled).toHaveClass("clinic-thought-line");
     expect(settled).not.toHaveAttribute("data-working");
-    expect(settled.closest(".text-ink-2")).not.toBeNull();
-    expect(settled.closest(".text-muted")).toBeNull();
+    expect(settled.querySelector(".thought-line__text--done[data-active]")).toHaveTextContent("Thought for");
+    expect(settled.querySelector(".thought-line__timer")?.textContent).toMatch(/^\d+\.\ds$/);
+    expectSolidInk(settled);
+  });
+
+  it("keeps the dock's thinking-line CSS free of transparent, clipped text and dimmed settles", () => {
+    const css = dockCss.replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toMatch(/color:\s*transparent/);
+    expect(css).not.toMatch(/text-fill-color:\s*transparent/);
+    expect(css).not.toMatch(/background-clip:\s*text/);
+    expect(css).toMatch(/--tl-done:\s*1;/);
+    expect(css).toMatch(/--tl-timer:\s*1;/);
+    expect(css).toMatch(/font-weight:\s*600;/);
+    expect(css).toMatch(/color:\s*var\(--color-ink, #1d1d1f\)/);
   });
 });
 

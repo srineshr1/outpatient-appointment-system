@@ -36,8 +36,10 @@ interface ChatMessage {
   thoughtFor?: number;
 }
 
-/** Fits the dock's text-callout size (0.9375rem). */
-const THOUGHT_FONT_SIZE = 15;
+/** A 16px label stays readable above a reply, including on a white dock. */
+const THOUGHT_FONT_SIZE = 16;
+/** Solid theme ink (near-black on the light dock) so the line never washes out. */
+const THOUGHT_INK = "var(--color-ink, #1d1d1f)";
 
 /** Suggestion chips shown before the first message, by role. Each one is a real assistant task. */
 export const QUICK_PROMPTS = {
@@ -55,7 +57,7 @@ function secondsSince(startedAt: number): number {
  */
 function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }) {
   return (
-    <div className="text-callout text-ink-2">
+    <div className="text-callout font-semibold text-ink">
       <ThoughtLine
         className="clinic-thought-line"
         working={working}
@@ -63,6 +65,9 @@ function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }
         label="Checking the book…"
         glyph="sparkle"
         fontSize={THOUGHT_FONT_SIZE}
+        color={THOUGHT_INK}
+        breathDepth={0}
+        shimmer={false}
         collapsible
         collapseOnSettle
         showTimer
