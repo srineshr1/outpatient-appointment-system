@@ -19,10 +19,14 @@ import {
   workingHours,
 } from "./read";
 import type { PendingCard } from "./confirm-token";
+import { proposeAddSession, proposeUpdateSession, type SessionArgs } from "./session-act";
+import { SLOT_TOOLS, slotLinksFrom, type SlotLink } from "./slot-links";
 
 export interface ToolResult {
   forModel: unknown;
   pending?: PendingCard;
+  /** Open times in the result, for the dock to show as links. Never sent to the model. */
+  slots?: SlotLink[];
 }
 
 interface ToolSpec {
@@ -40,11 +44,24 @@ const date = { type: "string", description: "Clinic date YYYY-MM-DD. 'today' and
 const time = { type: "string", description: "Clinic time HH:MM, 24-hour." };
 const slotId = { type: "string", description: "Slot id returned by an availability tool." };
 const visitId = { type: "string", description: "Visit id returned by an appointment tool." };
+const sessionFields = {
+  startTime: { type: "string", description: "Start, clinic time HH:MM 24-hour (2 pm is 14:00)." },
+  endTime: { type: "string", description: "End, clinic time HH:MM 24-hour." },
+  room: { type: "string", description: "Room or clinic. Omit to use the doctor's usual room." },
+  label: { type: "string", description: "Short name shown on the schedule. Optional." },
+  mode: { type: "string", enum: ["stream", "wave"], description: "stream: one patient per slot (the default). wave: a group seen in token order." },
+  slotMinutes: { type: "integer", enum: [10, 15, 20, 30], description: "Stream slot length. Default 15." },
+  waveCapacity: { type: "integer", description: "Wave places, 1 to 20. Default 6." },
+  weekdays: { type: "array", items: { type: "integer" }, description: "Only for a weekly session: 1 = Monday … 6 = Saturday. Omit for a one-off session." },
+  endDate: { type: "string", description: "Weekly session: the last date it runs, YYYY-MM-DD." },
+};
 
 const doctorTools: ToolSpec[] = [
-  { type: "function", name: "list_appointments", description: "Appointments on this doctor's book for one date, including who is coming. Never another doctor's book.", parameters: { type: "object", properties: { date }, required: ["date"] } },
+  { type: "function", name: "list_appointments", description: "This doctor's day for one date: the consulting sessions that run (times, stream or wave, places and how many are booked) and the appointments on the book, including who is coming. Use it for 'my schedule', 'my day' or 'today'. Never another doctor's book.", parameters: { type: "object", properties: { date }, required: ["date"] } },
   { type: "function", name: "appointment_stats", description: "Counts of confirmed, completed, cancelled, awaiting-payment and expired visits between two dates.", parameters: { type: "object", properties: { from: date, to: date }, required: ["from"] } },
-  { type: "function", name: "working_hours", description: "Consulting sessions (shifts and working hours). Omit date for the weekly pattern. Leave is not stored.", parameters: { type: "object", properties: { date } } },
+  { type: "function", name: "working_hours", description: "Consulting sessions (shifts and working hours) with their ids. Omit date for the weekly pattern. Leave is not stored.", parameters: { type: "object", properties: { date } } },
+  { type: "function", name: "propose_add_session", description: "Prepare adding a consulting session (stream or wave). A one-off session on one date unless the doctor asks for a weekly one. Runs the Schedule editor's checks. Does not add it until the doctor confirms.", parameters: { type: "object", properties: { date: { ...date, description: "The date (a one-off session), or the first date of a weekly one. 'today' and 'tomorrow' are accepted." }, ...sessionFields }, required: ["date", "startTime", "endTime"] } },
+  { type: "function", name: "propose_update_session", description: "Prepare changing one of the doctor's sessions: hours, date (one-off only), room, name, stream or wave, slot length, places, weekdays or date range (weekly only). Changing a weekly session changes every week; to change one day only, use propose_add_session for that date. Get sessionId from working_hours. Does not change it until the doctor confirms.", parameters: { type: "object", properties: { sessionId: { type: "string", description: "Session id from working_hours." }, date: { ...date, description: "New date of a one-off session." }, startDate: { ...date, description: "Weekly session: new first date." }, ...sessionFields }, required: ["sessionId"] } },
   { type: "function", name: "find_conflicts", description: "Overlapping sessions or overlapping appointments on one date.", parameters: { type: "object", properties: { date }, required: ["date"] } },
   { type: "function", name: "list_open_slots", description: "This doctor's open appointment slots. Optionally one date.", parameters: { type: "object", properties: { date } } },
   { type: "function", name: "suggest_slots", description: "Whether a time is free, and the nearest open alternatives for rescheduling.", parameters: { type: "object", properties: { date, time }, required: ["date", "time"] } },
@@ -81,12 +98,44 @@ function text(args: unknown, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function whole(args: unknown, key: string): number | null {
+  if (!args || typeof args !== "object") return null;
+  const value = (args as Record<string, unknown>)[key];
+  const parsed = typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value) : value;
+  return typeof parsed === "number" && Number.isInteger(parsed) ? parsed : null;
+}
+
+function sessionArgs(args: unknown): SessionArgs {
+  const raw = args && typeof args === "object" ? (args as Record<string, unknown>).weekdays : undefined;
+  const weekdays = Array.isArray(raw) ? raw.map(Number).filter((day) => Number.isInteger(day)) : null;
+  return {
+    date: text(args, "date") || undefined,
+    startTime: text(args, "startTime") || undefined,
+    endTime: text(args, "endTime") || undefined,
+    room: text(args, "room") || undefined,
+    label: text(args, "label") || undefined,
+    mode: text(args, "mode") || undefined,
+    slotMinutes: whole(args, "slotMinutes"),
+    waveCapacity: whole(args, "waveCapacity"),
+    weekdays,
+    startDate: text(args, "startDate") || undefined,
+    endDate: text(args, "endDate") || undefined,
+  };
+}
+
 function flag(args: unknown, key: string): boolean {
   if (!args || typeof args !== "object") return false;
   return (args as Record<string, unknown>)[key] === true;
 }
 
 export async function runTool(user: PublicUser, name: string, args: unknown): Promise<ToolResult> {
+  const result = await dispatchTool(user, name, args);
+  if (!SLOT_TOOLS.has(name)) return result;
+  const slots = slotLinksFrom(user, result.forModel);
+  return slots.length ? { ...result, slots } : result;
+}
+
+async function dispatchTool(user: PublicUser, name: string, args: unknown): Promise<ToolResult> {
   const allowed = new Set(toolSpecs(user).map((tool) => tool.name));
   if (!allowed.has(name)) return { forModel: { error: "That action isn't available to this account." } };
 
@@ -101,6 +150,8 @@ export async function runTool(user: PublicUser, name: string, args: unknown): Pr
     if (name === "suggest_reschedule") return { forModel: await suggestMove(user, text(args, "visitId")) };
     if (name === "propose_reschedule") return proposeReschedule(user, text(args, "visitId"), text(args, "slotId"), text(args, "reason"));
     if (name === "propose_cancel") return proposeCancel(user, text(args, "visitId"));
+    if (name === "propose_add_session") return proposeAddSession(user, sessionArgs(args));
+    if (name === "propose_update_session") return proposeUpdateSession(user, text(args, "sessionId"), sessionArgs(args));
   }
 
   if (user.role === "patient") {

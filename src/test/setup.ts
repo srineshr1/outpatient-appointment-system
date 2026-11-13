@@ -38,6 +38,16 @@ if (!window.matchMedia) {
     }) as MediaQueryList;
 }
 
+// jsdom lacks ResizeObserver, which ThoughtLine uses to glide its timer.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class NoopResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
+}
+
 // jsdom lacks IntersectionObserver, which Motion's useInView reads in CountUp / BlurText.
 if (typeof globalThis.IntersectionObserver === "undefined") {
   globalThis.IntersectionObserver = class IntersectionObserver {

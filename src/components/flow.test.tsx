@@ -144,6 +144,18 @@ describe("DetailsView", () => {
     return open;
   }
 
+  it("holds the time from a /book/details?slot= link and shows its booking form", async () => {
+    const [earlier, linked] = (await getUpcoming())["cho"]!;
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ held: earlier, booking: null, flash: null }));
+    window.history.replaceState(null, "", `/book/details?slot=${encodeURIComponent(linked!.id)}`);
+    renderWithProviders(<DetailsView doctors={doctors} account={account} linkedSlot={linked!} />);
+    await screen.findByRole("heading", { name: "Your details" });
+    await waitFor(() => expect(JSON.parse(window.sessionStorage.getItem(STORAGE_KEY) ?? "{}").held?.id).toBe(linked!.id));
+    expect(router.replace).not.toHaveBeenCalledWith("/book");
+    expect(window.location.search).toBe("");
+    expect(screen.getByRole("button", { name: "Book appointment" })).toBeInTheDocument();
+  });
+
   it("sends people with nothing held back to the start", async () => {
     renderWithProviders(<DetailsView doctors={doctors} account={account} />);
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/book"));

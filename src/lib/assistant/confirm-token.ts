@@ -1,9 +1,10 @@
 /**
- * A booking, cancellation, reschedule or payment is sealed into a short-lived token.
+ * A booking, cancellation, reschedule, payment or session change is sealed into a short-lived token.
  * The browser can show it and send it back, but it cannot change what was sealed:
  * the signature covers the action, and the token only works for the account that asked.
  */
 import type { PublicUser } from "../clinic-types";
+import type { SessionInput } from "../sessions";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
@@ -11,7 +12,9 @@ export type PendingAction =
   | { type: "book"; slotId: string; reasonId: string; payOnline: boolean; note: string }
   | { type: "cancel"; visitId: string }
   | { type: "reschedule"; visitId: string; slotId: string; reason: string }
-  | { type: "pay"; visitId: string };
+  | { type: "pay"; visitId: string }
+  /** Add (sessionId null) or change a doctor's consulting session. */
+  | { type: "session"; sessionId: string | null; expectUpdatedAt: string | null; keepWaveMinutes: boolean; input: SessionInput };
 
 export interface PendingCard {
   token: string;
