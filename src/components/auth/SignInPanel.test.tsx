@@ -62,4 +62,20 @@ describe("password sign-in", () => {
     expect(vi.mocked(requestPasswordReset)).toHaveBeenCalledWith({ email: "dr@example.com" });
     expect(await screen.findByText(/we’ve sent a link/)).toBeInTheDocument();
   });
+
+  it("allows switching between Patient and Doctor roles via GlideSelect dropdown", async () => {
+    renderWithProviders(<SignInPanel nextPath="/" mode="patient" doctors={doctors} />);
+    const roleSelect = screen.getByRole("combobox", { name: "Account role" });
+    expect(roleSelect).toHaveTextContent("Patient");
+    expect(screen.getByPlaceholderText("Enter your email...")).toBeInTheDocument();
+
+    // Open dropdown and select Doctor
+    await userEvent.click(roleSelect);
+    const doctorOption = await screen.findByRole("option", { name: /Doctor/i });
+    await userEvent.click(doctorOption);
+
+    expect(roleSelect).toHaveTextContent("Doctor");
+    expect(screen.getByPlaceholderText("Enter your practice email...")).toBeInTheDocument();
+    expect(screen.getByText("Clinic staff sign-in")).toBeInTheDocument();
+  });
 });

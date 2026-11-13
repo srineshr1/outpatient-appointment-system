@@ -12,6 +12,7 @@ import React, {
   type RefObject,
 } from 'react';
 import { Check, ChevronDown } from '@/components/icons';
+import { cn } from '@/lib/utils';
 
 export interface GlideSelectOption {
   value: string;
@@ -41,6 +42,7 @@ export interface GlideSelectProps {
   disabled?: boolean;
   ariaLabel?: string;
   className?: string;
+  triggerClassName?: string;
 }
 
 type Phase = 'closed' | 'open' | 'closing';
@@ -142,6 +144,7 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
   disabled = false,
   ariaLabel = 'Select',
   className = '',
+  triggerClassName = '',
 }) => {
   const items = options.map(norm);
   const [inner, setInner] = useState(defaultValue ?? '');
@@ -359,7 +362,10 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
         aria-activedescendant={active !== null ? `${id}-${active}` : undefined}
         aria-label={ariaLabel}
         disabled={disabled}
-        className="group/trigger relative m-0 inline-flex cursor-pointer touch-manipulation items-center gap-1.5 border-0 pr-2 pl-2.5 leading-none font-medium outline-none select-none [-webkit-tap-highlight-color:transparent] [font-family:inherit] [height:var(--gs-chip)] [border-radius:var(--gs-inner-radius)] [background:var(--gs-surface)] [color:var(--gs-text)] [font-size:var(--gs-font)] [transition:background-color_100ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] disabled:cursor-default enabled:active:scale-[0.97] motion-reduce:enabled:active:scale-100 motion-reduce:[transition:background-color_100ms_ease] aria-expanded:[background:color-mix(in_srgb,var(--gs-highlight)_60%,var(--gs-surface))] [@media(hover:hover)_and_(pointer:fine)]:enabled:hover:[background:color-mix(in_srgb,var(--gs-highlight)_60%,var(--gs-surface))]"
+        className={cn(
+          "group/trigger relative m-0 inline-flex cursor-pointer touch-manipulation items-center justify-between gap-2 border border-ink/15 px-3 leading-none font-medium outline-none select-none [-webkit-tap-highlight-color:transparent] [font-family:inherit] [height:var(--gs-chip)] [border-radius:var(--gs-inner-radius)] [background:var(--gs-surface)] [color:var(--gs-text)] [font-size:var(--gs-font)] [transition:background-color_100ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] disabled:cursor-default enabled:active:scale-[0.97] motion-reduce:enabled:active:scale-100 motion-reduce:[transition:background-color_100ms_ease] aria-expanded:[background:color-mix(in_srgb,var(--gs-highlight)_60%,var(--gs-surface))] [@media(hover:hover)_and_(pointer:fine)]:enabled:hover:[background:color-mix(in_srgb,var(--gs-highlight)_60%,var(--gs-surface))]",
+          triggerClassName
+        )}
         onPointerDown={(e) => {
           if (e.button !== 0 || disabled) return;
           e.currentTarget.focus({ preventScroll: true });
@@ -385,7 +391,7 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
       {phase !== 'closed' ? (
         <div
           ref={menuRef}
-          className="absolute z-20 min-w-full scale-95 p-1 opacity-0 [width:var(--gs-menu-w)] [border-radius:var(--gs-radius)] [background:var(--gs-surface)] [box-shadow:0_4px_16px_color-mix(in_srgb,#000_22%,transparent)] [transform-origin:var(--gs-origin)] [transition:opacity_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1),transform_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1)] data-[state=open]:scale-100 data-[state=open]:opacity-100 data-[state=closed]:pointer-events-none data-[state=closed]:[transition-duration:var(--gs-pop-out)] data-[side=bottom]:top-[calc(100%+6px)] data-[side=top]:bottom-[calc(100%+6px)] data-[align=left]:left-0 data-[align=right]:right-0 motion-reduce:[transform:none]! motion-reduce:[transition:opacity_var(--gs-pop)_ease] motion-reduce:data-[state=closed]:[transition-duration:var(--gs-pop-out)]"
+          className="absolute z-50 min-w-full scale-95 p-1 opacity-0 border border-ink/15 shadow-xl [width:var(--gs-menu-w)] [border-radius:var(--gs-radius)] [background:var(--gs-surface)] [box-shadow:0_4px_16px_color-mix(in_srgb,#000_22%,transparent)] [transform-origin:var(--gs-origin)] [transition:opacity_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1),transform_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1)] data-[state=open]:scale-100 data-[state=open]:opacity-100 data-[state=closed]:pointer-events-none data-[state=closed]:[transition-duration:var(--gs-pop-out)] data-[side=bottom]:top-[calc(100%+6px)] data-[side=top]:bottom-[calc(100%+6px)] data-[align=left]:left-0 data-[align=right]:right-0 motion-reduce:[transform:none]! motion-reduce:[transition:opacity_var(--gs-pop)_ease] motion-reduce:data-[state=closed]:[transition-duration:var(--gs-pop-out)]"
           data-state="open"
           data-side={side}
           data-align={align}
@@ -418,6 +424,7 @@ const GlideSelect: React.FC<GlideSelectProps> = ({
                 role="option"
                 aria-selected={i === selected}
                 data-index={i}
+                onClick={() => pick(i, false)}
                 className="relative z-[1] flex cursor-pointer items-center gap-2 pr-2 pl-2.5 select-none [-webkit-tap-highlight-color:transparent] [height:var(--gs-row)] [border-radius:var(--gs-inner-radius)] [color:var(--gs-text)] [font-size:var(--gs-font)] [transition:background-color_150ms_ease] aria-selected:[background:color-mix(in_srgb,var(--gs-highlight)_60%,transparent)] group-data-[live]/list:aria-selected:bg-transparent"
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{it.label}</span>

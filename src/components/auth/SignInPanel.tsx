@@ -7,6 +7,7 @@ import { Alert } from "@/components/icons";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
+import { GlideSelect } from "@/components/reactbits/GlideSelect";
 import { FlickeringGrid } from "@/registry/magicui/flickering-grid";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { Button } from "@/components/ui/Button";
@@ -42,7 +43,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   const [confirm, setConfirm] = useState("");
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
-  const [role, setRole] = useState<SignupRole>("patient");
+  const [role, setRole] = useState<SignupRole>(staff ? "doctor" : "patient");
   const [error, setError] = useState<string | null>(notice);
   const [sent, setSent] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -247,31 +248,55 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
             noValidate
             className="space-y-3.5"
           >
-            <div>
-              <label htmlFor="email" className="sr-only">
-                {staff ? "Practice email" : "Email"}
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                inputMode="email"
-                spellCheck={false}
-                autoComplete="username email"
-                autoFocus
-                readOnly={pending}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    handleEmailSubmit();
-                  }
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <label htmlFor="email" className="sr-only">
+                  {role === "doctor" ? "Practice email" : "Email"}
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  spellCheck={false}
+                  autoComplete="username email"
+                  autoFocus
+                  readOnly={pending}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleEmailSubmit();
+                    }
+                  }}
+                  placeholder={role === "doctor" ? "Enter your practice email..." : "Enter your email..."}
+                  aria-label={role === "doctor" ? "Practice email" : "Email"}
+                  aria-invalid={Boolean(error) || undefined}
+                  aria-describedby={error ? "form-error" : undefined}
+                  className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              <GlideSelect
+                options={[
+                  { value: "patient", label: "Patient" },
+                  { value: "doctor", label: "Doctor" },
+                ]}
+                value={role}
+                onChange={(val) => {
+                  setRole(val as SignupRole);
                 }}
-                placeholder={staff ? "Enter your practice email..." : "Enter your email..."}
-                aria-invalid={Boolean(error) || undefined}
-                aria-describedby={error ? "form-error" : undefined}
-                className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                size="lg"
+                radius={12}
+                menuWidth={130}
+                align="right"
+                ariaLabel="Account role"
+                surfaceColor="var(--v-surface-2, #18181b)"
+                highlightColor="var(--v-fill, #27272a)"
+                textColor="var(--v-ink, #f5f5f5)"
+                accentColor="var(--v-accent, #38bdf8)"
+                className="shrink-0"
+                triggerClassName="min-w-[110px]"
               />
             </div>
 
@@ -302,6 +327,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
                   {email.charAt(0).toUpperCase()}
                 </div>
                 <span className="truncate font-medium text-ink">{email}</span>
+                <span className="shrink-0 text-caption text-ink-2 capitalize">({role})</span>
               </div>
               <button
                 type="button"
@@ -402,8 +428,8 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           <PageHeading className="mt-6 font-statement text-title1 font-bold tracking-[-0.02em] text-ink">
             Welcome to {practice.shortName}
           </PageHeading>
-          <p className="mt-1 text-title3 font-normal text-ink-2">{staff ? "Clinic staff sign-in" : "Book your visit online"}</p>
-          {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
+          <p className="mt-1 text-title3 font-normal text-ink-2">{role === "doctor" ? "Clinic staff sign-in" : "Book your visit online"}</p>
+          {role === "doctor" ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
         </div>
 
         {/* Right: Clean, unboxed login (no card) */}
