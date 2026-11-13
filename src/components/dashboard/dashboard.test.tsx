@@ -176,7 +176,7 @@ describe("Doctor Dashboard Redesign", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: /Edit in Session Studio/ })).toHaveAttribute("href", "/dashboard/sessions/manage");
+    expect(screen.getByRole("link", { name: /Edit sessions/i })).toHaveAttribute("href", "/dashboard/sessions/manage");
     expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
 
     // Inspector is rendered below with booked visits and session stats
