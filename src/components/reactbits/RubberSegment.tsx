@@ -246,7 +246,7 @@ const RubberSegment: React.FC<RubberSegmentProps> = ({
 
   const localX = (e: { clientX: number }) => e.clientX - (box.current ? box.current.left : 0) - inset;
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>, i: number) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLElement>, i: number) => {
     if (disabled || drag.current || e.button !== 0) return;
     box.current = trackRef.current?.getBoundingClientRect() ?? null;
     try {
@@ -337,7 +337,7 @@ const RubberSegment: React.FC<RubberSegmentProps> = ({
     else land(committed.current, null, false, false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (disabled) return;
     const last = list.length - 1;
     let next: number | null = null;

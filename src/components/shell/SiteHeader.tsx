@@ -72,7 +72,7 @@ export function navLinks(user: LinkUser | null): NavLink[] {
 }
 
 /** Links in the account menu: the account's own pages. */
-function accountLinks(user: LinkUser): NavLink[] {
+export function accountLinks(user: LinkUser): NavLink[] {
   if (user.role === "admin") return [{ href: "/admin", label: "Admin console", tag: "Manage" }];
   if (user.role === "patient") {
     return [
@@ -83,13 +83,10 @@ function accountLinks(user: LinkUser): NavLink[] {
   }
   return keepsOwnBook(user)
     ? [
-        { href: "/dashboard", label: "Clinic book", tag: "Today" },
-        { href: "/dashboard/sessions", label: "View sessions", tag: "Schedule" },
-        { href: "/dashboard/sessions/manage", label: "Edit sessions", tag: "Studio" },
         { href: "/dashboard/profile", label: "Your profile", tag: "Bio" },
         { href: "/dashboard/notifications", label: "Email alerts", tag: "Prefs" },
       ]
-    : [{ href: "/dashboard", label: "Clinic book", tag: "Today" }];
+    : [];
 }
 
 /**
@@ -696,7 +693,9 @@ function AccountMenu({
                   );
                 })}
               </ul>
-              <div aria-hidden="true" className="relative z-[1] mx-1.5 my-1 h-px [background:var(--gs-border)]" />
+              {links.length > 0 ? (
+                <div aria-hidden="true" className="relative z-[1] mx-1.5 my-1 h-px [background:var(--gs-border)]" />
+              ) : null}
               <form action={signOutAction} onSubmit={onSignOut} className="relative z-[1]">
                 <div
                   ref={(el) => {
