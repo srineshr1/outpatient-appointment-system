@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AssistantDock, DOCK_SIZE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, QUICK_PROMPTS, clampDockSize } from "./AssistantDock";
+import { AssistantDock, DOCK_SIZE_KEY, LANGUAGE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, QUICK_PROMPTS, clampDockSize } from "./AssistantDock";
 
 const dockCss = readFileSync(join(process.cwd(), "src/components/assistant/AssistantDock.css"), "utf8");
 
@@ -124,11 +124,11 @@ describe("AssistantDock thinking line", () => {
     ask("How many sessions today?");
 
     const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent("Checking the book…");
+    expect(status).toHaveTextContent("Checking…");
     const line = status.closest(".thought-line") as HTMLElement;
     expect(line).toHaveAttribute("data-working");
     // The old plain paragraph is gone; the label lives inside the line.
-    expect(screen.getAllByText("Checking the book…").every((el) => el.tagName !== "P" && line.contains(el))).toBe(true);
+    expect(screen.getAllByText("Checking…").every((el) => el.tagName !== "P" && line.contains(el))).toBe(true);
 
     await act(async () => {
       resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
@@ -167,7 +167,7 @@ describe("AssistantDock thinking line", () => {
     await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(2));
     await waitFor(() => expect(screen.getAllByRole("status")[0]).toHaveTextContent(/^Thought for/));
     const [, second] = screen.getAllByRole("status");
-    expect(second).toHaveTextContent("Checking the book…");
+    expect(second).toHaveTextContent("Checking…");
     expect(second?.closest(".thought-line")).toHaveAttribute("data-working");
   });
 });
@@ -197,7 +197,7 @@ describe("AssistantDock cancel", () => {
     expect(cancel).toHaveTextContent("Cancel");
     expect(cancel).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+    expect(screen.getByRole("status")).toHaveTextContent("Checking…");
   });
 
   it("stops the request on Cancel, leaves the user message, and does not show an error", async () => {
@@ -211,7 +211,7 @@ describe("AssistantDock cancel", () => {
     const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
     expect(init.signal.aborted).toBe(true);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Checking the book/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Checking…/)).not.toBeInTheDocument();
     expect(screen.getByText("How many sessions today?")).toBeInTheDocument();
     expect(screen.queryByText(/aborted/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/The user aborted/i)).not.toBeInTheDocument();
@@ -238,7 +238,7 @@ describe("AssistantDock cancel", () => {
     const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
     expect(init.signal.aborted).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel request" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+    expect(screen.getByRole("status")).toHaveTextContent("Checking…");
   });
 
   it("cancels a confirmation in flight and keeps the pending card", async () => {
@@ -727,6 +727,124 @@ describe("AssistantDock languages", () => {
   });
 });
 
+describe("AssistantDock language menu", () => {
+  function pickLanguage(name: string) {
+    const chip = screen.getByRole("combobox", { name: "Language" });
+    chip.focus();
+    fireEvent.keyDown(chip, { key: "Enter" });
+    const list = screen.getByRole("listbox", { name: "Language" });
+    const options = Array.from(list.querySelectorAll('[role="option"]'));
+    const target = options.findIndex((option) => option.textContent?.includes(name));
+    expect(target).toBeGreaterThanOrEqual(0);
+    fireEvent.keyDown(chip, { key: "Home" });
+    for (let i = 0; i < target; i += 1) fireEvent.keyDown(chip, { key: "ArrowDown" });
+    fireEvent.keyDown(chip, { key: "Enter" });
+  }
+
+  function sentBody(fetchMock: ReturnType<typeof vi.fn>, call: number) {
+    return JSON.parse((fetchMock.mock.calls[call]![1] as { body: string }).body) as { language?: string };
+  }
+
+  it("sits in the header, defaults to Auto, and lists the supported languages in their own scripts", () => {
+    openDock();
+    const chip = screen.getByRole("combobox", { name: "Language" });
+    expect(chip).toHaveTextContent("Auto");
+    expect(chip.closest(".clinic-dock")).not.toBeNull();
+    fireEvent.keyDown(chip, { key: "Enter" });
+    const labels = Array.from(screen.getByRole("listbox", { name: "Language" }).querySelectorAll(".glide-select__name")).map(
+      (node) => node.textContent,
+    );
+    expect(labels).toEqual([
+      "Auto",
+      "English",
+      "Hinglish",
+      "हिन्दी",
+      "मराठी",
+      "తెలుగు",
+      "தமிழ்",
+      "ಕನ್ನಡ",
+      "മലയാളം",
+      "ગુજરાતી",
+      "ਪੰਜਾਬੀ",
+      "বাংলা",
+      "ଓଡ଼ିଆ",
+      "اردو",
+      "Español",
+      "Français",
+    ]);
+  });
+
+  it("is themed from the clinic tokens, not the component's dark defaults", () => {
+    openDock();
+    const root = screen.getByRole("combobox", { name: "Language" }).closest(".glide-select") as HTMLElement;
+    expect(root.style.getPropertyValue("--gs-surface")).toBe("var(--color-fill)");
+    expect(root.style.getPropertyValue("--gs-text")).toBe("var(--color-ink)");
+    expect(root.style.getPropertyValue("--gs-accent")).toBe("var(--color-accent)");
+    expect(root.style.getPropertyValue("--gs-highlight")).toBe("var(--color-fill-strong)");
+  });
+
+  it("locks a picked language: saved, sent to the server, and kept when the user writes in another", async () => {
+    const fetchMock = replyWith({ reply: "రేపు ఉదయం." }, { reply: "సరే." });
+    openDock();
+    pickLanguage("తెలుగు");
+    expect(screen.getByRole("combobox", { name: "Language" })).toHaveTextContent("తెలుగు");
+    expect(window.localStorage.getItem(LANGUAGE_KEY)).toBe("te");
+    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("te-IN");
+
+    await type("When is my appointment tomorrow?", fetchMock, 1);
+    expect(sentBody(fetchMock, 0).language).toBe("te");
+    // English text does not switch away from the picked language.
+    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("te-IN");
+    await type("मेरा अपॉइंटमेंट कब है?", fetchMock, 2);
+    expect(sentBody(fetchMock, 1).language).toBe("te");
+    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("te-IN");
+  });
+
+  it("restores a locked pick on the next visit and listens in it", async () => {
+    window.localStorage.setItem(LANGUAGE_KEY, "hi");
+    window.localStorage.setItem(LOCALE_KEY, "en-IN");
+    openDock();
+    expect(screen.getByRole("combobox", { name: "Language" })).toHaveTextContent("हिन्दी");
+    await startVoice();
+    expect(FakeRecognition.instances[0]?.lang).toBe("hi-IN");
+  });
+
+  it("keeps listening in the locked language whatever the server or the speech says", async () => {
+    const spoken = stubSpeech([{ lang: "en-IN", name: "English India" }, { lang: "es-ES", name: "Spanish" }]);
+    replyWith({ reply: "Mañana a las diez.", locale: "en-IN" });
+    window.localStorage.setItem(LANGUAGE_KEY, "es");
+    openDock();
+    await startVoice();
+    act(() => {
+      FakeRecognition.instances[0]!.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: "what time is my visit" }], { isFinal: true })] });
+    });
+    await waitFor(() => expect(spoken).toHaveLength(1));
+    expect(spoken[0]!.lang).toBe("es-ES");
+    await waitFor(() => expect(FakeRecognition.instances.length).toBeGreaterThan(1));
+    expect(FakeRecognition.instances.at(-1)?.lang).toBe("es-ES");
+  });
+
+  it("restarts a running recogniser in the newly picked language", async () => {
+    openDock();
+    await startVoice();
+    expect(FakeRecognition.instances[0]?.lang).toBe("en-IN");
+    pickLanguage("தமிழ்");
+    await waitFor(() => expect(FakeRecognition.instances.at(-1)?.lang).toBe("ta-IN"));
+    expect(FakeRecognition.instances[0]?.abort).toHaveBeenCalled();
+  });
+
+  it("goes back to automatic detection when Auto is picked", async () => {
+    const fetchMock = replyWith({ reply: "कल सुबह।" });
+    window.localStorage.setItem(LANGUAGE_KEY, "te");
+    openDock();
+    pickLanguage("Auto");
+    expect(window.localStorage.getItem(LANGUAGE_KEY)).toBe("auto");
+    await type("मेरा अपॉइंटमेंट कब है?", fetchMock, 1);
+    expect(sentBody(fetchMock, 0).language).toBe("auto");
+    await waitFor(() => expect(window.localStorage.getItem(LOCALE_KEY)).toBe("hi-IN"));
+  });
+});
+
 describe("AssistantDock resize", () => {
   it("clamps sizes to the limits and the window", () => {
     expect(clampDockSize({ width: 100, height: 100 }, 1280, 800)).toEqual({ width: 320, height: 360 });
@@ -839,10 +957,10 @@ describe("AssistantDock scrolling and thought line contrast", () => {
       expect(line.querySelector(".thought-line__timer")).not.toBeNull();
     }
 
-    // Waiting: "Checking the book…" is on screen while the request is in flight.
+    // Waiting: "Checking…" is on screen while the request is in flight.
     const working = (await screen.findByRole("status")).closest(".thought-line") as HTMLElement;
     expect(working).toHaveAttribute("data-working");
-    expect(working.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking the book…");
+    expect(working.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking…");
     expectSolidInk(working);
     // The animation is back while waiting: the shimmer layer is on (drawn by AssistantDock.css
     // as a sheen behind the words and a gleam under them), and the sparkle breathes.

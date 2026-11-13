@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { lockedLanguage } from "@/lib/assistant/language";
 import { allowTurn, handleTurn, parseMessages } from "@/lib/assistant/turn";
 import { getCurrentUser } from "@/lib/session";
 
@@ -26,8 +27,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Send your question as the latest message." }, { status: 400 });
   }
   const pendingToken = typeof record.pendingToken === "string" && record.pendingToken ? record.pendingToken : null;
+  // "auto" (or nothing) keeps automatic detection; a tag from the dock's menu locks the reply language.
+  const locked = typeof record.language === "string" ? lockedLanguage(record.language) : null;
   try {
-    const result = await handleTurn(user, messages, pendingToken);
+    const result = await handleTurn(user, messages, pendingToken, locked);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The assistant couldn't answer.";

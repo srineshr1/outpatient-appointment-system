@@ -17,16 +17,16 @@ afterEach(() => {
 describe("ThoughtLine", () => {
   it("paints a solid, unclipped label when the shimmer is off", () => {
     const { container, rerender } = render(
-      <ThoughtLine label="Checking the book…" shimmer={false} breathDepth={0} color="#1d1d1f" fontSize={16} />,
+      <ThoughtLine label="Checking…" shimmer={false} breathDepth={0} color="#1d1d1f" fontSize={16} />,
     );
     expect(root(container)).toHaveAttribute("data-working");
     expect(container.querySelector("[data-shimmer]")).toBeNull();
-    expect(container.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking the book…");
+    expect(container.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking…");
     expect(root(container).style.getPropertyValue("--tl-color")).toBe("#1d1d1f");
     expect(root(container).style.getPropertyValue("--tl-font")).toBe("16px");
 
     rerender(
-      <ThoughtLine label="Checking the book…" shimmer={false} breathDepth={0} color="#1d1d1f" fontSize={16} working={false} elapsed={2.8} />,
+      <ThoughtLine label="Checking…" shimmer={false} breathDepth={0} color="#1d1d1f" fontSize={16} working={false} elapsed={2.8} />,
     );
     expect(container.querySelector(".thought-line__text--done[data-active]")).toHaveTextContent("Thought for");
     expect(timer(container)).toBe("2.8s");
@@ -34,20 +34,20 @@ describe("ThoughtLine", () => {
 
 
   it("keeps the shimmer attribute and solid label text when the shimmer is on", () => {
-    const { container, rerender } = render(<ThoughtLine label="Checking the book…" color="#1d1d1f" fontSize={16} shimmerDuration={1.8} />);
+    const { container, rerender } = render(<ThoughtLine label="Checking…" color="#1d1d1f" fontSize={16} shimmerDuration={1.8} />);
     const breath = container.querySelector(".thought-line__breath") as HTMLElement;
     expect(breath).toHaveAttribute("data-shimmer");
-    expect(breath).toHaveTextContent("Checking the book…");
+    expect(breath).toHaveTextContent("Checking…");
     expect(breath.style.color).not.toBe("transparent");
     expect(root(container).style.getPropertyValue("--tl-shimmer")).toBe("1.8s");
-    rerender(<ThoughtLine label="Checking the book…" color="#1d1d1f" fontSize={16} working={false} elapsed={5} />);
+    rerender(<ThoughtLine label="Checking…" color="#1d1d1f" fontSize={16} working={false} elapsed={5} />);
     expect(container.querySelector(".thought-line__text--done[data-active]")).toHaveTextContent("Thought for");
     expect(timer(container)).toBe("5.0s");
   });
 
   it("announces the working label and starts its clock at zero", () => {
-    const { container } = render(<ThoughtLine label="Checking the book…" />);
-    expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+    const { container } = render(<ThoughtLine label="Checking…" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Checking…");
     expect(root(container)).toHaveAttribute("data-working");
     expect(timer(container)).toBe("0.0s");
   });
@@ -123,8 +123,8 @@ describe("ThoughtLine", () => {
       dispatchEvent: () => false,
     })) as unknown as typeof window.matchMedia;
     try {
-      const { container } = render(<ThoughtLine label="Checking the book…" />);
-      expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
+      const { container } = render(<ThoughtLine label="Checking…" />);
+      expect(screen.getByRole("status")).toHaveTextContent("Checking…");
       expect(root(container)).toBeInTheDocument();
     } finally {
       window.matchMedia = realMatchMedia;

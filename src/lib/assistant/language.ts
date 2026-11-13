@@ -55,6 +55,52 @@ export function languageFor(tagOrLocale: string | null | undefined): DetectedLan
   return LANGUAGES.find((language) => language.tag === prefix) ?? null;
 }
 
+/** The language menu's "detect it for me" choice. */
+export const AUTO_LANGUAGE = "auto";
+
+export interface LanguageChoice {
+  /** A tag from the list above. */
+  tag: string;
+  /** The name in its own script, shown in the menu. */
+  native: string;
+  /** The English name, shown muted beside a native name. */
+  english: string;
+}
+
+/**
+ * Languages the user can pick by hand in the dock. Only ones the assistant already detects,
+ * replies in and has a speech locale for: English, Hinglish, the Indian languages and
+ * Spanish and French. Auto (the default) still detects every language above.
+ */
+export const LANGUAGE_CHOICES: readonly LanguageChoice[] = [
+  { tag: "en", native: "English", english: "English" },
+  { tag: "hi-Latn", native: "Hinglish", english: "Hinglish" },
+  { tag: "hi", native: "हिन्दी", english: "Hindi" },
+  { tag: "mr", native: "मराठी", english: "Marathi" },
+  { tag: "te", native: "తెలుగు", english: "Telugu" },
+  { tag: "ta", native: "தமிழ்", english: "Tamil" },
+  { tag: "kn", native: "ಕನ್ನಡ", english: "Kannada" },
+  { tag: "ml", native: "മലയാളം", english: "Malayalam" },
+  { tag: "gu", native: "ગુજરાતી", english: "Gujarati" },
+  { tag: "pa", native: "ਪੰਜਾਬੀ", english: "Punjabi" },
+  { tag: "bn", native: "বাংলা", english: "Bengali" },
+  { tag: "or", native: "ଓଡ଼ିଆ", english: "Odia" },
+  { tag: "ur", native: "اردو", english: "Urdu" },
+  { tag: "es", native: "Español", english: "Spanish" },
+  { tag: "fr", native: "Français", english: "French" },
+];
+
+/**
+ * The language the user locked in the menu, or null for Auto (or anything unknown), in which
+ * case the assistant keeps detecting the language of each message.
+ */
+export function lockedLanguage(choice: string | null | undefined): DetectedLanguage | null {
+  const raw = choice?.trim();
+  if (!raw || raw.toLowerCase() === AUTO_LANGUAGE) return null;
+  const hit = LANGUAGE_CHOICES.find((item) => item.tag.toLowerCase() === raw.toLowerCase());
+  return hit ? languageFor(hit.tag) : null;
+}
+
 /** One script per entry; the first match for a word decides that word's script. */
 const SCRIPTS: readonly { tag: string; pattern: RegExp }[] = [
   { tag: "Latin", pattern: /\p{Script=Latin}/u },

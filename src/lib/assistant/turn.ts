@@ -3,7 +3,7 @@ import { confirmPending, rejectPending, restoreCard } from "./act";
 import type { PendingCard } from "./confirm-token";
 import { askClinic, replyLocale } from "./grok";
 import { interpretReply } from "./intent";
-import { DEFAULT_LANGUAGE, detectConversation } from "./language";
+import { DEFAULT_LANGUAGE, detectConversation, type DetectedLanguage } from "./language";
 import type { SlotLink } from "./slot-links";
 
 export interface ChatMessage {
@@ -53,7 +53,13 @@ export function parseMessages(input: unknown): ChatMessage[] | null {
   return messages;
 }
 
-export async function handleTurn(user: PublicUser, messages: ChatMessage[], pendingToken: string | null): Promise<TurnResult> {
+export async function handleTurn(
+  user: PublicUser,
+  messages: ChatMessage[],
+  pendingToken: string | null,
+  /** A language the user locked in the dock's menu; null keeps automatic detection. */
+  locked: DetectedLanguage | null = null,
+): Promise<TurnResult> {
   const last = [...messages].reverse().find((message) => message.role === "user");
   if (!last) return { reply: "Ask me about a visit, a doctor, or a time.", pending: null, locale: DEFAULT_LANGUAGE.locale };
 
@@ -62,12 +68,12 @@ export async function handleTurn(user: PublicUser, messages: ChatMessage[], pend
     if (intent !== "chat") {
       const outcome = intent === "confirm" ? await confirmPending(user, pendingToken) : await rejectPending(user, pendingToken);
       // Summaries are in English for now; speak them in the language they are written in.
-      const locale = replyLocale(outcome.summary, detectConversation(messages));
+      const locale = locked ? locked.locale : replyLocale(outcome.summary, detectConversation(messages));
       return { reply: outcome.summary, pending: null, locale, ...(intent === "confirm" && outcome.payUrl ? { payUrl: outcome.payUrl } : {}) };
     }
   }
 
-  const asked = await askClinic(user, messages);
+  const asked = await askClinic(user, messages, locked);
   const pending = asked.pending ?? (pendingToken ? await restoreCard(user, pendingToken) : null);
   return { reply: asked.reply, pending, locale: asked.locale, ...(asked.slots.length ? { slots: asked.slots } : {}) };
 }
