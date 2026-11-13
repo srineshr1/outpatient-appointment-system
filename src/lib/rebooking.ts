@@ -39,7 +39,7 @@ import { notifyDisplaced, notifyOfferClosed, notifyRebooked } from "./rebooking-
 import { refundForCancellation, type CancellationRefund } from "./payments/service";
 import { getSlot } from "./repository";
 import { slotStart, slotStatus } from "./schedule";
-import { baseSlotId, freeToken, heldId, overriddenDates, slotsForSession, tokenOfHeld } from "./sessions";
+import { baseSlotId, freeToken, heldId, isTime, minutesOverlap, overriddenDates, slotsForSession, toMinutes, tokenOfHeld } from "./sessions";
 import { getStore } from "./store";
 
 /** How long the offered times stay held for the patient. */
@@ -80,14 +80,42 @@ export function displacedBy(
   existing: ConsultSession,
   next: ConsultSession,
   today: string,
+  trims: readonly SessionTrim[] = [],
 ): AppointmentRecord[] {
-  const upcoming = visits.filter((visit) => displaceable(visit) && visit.sessionId === existing.id && visit.date >= today);
-  if (next.archivedAt) return sortByTime(upcoming);
-  // An hours-only change keeps payment holds where they are (elastic scheduling). A structural change
-  // (fewer patients per wave, another slot length or wave interval, stream/wave, days or dates) must move
-  // every reservation that no longer fits, holds included.
-  const structural = sessionStructureChanged(existing, next);
-  const stranded = upcoming.filter((visit) => structural || visit.status === "booked").filter((visit) => !stillFits(visit, next));
+  const upcoming = visits.filter((visit) => displaceable(visit) && visit.date >= today);
+  const ownUpcoming = upcoming.filter((visit) => visit.sessionId === existing.id);
+  let stranded: AppointmentRecord[] = [];
+  if (next.archivedAt) {
+    stranded = [...ownUpcoming];
+  } else {
+    // An hours-only change keeps payment holds where they are (elastic scheduling). A structural change
+    // (fewer patients per wave, another slot length or wave interval, stream/wave, days or dates) must move
+    // every reservation that no longer fits, holds included.
+    const structural = sessionStructureChanged(existing, next);
+    stranded = ownUpcoming
+      .filter((visit) => structural || visit.status === "booked")
+      .filter((visit) => !stillFits(visit, next));
+  }
+
+  // Also include any visits in other sessions that overlap absorbed trims
+  if (trims.length > 0) {
+    const otherVisits = upcoming.filter((visit) => visit.sessionId !== existing.id);
+    for (const visit of otherVisits) {
+      if (!isTime(visit.time)) continue;
+      const vStart = toMinutes(visit.time);
+      const vEnd = visit.endTime && isTime(visit.endTime) ? toMinutes(visit.endTime) : vStart + 15;
+      const hit = trims.some(
+        (t) =>
+          t.sessionId === visit.sessionId &&
+          t.date === visit.date &&
+          minutesOverlap(toMinutes(t.startTime), toMinutes(t.endTime), vStart, vEnd),
+      );
+      if (hit && !stranded.some((s) => s.id === visit.id)) {
+        stranded.push(visit);
+      }
+    }
+  }
+
   return sortByTime(stranded);
 }
 
@@ -218,7 +246,7 @@ export async function displaceAndSave(
     store.listSessionTrims(existing.doctorId),
     pendingHolds(store, existing.doctorId),
   ]);
-  const displaced = displacedBy(visits, existing, next, todayIso(instant));
+  const displaced = displacedBy(visits, existing, next, todayIso(instant), trims);
   if (displaced.length === 0) return { ok: false, reason: "none" };
   if (displaced.length !== options.expected) return { ok: false, reason: "changed" };
 

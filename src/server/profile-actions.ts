@@ -6,7 +6,7 @@ import { recordEvent, actorOf } from "@/lib/audit";
 import type { ConsultSession, PublicUser } from "@/lib/clinic-types";
 import { now, todayIso } from "@/lib/clock";
 import { loadDoctors } from "@/lib/doctors";
-import { occupiesTime, sessionStructureChanged } from "@/lib/elastic-scheduling";
+import { occupiesTime, sessionStructureChanged, stillFits } from "@/lib/elastic-scheduling";
 import { getOps } from "@/lib/ops";
 import type { FormState } from "@/lib/form-state";
 import {
@@ -231,10 +231,18 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   // Elastic scheduling: hour changes must not strand booked visits. Expansion is always safe; a
   // shrink that would leave a booking outside the new hours is refused, unless the doctor explicitly
   // confirms "Notify them and offer new times" (displaced patient rebooking).
-  const stranded = existing ? displacedBy(appointments, existing, session, today) : [];
+  const tentativeOccupying = appointments
+    .filter((visit) => occupiesTime(visit) && visit.date >= today && (!existing || visit.sessionId !== existing.id || stillFits(visit, session)))
+    .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime ?? null, sessionId: visit.sessionId ?? null }));
+  const tentativePlan = planAbsorption(session, mine.filter((item) => item.id !== session.id), tentativeOccupying, today, storedTrims);
+  const potentialTrims = tentativePlan.ok ? tentativePlan.trims : [];
+
+  const stranded = existing
+    ? displacedBy(appointments, existing, session, today, potentialTrims)
+    : displacedBy(appointments, session, session, today, potentialTrims);
   const confirmed = displaceConfirmed(formData);
   if (stranded.length > 0) {
-    const total = appointments.filter((visit) => visit.status === "booked" && visit.sessionId === existing!.id && visit.date >= today).length;
+    const total = appointments.filter((visit) => visit.status === "booked" && (existing ? visit.sessionId === existing.id : true) && visit.date >= today).length;
     const times = timesOf(stranded);
     const more = stranded.length > 3 ? ` and ${stranded.length - 3} more` : "";
     const message = structural

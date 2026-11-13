@@ -349,9 +349,9 @@ describe("absorbing a free edge", () => {
     expect(blocked.message).toContain("3 patients");
     expect(blocked.message).toContain("not spare time");
     const slice = planAbsorption({ ...early, endTime: "10:30" }, [waveSession], [], today, [], 21);
-    expect(slice.ok).toBe(false);
-    if (slice.ok) return;
-    expect(slice.message).toContain("don't cut a slot");
+    expect(slice.ok).toBe(true);
+    if (!slice.ok) return;
+    expect(slice.trims.map((t) => `${t.startTime}-${t.endTime}`)).toContain("10:00-10:30");
     const empty = planAbsorption({ ...early, endTime: "11:00" }, [waveSession], [], today, [], 21);
     expect(empty.ok).toBe(true);
   });

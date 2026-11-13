@@ -18,7 +18,11 @@ export interface AnimatedListItemProps {
 }
 
 export function AnimatedList({ children, className = '' }: AnimatedListProps) {
-  return <ul className={`grid w-full min-w-0 gap-3 ${className}`.trim()}>{children}</ul>;
+  return (
+    <ul className={`m-0 p-0 list-none grid w-full min-w-0 max-w-full gap-3 ${className}`.trim()}>
+      {children}
+    </ul>
+  );
 }
 
 export function AnimatedListItem({
@@ -37,7 +41,7 @@ export function AnimatedListItem({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.28, delay, ease: [0.22, 1, 0.36, 1] }}
       data-selected={selected ? 'true' : undefined}
-      className={`min-w-0 w-full ${className}`.trim()}
+      className={`m-0 p-0 list-none min-w-0 w-full max-w-full box-border ${className}`.trim()}
     >
       {children}
     </motion.li>

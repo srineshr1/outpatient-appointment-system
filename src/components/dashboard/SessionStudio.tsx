@@ -5,7 +5,6 @@ import { useActionState, useMemo, useState } from "react";
 import { TimeWheelPicker } from "@/components/doctors/TimeWheel";
 import { CLINIC_END, CLINIC_START, clinicWeekday, minutesLabel, sessionIsPast } from "@/components/doctors/schedule-model";
 import { Alert, Calendar, Check, Clock, Edit, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
-import { SessionCalendar } from "@/components/profile/SessionCalendar";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
 import { CountUp } from "@/components/reactbits/CountUp";
 import { GlideSelect } from "@/components/reactbits/GlideSelect";
@@ -25,7 +24,9 @@ import {
   checkSession,
   describeSession,
   fromMinutes,
+  isTime,
   MAX_WAVE_CAPACITY,
+  minutesOverlap,
   planAbsorption,
   planStreamShift,
   sessionBlocks,
@@ -312,24 +313,53 @@ export function SessionStudio({
     [draft, editing, doctorId],
   );
 
-  const calendarDraft = useMemo(
-    () => (past ? null : toProposedSession(draft, editing, doctorId, "__draft__")),
-    [past, draft, editing, doctorId],
-  );
-
   const affected = useMemo(() => {
-    if (!editing) return [];
-    const structural = sessionStructureChanged(editing, proposed);
-    return visits
+    const ownAffected = editing
+      ? visits.filter((visit) => {
+          const structural = sessionStructureChanged(editing, proposed);
+          return (
+            visit.sessionId === editing.id &&
+            visit.date >= today &&
+            (visit.status === "booked" || (structural && visit.status === "pending_payment")) &&
+            !stillFits(visit, proposed)
+          );
+        })
+      : [];
+
+    const tentativeOccupying = visits
       .filter(
         (visit) =>
-          visit.sessionId === editing.id &&
+          occupiesTime(visit) &&
           visit.date >= today &&
-          (visit.status === "booked" || (structural && visit.status === "pending_payment")) &&
-          !stillFits(visit, proposed),
+          (!editing || visit.sessionId !== editing.id || stillFits(visit, proposed)),
       )
-      .sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)));
-  }, [editing, proposed, visits, today]);
+      .map((visit) => ({ date: visit.date, time: visit.time, endTime: visit.endTime, sessionId: visit.sessionId }));
+    const tentativePlan = checked.ok ? planAbsorption(proposed, others, tentativeOccupying, today, trims) : null;
+    const potentialTrims = tentativePlan && tentativePlan.ok ? tentativePlan.trims : [];
+
+    const trimAffected: typeof visits = [];
+    if (potentialTrims.length > 0) {
+      for (const visit of visits) {
+        if (!occupiesTime(visit) || visit.date < today || (editing && visit.sessionId === editing.id)) continue;
+        if (!isTime(visit.time)) continue;
+        const vStart = toMinutes(visit.time);
+        const vEnd = visit.endTime && isTime(visit.endTime) ? toMinutes(visit.endTime) : vStart + 15;
+        const hit = potentialTrims.some(
+          (t) =>
+            t.sessionId === visit.sessionId &&
+            t.date === visit.date &&
+            minutesOverlap(toMinutes(t.startTime), toMinutes(t.endTime), vStart, vEnd),
+        );
+        if (hit && !ownAffected.some((v) => v.id === visit.id)) {
+          trimAffected.push(visit);
+        }
+      }
+    }
+
+    return [...ownAffected, ...trimAffected].sort((a, b) =>
+      a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date),
+    );
+  }, [editing, proposed, visits, today, checked.ok, others, trims]);
 
   const occupyingVisits = useMemo(() => {
     const leaving = new Set(affected.map((visit) => visit.id));
@@ -402,18 +432,7 @@ export function SessionStudio({
   const placesDelta = editing ? newPlaces - oldPlaces : newPlaces;
   const editingUpcoming = editing ? upcomingCountBySession.get(editing.id) ?? 0 : 0;
 
-  const liveTrims = useMemo(() => {
-    if (!dirty || !plan || !plan.ok) return trims;
-    const foreign = trims.filter((t) => t.absorbedBy !== proposed.id);
-    return [...foreign, ...plan.trims];
-  }, [dirty, plan, trims, proposed.id]);
 
-  const liveRoster = useMemo(() => {
-    if (!calendarDraft) return sessions;
-    return editing
-      ? sessions.map((s) => (s.id === editing.id ? { ...calendarDraft, id: editing.id } : s))
-      : [...sessions, calendarDraft];
-  }, [calendarDraft, editing, sessions]);
 
   const changeSlotMinutes = (nextMinutes: number) => {
     const units = Math.max(1, Math.round((endMin - startMin) / nextMinutes));
@@ -1120,23 +1139,23 @@ export function SessionStudio({
                   No saved sessions yet. Submit the form on the left to publish your first one.
                 </p>
               ) : (
-                <AnimatedList className="mt-3 gap-2 w-full min-w-0">
+                <AnimatedList className="mt-3 gap-2 w-full min-w-0 max-w-full p-0 m-0 list-none">
                   {sessions.map((session, index) => {
                     const selected = !isCreateMode && editing?.id === session.id;
                     const upcoming = upcomingCountBySession.get(session.id) ?? 0;
                     return (
-                      <AnimatedListItem key={session.id} index={index} selected={selected} className="min-w-0 w-full">
+                      <AnimatedListItem key={session.id} index={index} selected={selected} className="min-w-0 w-full max-w-full p-0 m-0 list-none">
                         <button
                           type="button"
                           onClick={() => selectSession(session)}
                           aria-pressed={selected}
-                          className={`group block w-full min-w-0 max-w-full overflow-hidden rounded-xl border p-3 text-left transition-colors ${
+                          className={`group block w-full min-w-0 max-w-full overflow-hidden rounded-xl border p-3 text-left transition-colors box-border ${
                             selected
-                              ? "border-accent bg-accent-soft/75"
+                              ? "border-accent bg-accent-soft/75 dark:bg-accent/20"
                               : "border-hairline bg-surface hover:border-control hover:bg-fill"
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center justify-between gap-2 min-w-0 w-full">
                             <span className="truncate min-w-0 flex-1 text-callout font-semibold text-ink">
                               {session.label || (session.mode === "wave" ? "Wave session" : "Stream session")}
                             </span>
@@ -1158,21 +1177,6 @@ export function SessionStudio({
                 </AnimatedList>
               )}
             </div>
-          </Card>
-
-          {/* Stack Card 3: Week Grid Live Preview */}
-          <Card className="min-w-0 overflow-hidden rounded-sheet p-2 md:p-3">
-            <SessionCalendar
-              sessions={sessions}
-              draft={calendarDraft}
-              draftOf={editing?.id ?? null}
-              today={today}
-              selectedId={editing?.id ?? null}
-              onSelect={selectSession}
-              composing
-              trims={liveTrims}
-              roster={liveRoster}
-            />
           </Card>
         </aside>
       </div>

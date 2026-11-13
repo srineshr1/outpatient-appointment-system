@@ -247,7 +247,7 @@ export type AbsorptionPlan =
   | { ok: true; trims: SessionTrim[]; notice: string | null }
   | { ok: false; message: string };
 
-function minutesOverlap(start: number, end: number, otherStart: number, otherEnd: number): boolean {
+export function minutesOverlap(start: number, end: number, otherStart: number, otherEnd: number): boolean {
   return start < otherEnd && otherStart < end;
 }
 
@@ -289,7 +289,30 @@ export function hoursOnDate(
 ): { startTime: string; endTime: string } | null {
   const overridden = overriddenDates(roster.length ? roster : [session]);
   if (!sessionShownOn(session, date, overridden)) return null;
-  const blocks = sessionBlocks(session).filter((block) => !blockCovered(block, trimsCovering(session.id, date, trims, roster)));
+  const covered = trimsCovering(session.id, date, trims, roster);
+  if (covered.length === 0) return { startTime: session.startTime, endTime: session.endTime };
+
+  if (session.mode === "wave" && !session.waveMinutes) {
+    let start = toMinutes(session.startTime);
+    let end = toMinutes(session.endTime);
+    for (const trim of covered) {
+      const trimStart = toMinutes(trim.startTime);
+      const trimEnd = toMinutes(trim.endTime);
+      if (trimStart <= start && trimEnd > start) {
+        start = Math.max(start, trimEnd);
+      }
+      if (trimEnd >= end && trimStart < end) {
+        end = Math.min(end, trimStart);
+      }
+      if (trimStart <= start && trimEnd >= end) {
+        return null;
+      }
+    }
+    if (start >= end) return null;
+    return { startTime: fromMinutes(start), endTime: fromMinutes(end) };
+  }
+
+  const blocks = sessionBlocks(session).filter((block) => !blockCovered(block, covered));
   const first = blocks[0];
   const last = blocks[blocks.length - 1];
   if (!first || !last) return null;
@@ -312,6 +335,23 @@ export function slotsForSession(
   for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
     if (!sessionShownOn(session, date, overridden)) continue;
     const covered = trimsCovering(session.id, date, trims, roster);
+    if (session.mode === "wave" && !session.waveMinutes) {
+      const hours = hoursOnDate(session, date, trims, roster);
+      if (!hours) continue;
+      slots.push({
+        id: waveSlotId(session.id, date, hours.startTime),
+        doctorId,
+        date,
+        time: hours.startTime,
+        endTime: hours.endTime,
+        mode: "wave",
+        capacity: session.waveCapacity ?? 1,
+        booked: 0,
+        sessionId: session.id,
+        room: session.room,
+      });
+      continue;
+    }
     for (const block of blocks) {
       if (blockCovered(block, covered)) continue;
       if (session.mode === "wave") {
@@ -607,21 +647,27 @@ export function planAbsorption(
           return { ok: false, message: `That sits in the middle of your ${neighbourTitle(neighbour)} session. Shorten one side so they meet at an edge.` };
         }
         const involved = run.blocks.filter((block) => minutesOverlap(start, end, toMinutes(block.time), toMinutes(block.endTime)));
-        for (const block of involved) {
-          const blockStart = toMinutes(block.time);
-          const blockEnd = toMinutes(block.endTime);
-          if (blockStart < start) {
-            return { ok: false, message: `Start this session at ${block.endTime} so you don't cut a slot of the other session (${block.time}–${block.endTime}).` };
-          }
-          if (blockEnd > end) {
-            return { ok: false, message: `End this session at ${block.time} so you don't cut a slot of the other session (${block.time}–${block.endTime}).` };
+        if (!wholeWave) {
+          for (const block of involved) {
+            const blockStart = toMinutes(block.time);
+            const blockEnd = toMinutes(block.endTime);
+            if (blockStart < start) {
+              return { ok: false, message: `Start this session at ${block.endTime} so you don't cut a slot of the other session (${block.time}–${block.endTime}).` };
+            }
+            if (blockEnd > end) {
+              return { ok: false, message: `End this session at ${block.time} so you don't cut a slot of the other session (${block.time}–${block.endTime}).` };
+            }
           }
         }
         const busy = (block: Block) => visits.some((visit) => visitBlocks(visit, date, toMinutes(block.time), toMinutes(block.endTime), candidate.id));
-        if (wholeWave && involved.some(busy)) {
-          const count = visits.filter((visit) => (!visit.sessionId || visit.sessionId === neighbour.id) && visitBlocks(visit, date, run.start, run.end, candidate.id)).length;
-          if (count > 0) {
-            const patients = `${count} patient${count === 1 ? "" : "s"}`;
+        if (wholeWave) {
+          const waveVisits = visits.filter(
+            (visit) =>
+              (!visit.sessionId || visit.sessionId === neighbour.id) &&
+              visitBlocks(visit, date, start, end, candidate.id),
+          );
+          if (waveVisits.length > 0) {
+            const patients = `${waveVisits.length} patient${waveVisits.length === 1 ? "" : "s"}`;
             return {
               ok: false,
               message: `The ${neighbour.startTime}–${neighbour.endTime} wave on ${shortDate(date)} still has ${patients}. Free places are extra patients in that wave, not spare time. Move or cancel those visits to use this time.`,
@@ -630,13 +676,15 @@ export function planAbsorption(
         }
         const ordered = touchesStart ? involved : [...involved].reverse();
         let blocked = false;
-        for (const block of ordered) {
-          if (!busy(block)) continue;
-          blocked = true;
-          limit = stricterLimit(limit, touchesStart
-            ? { edge: "end", safe: block.time, date, time: block.time }
-            : { edge: "start", safe: block.endTime, date, time: block.time });
-          break;
+        if (!wholeWave) {
+          for (const block of ordered) {
+            if (!busy(block)) continue;
+            blocked = true;
+            limit = stricterLimit(limit, touchesStart
+              ? { edge: "end", safe: block.time, date, time: block.time }
+              : { edge: "start", safe: block.endTime, date, time: block.time });
+            break;
+          }
         }
         if (!blocked) {
           trims.push({

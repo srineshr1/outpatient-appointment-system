@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Global preflight reset for lists: ensure 0 margin/padding across all browsers */
+ul, ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* Custom variant for class-based dark mode switching (.dark on html). */
 @custom-variant dark (&:where(.dark, .dark *));
 

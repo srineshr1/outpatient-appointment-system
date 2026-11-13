@@ -216,6 +216,56 @@ describe("Doctor Dashboard Redesign", () => {
     await userEvent.click(screen.getByRole("switch", { name: "Recurring" }));
     expect(screen.getByLabelText("From date")).toBeInTheDocument();
     expect(screen.getByLabelText("Until date")).toBeInTheDocument();
+    expect(screen.queryByText(/Dashed blocks are the hours you just chose/)).not.toBeInTheDocument();
+  });
+
+  it("SessionStudio allows expanding a stream session into an adjacent wave session", async () => {
+    const wave = {
+      id: "s-wave",
+      doctorId: "doc-1",
+      label: "Afternoon Wave",
+      weekdays: [1],
+      startTime: "11:00",
+      endTime: "15:00",
+      room: "Room 6",
+      mode: "wave" as const,
+      slotMinutes: null,
+      waveMinutes: null,
+      waveCapacity: 6,
+      startDate: "2026-10-26",
+      endDate: "2026-10-26",
+      onDate: null,
+      archivedAt: null,
+      createdAt: "2026-10-20T00:00:00.000Z",
+      updatedAt: "2026-10-20T00:00:00.000Z",
+    };
+
+    renderWithProviders(
+      <SessionStudio
+        doctorId="doc-1"
+        doctorName="Dr Asha Rao"
+        sessions={[SESSION_STREAM, wave]}
+        visits={[]}
+        trims={[]}
+        today="2026-10-26"
+        nowMinutes={480}
+        room="Room 6"
+        initialSessionId="s-morning"
+        startInCreateMode={false}
+        profileComplete
+        notice={null}
+        noticeTone="info"
+        removingSession={null}
+        removingCount={0}
+      />,
+    );
+
+    const endInput = screen.getByLabelText("Ends");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "13:00");
+
+    expect(screen.queryByText(/so you don't cut a slot/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit changes" })).toBeEnabled();
   });
 
   it("DoctorProfileWorkspace updates live patient card preview as fields change", async () => {
