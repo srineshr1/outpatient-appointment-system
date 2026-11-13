@@ -15,6 +15,24 @@ afterEach(() => {
 });
 
 describe("ThoughtLine", () => {
+  it("paints a solid, unclipped label when the shimmer is off", () => {
+    const { container, rerender } = render(
+      <ThoughtLine label="Checking the book…" shimmer={false} breathDepth={0} color="#1d1d1f" fontSize={16} />,
+    );
+    expect(root(container)).toHaveAttribute("data-working");
+    expect(container.querySelector("[data-shimmer]")).toBeNull();
+    expect(container.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking the book…");
+    expect(root(container).style.getPropertyValue("--tl-color")).toBe("#1d1d1f");
+    expect(root(container).style.getPropertyValue("--tl-font")).toBe("16px");
+
+    rerender(
+      <ThoughtLine label="Checking the book…" shimmer={false} breathDepth={0} color="#1d1d1f" fontSize={16} working={false} elapsed={2.8} />,
+    );
+    expect(container.querySelector(".thought-line__text--done[data-active]")).toHaveTextContent("Thought for");
+    expect(timer(container)).toBe("2.8s");
+  });
+
+
   it("announces the working label and starts its clock at zero", () => {
     const { container } = render(<ThoughtLine label="Checking the book…" />);
     expect(screen.getByRole("status")).toHaveTextContent("Checking the book…");
