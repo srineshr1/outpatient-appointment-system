@@ -3,7 +3,7 @@ import type { ComponentProps } from "react";
 export function Card({ className = "", ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={`rounded-card border border-hairline bg-surface bg-gradient-to-br from-white/[0.03] to-transparent [box-shadow:inset_0_1px_0_rgba(255,255,255,0.05),var(--shadow-card)] ${className}`.trim()}
+      className={`rounded-card border border-hairline bg-surface shadow-card ${className}`.trim()}
       {...props}
     />
   );
@@ -12,10 +12,10 @@ export function Card({ className = "", ...props }: ComponentProps<"div">) {
 type Tone = "info" | "danger" | "success" | "neutral";
 
 const tones: Record<Tone, string> = {
-  info: "border-cyan-400/25 bg-cyan-950/60 text-cyan-100",
-  danger: "border-red-400/25 bg-red-950/60 text-red-100",
-  success: "border-emerald-400/25 bg-emerald-950/60 text-emerald-100",
-  neutral: "border-white/10 bg-surface-2 text-zinc-100",
+  info: "border-accent/25 bg-accent-soft text-ink",
+  danger: "border-danger/25 bg-danger-soft text-ink",
+  success: "border-success/25 bg-success-soft text-ink",
+  neutral: "border-hairline bg-surface-2 text-ink",
 };
 
 export function Notice({ tone = "neutral", className = "", ...props }: ComponentProps<"div"> & { tone?: Tone }) {

@@ -58,17 +58,17 @@ export function ChipGroup({ label, options, value, onChange, className = "flex f
               onKeyDown={(event) => onKeyDown(event, index)}
               whileTap={{ scale: 0.96 }}
               transition={spring.press}
-              className={`relative isolate min-h-11 shrink-0 rounded-full border px-4 text-callout whitespace-nowrap transition-colors duration-200 ${
+              className={`relative isolate min-h-11 shrink-0 rounded-full border px-4 text-callout whitespace-nowrap transition-colors duration-150 ${
                 selected
-                  ? "border-transparent font-semibold text-zinc-950"
-                  : "border-white/10 bg-surface-2 font-medium text-zinc-200 hover:border-white/20 hover:bg-fill"
+                  ? "border-transparent font-semibold text-canvas"
+                  : "border-hairline bg-surface font-medium text-ink-2 hover:border-control/60 hover:bg-surface-2 hover:text-ink"
               }`}
             >
               {selected ? (
                 <motion.span
                   layoutId="chip-pill"
                   transition={spring.snap}
-                  className="absolute inset-0 -z-10 rounded-full bg-cyan-400 bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_16px_rgba(34,211,238,0.3)]"
+                  className="absolute inset-0 -z-10 rounded-full bg-ink"
                   aria-hidden="true"
                 />
               ) : null}

@@ -5,21 +5,25 @@ import { practice } from "@/lib/data";
 export function HeaderSkeleton() {
   const descriptor = practice.name.replace(practice.shortName, "").trim();
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.07] bg-zinc-950/85 shadow-[0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl backdrop-saturate-150">
-      <div className="mx-auto flex h-(--header-h) max-w-page items-center gap-1.5 px-4 min-[360px]:gap-2 min-[360px]:px-5 md:gap-8 md:px-8">
-        <span className="flex items-center gap-2 min-[360px]:gap-2.5">
+    <header className="sticky top-0 z-40 border-b border-hairline bg-canvas/90 backdrop-blur-md">
+      <div className="mx-auto flex h-(--header-h) max-w-page items-center gap-1.5 px-3 min-[360px]:gap-2 min-[400px]:px-5 md:gap-4 md:px-6 lg:gap-8 lg:px-8">
+        <span className="flex items-center gap-1.5 min-[360px]:gap-2.5">
           <span
             aria-hidden="true"
-            className="grid size-8 place-items-center rounded-[9px] bg-cyan-400 bg-gradient-to-br from-cyan-400 to-blue-500 text-zinc-950 shadow-[0_0_14px_rgba(34,211,238,0.4)] md:size-9 md:rounded-[10px]"
+            className="grid size-8 place-items-center rounded-[9px] bg-ink text-canvas md:size-9 md:rounded-[10px]"
           >
             <svg width="16" height="16" viewBox="0 0 14 14" fill="currentColor">
               <path d="M5 1h4v4h4v4H9v4H5V9H1V5h4z" />
             </svg>
           </span>
           <span className="flex flex-col">
-            <span className="text-[1rem] leading-[1.15] font-bold tracking-[-0.015em] text-zinc-100 min-[360px]:text-[1.0625rem]">{practice.shortName}</span>
+            <span className="text-[1rem] leading-[1.15] font-bold tracking-[-0.015em] text-ink min-[360px]:text-[1.0625rem]">
+              {practice.shortName}
+            </span>
             {descriptor ? (
-              <span className="text-[0.625rem] leading-[1.25] font-semibold tracking-[0.06em] text-zinc-400 uppercase min-[360px]:text-[0.6875rem] min-[360px]:tracking-[0.07em]">{descriptor}</span>
+              <span className="text-[0.625rem] leading-[1.25] font-semibold tracking-[0.03em] text-muted uppercase min-[360px]:text-[0.6875rem] min-[360px]:tracking-[0.07em]">
+                {descriptor}
+              </span>
             ) : null}
           </span>
         </span>

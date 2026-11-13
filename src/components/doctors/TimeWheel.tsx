@@ -83,20 +83,23 @@ export function TimeWheelPicker({
     commit(move());
   };
 
+  const canEarlier = !disabled && shown > (values[0] ?? shown);
+  const canLater = !disabled && shown < (values[values.length - 1] ?? shown);
+
   return (
     <fieldset
       aria-label={ariaLabel}
       aria-disabled={disabled || undefined}
-      className={`m-0 flex min-w-0 flex-col gap-1 border-0 p-0 ${disabled ? "opacity-55" : ""}`}
+      className={`m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0 ${disabled ? "opacity-55" : ""}`}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-sm font-semibold">{label}</span>
-        <span className="text-xs text-[#4F605C] tabular-nums">
+        <span className="text-sm font-semibold text-ink">{label}</span>
+        <span className="text-xs text-muted tabular-nums">
           {minutesLabel(values[0] ?? shown)}–{minutesLabel(values[values.length - 1] ?? shown)}
         </span>
       </div>
       <div
-        className="relative flex items-stretch justify-center gap-1 rounded-[12px] border border-[#E3E8E6] bg-[#FBFCFC] px-1"
+        className="relative flex items-stretch justify-center gap-1 rounded-[12px] border border-hairline bg-surface-2 px-1"
         style={{ height: WHEEL_VISIBLE * WHEEL_ROW + 2 }}
       >
         <div
@@ -105,9 +108,17 @@ export function TimeWheelPicker({
           style={{
             top: PAD,
             height: WHEEL_ROW,
-            background: disabled ? "#EEF1F0" : palette.bg,
-            borderColor: disabled ? "#E3E8E6" : `${palette.bd}40`,
+            background: disabled ? "color-mix(in srgb, var(--v-ink) 5%, var(--v-fill))" : palette.bg,
+            borderColor: disabled ? "var(--v-hairline)" : `${palette.bd}55`,
           }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 rounded-t-[11px] bg-gradient-to-b from-surface-2 to-transparent"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 rounded-b-[11px] bg-gradient-to-t from-surface-2 to-transparent"
         />
         <Drum
           ariaLabel={`${ariaLabel}, hour`}
@@ -116,7 +127,7 @@ export function TimeWheelPicker({
           items={hours.map(pad2)}
           index={Math.max(0, hours.indexOf(hour))}
           disabled={disabled}
-          color={palette.fg}
+          color={disabled ? "var(--v-ink-2)" : palette.fg}
           onKeyDown={keys("hour")}
           onPick={(index) => commit(withHour(values, shown, hours[index] ?? hour))}
           onStep={(delta) => {
@@ -124,7 +135,7 @@ export function TimeWheelPicker({
             commit(withHour(values, shown, next));
           }}
         />
-        <span aria-hidden="true" className="relative self-center text-lg font-bold text-[#14201F]">
+        <span aria-hidden="true" className="relative self-center text-lg font-bold text-ink-2">
           :
         </span>
         <Drum
@@ -134,13 +145,40 @@ export function TimeWheelPicker({
           items={minutes.map(pad2)}
           index={Math.max(0, minutes.indexOf(shown % 60))}
           disabled={disabled}
-          color={palette.fg}
+          color={disabled ? "var(--v-ink-2)" : palette.fg}
           onKeyDown={keys("minute")}
           onPick={(index) => commit(withMinute(values, shown, minutes[index] ?? shown % 60))}
           onStep={(delta) => commit(nudge(values, shown, delta))}
         />
       </div>
-      <p className="min-h-4 text-center text-xs font-semibold text-[#14201F] tabular-nums">{note}</p>
+      <div className="flex items-center justify-between gap-1.5">
+        <button
+          type="button"
+          aria-label={`${ariaLabel}, earlier`}
+          disabled={!canEarlier}
+          onClick={() => commit(nudge(values, shown, -1))}
+          className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-hairline bg-surface-2 text-ink-2 transition-colors hover:border-control hover:bg-fill hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.5 8h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+        <span className="min-w-12 text-center text-xs font-semibold text-ink tabular-nums">
+          {minutesLabel(shown)}
+        </span>
+        <button
+          type="button"
+          aria-label={`${ariaLabel}, later`}
+          disabled={!canLater}
+          onClick={() => commit(nudge(values, shown, 1))}
+          className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-hairline bg-surface-2 text-ink-2 transition-colors hover:border-control hover:bg-fill hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+      {note ? <p className="min-h-4 text-center text-xs font-semibold text-ink-2 tabular-nums">{note}</p> : null}
       <span className="sr-only" aria-live="polite">
         {valueText}
       </span>
@@ -323,7 +361,7 @@ function Drum({
         drag.current = null;
         settle();
       }}
-      className={`relative w-12 shrink-0 overscroll-contain rounded-[10px] outline-none [scrollbar-width:none] focus-visible:ring-2 focus-visible:ring-[#14201F] [&::-webkit-scrollbar]:hidden ${
+      className={`relative w-12 shrink-0 overscroll-contain rounded-[10px] outline-none [scrollbar-width:none] focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-scrollbar]:hidden ${
         disabled ? "cursor-default overflow-hidden" : "cursor-grab snap-y snap-mandatory overflow-y-auto active:cursor-grabbing"
       }`}
       style={{ height: WHEEL_VISIBLE * WHEEL_ROW, paddingTop: PAD, paddingBottom: PAD, touchAction: "pan-y" }}
@@ -337,7 +375,7 @@ function Drum({
           aria-hidden="true"
           onClick={() => pickRow(i)}
           className={`flex snap-center items-center justify-center text-[19px] tabular-nums select-none ${
-            i === index ? "font-bold" : "font-medium text-[#4F605C]"
+            i === index ? "font-bold" : "font-medium text-muted"
           }`}
           style={{ height: WHEEL_ROW, color: i === index ? color : undefined }}
         >

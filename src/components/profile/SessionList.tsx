@@ -9,8 +9,8 @@ import { archiveSession } from "@/server/profile-actions";
 
 /** Row accent colour per booking mode, matching the calendar legend. */
 const modeStrip: Record<string, string> = {
-  stream: "bg-cyan-400",
-  wave: "bg-amber-400",
+  stream: "bg-accent",
+  wave: "bg-warn",
 };
 
 /**
@@ -39,7 +39,7 @@ export function SessionList({
     <section aria-labelledby="your-sessions">
       <h2 id="your-sessions" className="text-title3 font-semibold text-ink">
         Your sessions{" "}
-        <span className="rounded-full border border-white/10 bg-fill px-2 py-0.5 align-middle text-caption font-semibold text-zinc-200">
+        <span className="rounded-full border border-hairline bg-fill px-2 py-0.5 align-middle text-caption font-semibold text-ink-2">
           {sessions.length}
         </span>
       </h2>
@@ -58,7 +58,7 @@ export function SessionList({
               <div className="flex items-center gap-4 px-4 py-3.5 md:px-5">
                 <span
                   aria-hidden="true"
-                  className={`w-1.5 self-stretch rounded-full ${modeStrip[session.mode] ?? "bg-cyan-400"}`}
+                  className={`w-1.5 self-stretch rounded-full ${modeStrip[session.mode] ?? "bg-accent"}`}
                 />
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 text-body font-semibold text-ink">
@@ -66,14 +66,14 @@ export function SessionList({
                     <span
                       className={`rounded-full px-2 py-0.5 text-caption font-semibold ${
                         wave
-                          ? "border border-amber-400/25 bg-amber-400/12 text-amber-300"
-                          : "border border-cyan-400/25 bg-cyan-400/12 text-cyan-300"
+                          ? "border border-warn/30 bg-warn-soft text-warn"
+                          : "border border-accent/30 bg-accent-soft text-accent"
                       }`}
                     >
                       {wave ? "Wave" : "Stream"}
                     </span>
                     {session.room ? (
-                      <span className="rounded-full border border-white/10 bg-fill px-2 py-0.5 text-caption font-medium text-zinc-200">
+                      <span className="rounded-full border border-hairline bg-fill px-2 py-0.5 text-caption font-medium text-ink-2">
                         Room {session.room}
                       </span>
                     ) : null}
@@ -84,9 +84,9 @@ export function SessionList({
                     <span aria-hidden="true"> · </span>
                     {daysLabel(session)}
                   </p>
-                  <p className="text-callout text-zinc-400">{modeSummary(session)}</p>
-                  {lends ? <p className="text-callout text-zinc-400">Gives its free edge to another session on some days. Booked patients stay.</p> : null}
-                  {borrows ? <p className="text-callout text-zinc-400">Uses free time from the next session on some days. Nothing was cancelled.</p> : null}
+                  <p className="text-callout text-muted">{modeSummary(session)}</p>
+                  {lends ? <p className="text-callout text-muted">Gives its free edge to another session on some days. Booked patients stay.</p> : null}
+                  {borrows ? <p className="text-callout text-muted">Uses free time from the next session on some days. Nothing was cancelled.</p> : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button variant={picking ? "secondary" : "plain"} size="md" onClick={() => onEdit(session)} aria-pressed={selected}>

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Google_Sans, Inter } from "next/font/google";
+import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
 import { NavProgress } from "@/components/shell/NavProgress";
@@ -13,6 +14,7 @@ import { getOps } from "@/lib/ops";
 import { now } from "@/lib/clock";
 import { practice } from "@/lib/data";
 import { getCurrentUser } from "@/lib/session";
+import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 import "./globals.css";
 
 // Self-hosted at build time by next/font: no request reaches Google from the browser.
@@ -41,8 +43,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
-  colorScheme: "dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+  colorScheme: "light dark",
   width: "device-width",
   initialScale: 1,
 };
@@ -51,18 +56,23 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Availability depends on the current time, so render per request.
   await connection();
   const initialNow = now().getTime();
+  const initialTheme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 
   return (
-    <html lang="en-GB" className={`${inter.variable} ${googleSans.variable}`}>
+    <html
+      lang="en-GB"
+      className={`${inter.variable} ${googleSans.variable}${initialTheme === "dark" ? " dark" : ""}`}
+      suppressHydrationWarning
+    >
       <body className="flex min-h-dvh flex-col bg-canvas text-ink">
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-cyan-400 focus:px-5 focus:py-3 focus:text-callout focus:font-semibold focus:text-zinc-950 focus:shadow-[0_0_20px_rgba(34,211,238,0.4)]"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-ink focus:px-5 focus:py-3 focus:text-callout focus:font-semibold focus:text-canvas focus:shadow-raised"
         >
           Skip to main content
         </a>
         <NavProgress />
-        <Providers initialNow={initialNow}>
+        <Providers initialNow={initialNow} initialTheme={initialTheme}>
           <SiteChrome>
             {/* The header needs the signed-in person. The page below doesn't wait for it to start showing. */}
             <Suspense fallback={<HeaderSkeleton />}>

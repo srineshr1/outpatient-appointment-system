@@ -5,7 +5,9 @@ import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
 import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
 import { slotTimeLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
+import { ButtonLink } from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-styles";
+import { Card } from "@/components/ui/Card";
 import { PendingButton } from "@/components/ui/PendingButton";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 
@@ -29,10 +31,10 @@ function statusLabel(status: AppointmentRecord["status"]): string {
 }
 
 function statusPillClass(status: AppointmentRecord["status"]): string {
-  if (status === "completed") return "border-emerald-400/25 bg-emerald-400/12 text-emerald-300";
-  if (status === "pending_payment" || status === "displaced") return "border-amber-400/25 bg-amber-400/12 text-amber-300";
-  if (status === "cancelled" || status === "expired") return "border-white/15 bg-white/[0.06] text-zinc-300";
-  return "border-cyan-400/25 bg-cyan-400/12 text-cyan-300";
+  if (status === "completed") return "border-success/25 bg-success-soft text-success";
+  if (status === "pending_payment" || status === "displaced") return "border-warn/25 bg-warn-soft text-warn";
+  if (status === "cancelled" || status === "expired") return "border-hairline bg-fill text-muted";
+  return "border-accent/25 bg-accent-soft text-accent";
 }
 
 function whenLabel(visit: AppointmentRecord): string {
@@ -94,12 +96,26 @@ export function VisitList({
     ["Cancelled, expired or displaced", groups.cancelled],
   ] as const;
   const any = sections.some(([, items]) => items.length > 0);
+  const nextVisitId =
+    mode === "patient"
+      ? ([...groups.todayVisits, ...groups.upcoming].find((visit) => visit.status === "booked")?.id ?? null)
+      : null;
 
   if (!any) {
+    if (mode === "clinic") {
+      return (
+        <p className="mt-8 max-w-prose rounded-card border border-hairline bg-surface-2 px-5 py-6 text-body text-ink-2">
+          No visits on this book yet. They appear here as soon as a patient books.
+        </p>
+      );
+    }
     return (
-      <p className="mt-8 max-w-prose rounded-card border border-hairline bg-surface-2 px-5 py-6 text-body text-zinc-300">
-        {mode === "clinic" ? "No visits on this book yet. They appear here as soon as a patient books." : "You have no visits yet."}
-      </p>
+      <Card className="mt-8 flex max-w-prose flex-col items-start gap-4 p-6">
+        <p className="text-body text-ink-2">You have no visits yet.</p>
+        <ButtonLink href="/book" size="lg">
+          Book an appointment
+        </ButtonLink>
+      </Card>
     );
   }
 
@@ -108,136 +124,153 @@ export function VisitList({
       {sections.map(([title, items]) =>
         items.length === 0 ? null : (
           <section key={title} aria-labelledby={`visits-${title.toLowerCase()}`}>
-            <h2 id={`visits-${title.toLowerCase()}`} className="text-title3 font-semibold text-zinc-50">
+            <h2 id={`visits-${title.toLowerCase()}`} className="text-title3 font-semibold text-ink">
               {title}
-              <span className="ml-2 text-callout font-normal text-zinc-400">
+              <span className="ml-2 text-callout font-normal text-muted">
                 <span className="sr-only">, </span>
                 {items.length}
               </span>
             </h2>
             <ul className="mt-4 grid gap-3">
-              {items.map((visit) => (
-                <li key={visit.id}>
-                  <SpotlightCard as="article" className="rounded-card! p-5">
-                    <div className="relative z-10">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <h3 className="text-body font-semibold text-zinc-50">
-                          {mode === "clinic" ? visit.patientName : doctorName(visit.doctorId)}
-                        </h3>
+              {items.map((visit) => {
+                const isNext = visit.id === nextVisitId;
+                const cardBody = (
+                  <div className="relative z-10">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <h3 className="text-body font-semibold text-ink">
+                        {mode === "clinic" ? visit.patientName : doctorName(visit.doctorId)}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isNext ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success-soft px-2.5 py-0.5 text-caption font-semibold text-success">
+                            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
+                            Next visit
+                          </span>
+                        ) : null}
                         <p className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption font-semibold ${statusPillClass(visit.status)}`}>
                           {statusLabel(visit.status)}
                         </p>
                       </div>
-                      <p className="mt-1 text-body text-zinc-300">
-                        <span className="tabular">{formatWhen({ date: visit.date, time: whenLabel(visit) }, today)}</span>
-                        {mode === "clinic" ? ` · ${doctorName(visit.doctorId)}` : null}
-                        {` · ${reasonLabel(visit.reasonId)}`}
-                      </p>
-                      <p className="mt-2 text-callout text-zinc-400">
-                        Reference <span className="tabular text-zinc-100">{visit.reference}</span>
-                        {payments[visit.id] ? (
-                          <>
-                            {" "}
-                            · <span className="tabular text-zinc-100">{payments[visit.id]}</span>
-                          </>
-                        ) : null}
-                        {visit.patientMobile ? (
-                          <>
-                            {" "}
-                            · <span className="tabular">{formatPhone(visit.patientMobile)}</span>
-                          </>
-                        ) : null}
-                        {mode === "clinic" && visit.patientChi ? (
-                          <>
-                            {" "}
-                            · CHI <span className="tabular">{visit.patientChi}</span>
-                          </>
-                        ) : null}
-                      </p>
-                      {visit.token ? (
-                        <p className="mt-1 text-callout text-zinc-300">
-                          Token <span className="tabular font-semibold text-zinc-50">{visit.token}</span> of {visit.waveCapacity ?? "?"} in
-                          this wave. Seen in token order.
-                        </p>
-                      ) : null}
-                      {(moves[visit.id] ?? []).length > 0 ? (
-                        <ul aria-label="History of moves" className="mt-2 grid gap-1 text-callout text-zinc-400">
-                          {(moves[visit.id] ?? []).map((move) => (
-                            <li key={move.id}>
-                              Moved by {move.byName} ({roleLabel(move.byRole)}) from{" "}
-                              <span className="tabular text-zinc-200">{spot(move.fromDate, move.fromTime, move.fromToken)}</span> to{" "}
-                              <span className="tabular text-zinc-200">{spot(move.toDate, move.toTime, move.toToken)}</span> on{" "}
-                              <span className="tabular">{movedOn(move.at)}</span>
-                              {move.reason ? `. “${move.reason}”` : "."}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {visit.note ? <p className="mt-3 text-callout whitespace-pre-line text-zinc-300">{visit.note}</p> : null}
-                      {visit.status === "pending_payment" ? (
-                        <div className="group mt-4 flex flex-wrap gap-2">
-                          {mode === "patient" ? (
-                            <Link href={`/pay/${visit.id}`} className={buttonClass("primary", "md")}>
-                              Pay now
-                            </Link>
-                          ) : null}
-                          <form action={updateVisit}>
-                            <input type="hidden" name="id" value={visit.id} />
-                            <input type="hidden" name="status" value="cancelled" />
-                            <input type="hidden" name="return" value={returnTo} />
-                            <PendingButton
-                              pendingLabel="Releasing…"
-                              className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
-                              aria-label={`Give up the held place, ${formatWhen(visit, today)}`}
-                            >
-                              Give up this place
-                            </PendingButton>
-                          </form>
-                        </div>
-                      ) : null}
-                      {visit.status === "booked" ? (
-                        <div className="group mt-4 flex flex-wrap gap-2">
-                          {mode === "clinic" ? (
-                            <form action={updateVisit}>
-                              <input type="hidden" name="id" value={visit.id} />
-                              <input type="hidden" name="status" value="completed" />
-                              <input type="hidden" name="return" value={returnTo} />
-                              <PendingButton
-                                pendingLabel="Marking complete…"
-                                className={buttonClass("secondary", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
-                                aria-label={`Mark complete, ${visit.patientName}, ${formatWhen(visit, today)}`}
-                              >
-                                Mark complete
-                              </PendingButton>
-                            </form>
-                          ) : null}
-                          {visit.date >= today ? (
-                            <Link
-                              href={`/reschedule/${visit.id}?return=${encodeURIComponent(returnTo)}`}
-                              className={buttonClass("secondary", "md")}
-                              aria-label={`Reschedule ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
-                            >
-                              Reschedule
-                            </Link>
-                          ) : null}
-                          <form action={updateVisit}>
-                            <input type="hidden" name="id" value={visit.id} />
-                            <input type="hidden" name="status" value="cancelled" />
-                            <input type="hidden" name="return" value={returnTo} />
-                            <PendingButton
-                              pendingLabel="Cancelling…"
-                              className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
-                              aria-label={`Cancel ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
-                            >
-                              Cancel visit
-                            </PendingButton>
-                          </form>
-                        </div>
-                      ) : null}
                     </div>
-                  </SpotlightCard>
-                </li>
-              ))}
+                    <p className="mt-1 text-body text-ink-2">
+                      <span className="tabular">{formatWhen({ date: visit.date, time: whenLabel(visit) }, today)}</span>
+                      {mode === "clinic" ? ` · ${doctorName(visit.doctorId)}` : null}
+                      {` · ${reasonLabel(visit.reasonId)}`}
+                    </p>
+                    <p className="mt-2 text-callout text-muted">
+                      Reference <span className="tabular text-ink">{visit.reference}</span>
+                      {payments[visit.id] ? (
+                        <>
+                          {" "}
+                          · <span className="tabular text-ink">{payments[visit.id]}</span>
+                        </>
+                      ) : null}
+                      {visit.patientMobile ? (
+                        <>
+                          {" "}
+                          · <span className="tabular">{formatPhone(visit.patientMobile)}</span>
+                        </>
+                      ) : null}
+                      {mode === "clinic" && visit.patientChi ? (
+                        <>
+                          {" "}
+                          · CHI <span className="tabular">{visit.patientChi}</span>
+                        </>
+                      ) : null}
+                    </p>
+                    {visit.token ? (
+                      <p className="mt-1 text-callout text-ink-2">
+                        Token <span className="tabular font-semibold text-ink">{visit.token}</span> of {visit.waveCapacity ?? "?"} in
+                        this wave. Seen in token order.
+                      </p>
+                    ) : null}
+                    {(moves[visit.id] ?? []).length > 0 ? (
+                      <ul aria-label="History of moves" className="mt-2 grid gap-1 text-callout text-muted">
+                        {(moves[visit.id] ?? []).map((move) => (
+                          <li key={move.id}>
+                            Moved by {move.byName} ({roleLabel(move.byRole)}) from{" "}
+                            <span className="tabular text-ink-2">{spot(move.fromDate, move.fromTime, move.fromToken)}</span> to{" "}
+                            <span className="tabular text-ink-2">{spot(move.toDate, move.toTime, move.toToken)}</span> on{" "}
+                            <span className="tabular">{movedOn(move.at)}</span>
+                            {move.reason ? `. “${move.reason}”` : "."}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {visit.note ? <p className="mt-3 text-callout whitespace-pre-line text-ink-2">{visit.note}</p> : null}
+                    {visit.status === "pending_payment" ? (
+                      <div className="group mt-4 flex flex-wrap gap-2">
+                        {mode === "patient" ? (
+                          <Link href={`/pay/${visit.id}`} className={buttonClass("primary", "md")}>
+                            Pay now
+                          </Link>
+                        ) : null}
+                        <form action={updateVisit}>
+                          <input type="hidden" name="id" value={visit.id} />
+                          <input type="hidden" name="status" value="cancelled" />
+                          <input type="hidden" name="return" value={returnTo} />
+                          <PendingButton
+                            pendingLabel="Releasing…"
+                            className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
+                            aria-label={`Give up the held place, ${formatWhen(visit, today)}`}
+                          >
+                            Give up this place
+                          </PendingButton>
+                        </form>
+                      </div>
+                    ) : null}
+                    {visit.status === "booked" ? (
+                      <div className="group mt-4 flex flex-wrap gap-2">
+                        {mode === "clinic" ? (
+                          <form action={updateVisit}>
+                            <input type="hidden" name="id" value={visit.id} />
+                            <input type="hidden" name="status" value="completed" />
+                            <input type="hidden" name="return" value={returnTo} />
+                            <PendingButton
+                              pendingLabel="Marking complete…"
+                              className={buttonClass("secondary", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
+                              aria-label={`Mark complete, ${visit.patientName}, ${formatWhen(visit, today)}`}
+                            >
+                              Mark complete
+                            </PendingButton>
+                          </form>
+                        ) : null}
+                        {visit.date >= today ? (
+                          <Link
+                            href={`/reschedule/${visit.id}?return=${encodeURIComponent(returnTo)}`}
+                            className={buttonClass("secondary", "md")}
+                            aria-label={`Reschedule ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
+                          >
+                            Reschedule
+                          </Link>
+                        ) : null}
+                        <form action={updateVisit}>
+                          <input type="hidden" name="id" value={visit.id} />
+                          <input type="hidden" name="status" value="cancelled" />
+                          <input type="hidden" name="return" value={returnTo} />
+                          <PendingButton
+                            pendingLabel="Cancelling…"
+                            className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
+                            aria-label={`Cancel ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
+                          >
+                            Cancel visit
+                          </PendingButton>
+                        </form>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+                return (
+                  <li key={visit.id}>
+                    <SpotlightCard
+                      as="article"
+                      className={`rounded-card! p-5 ${isNext ? "border-accent/40 shadow-raised ring-1 ring-accent/20" : ""}`}
+                    >
+                      {cardBody}
+                    </SpotlightCard>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ),

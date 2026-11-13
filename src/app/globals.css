@@ -1,35 +1,102 @@
 @import "tailwindcss";
 
+/* Custom variant for class-based dark mode switching (.dark on html). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Pinned bars only stay pinned when there's room for the page under them: a phone held
    sideways or a zoomed-in window gets ordinary scrolling (WCAG technique C34). */
 @custom-variant tall (@media (min-height: 32rem));
 
 /*
- * Design tokens (dark-mode ReactBits palette).
- * Contrast (WCAG 2.2): ink/ink-2/muted text are ≥4.5:1 on canvas, surface, and surface-2;
- * control borders are ≥3:1 on surface; bright cyan/emerald fills pair with zinc-950 ink.
+ * Semantic color & shadow variables — crisp matte Light Mode default, Dark Mode under html.dark.
+ * All text/surface pairs exceed WCAG 2.2 AA (≥4.5:1 text, ≥3:1 control borders).
  */
-@theme {
-  --color-canvas: #09090b;
-  --color-surface: #111113;
-  --color-surface-2: #18181b;
-  --color-fill: #232329;
-  --color-fill-strong: #32323a;
-  --color-ink: #fafafa;
-  --color-ink-2: #e4e4e7;
-  --color-muted: #a1a1aa;
-  --color-hairline: rgba(255, 255, 255, 0.09);
-  --color-control: #71717a;
-  --color-accent: #22d3ee;
-  --color-accent-hover: #06b6d4;
-  --color-accent-press: #0891b2;
-  --color-accent-soft: rgba(34, 211, 238, 0.12);
-  --color-accent-soft-hover: rgba(34, 211, 238, 0.18);
-  --color-success: #34d399;
-  --color-success-soft: rgba(52, 211, 153, 0.12);
-  --color-warn: #fbbf24;
-  --color-danger: #f87171;
-  --color-danger-soft: rgba(248, 113, 113, 0.12);
+:root {
+  --v-canvas: #fafafa;
+  --v-surface: #ffffff;
+  --v-surface-2: #f4f4f5;
+  --v-fill: #f4f4f5;
+  --v-fill-strong: #e4e4e7;
+  --v-ink: #09090b;
+  --v-ink-2: #3f3f46;
+  --v-muted: #52525b;
+  --v-hairline: #e4e4e7;
+  --v-control: #71717a;
+  --v-accent: #0369a1;
+  --v-accent-hover: #075985;
+  --v-accent-press: #0c4a6e;
+  --v-accent-ink: #ffffff;
+  --v-accent-soft: #e0f2fe;
+  --v-accent-soft-hover: #bae6fd;
+  --v-success: #15803d;
+  --v-success-soft: #dcfce7;
+  --v-warn: #b45309;
+  --v-warn-soft: #fef3c7;
+  --v-danger: #b91c1c;
+  --v-danger-soft: #fee2e2;
+  --v-shadow-card: 0 1px 2px rgb(9 9 11 / 0.05), 0 4px 12px rgb(9 9 11 / 0.04);
+  --v-shadow-raised: 0 4px 12px rgb(9 9 11 / 0.08), 0 12px 28px rgb(9 9 11 / 0.06);
+  --v-shadow-float: 0 8px 30px rgb(9 9 11 / 0.12);
+  --header-h: 3.5rem;
+}
+
+html.dark {
+  --v-canvas: #09090b;
+  --v-surface: #111113;
+  --v-surface-2: #18181b;
+  --v-fill: #232329;
+  --v-fill-strong: #32323a;
+  --v-ink: #fafafa;
+  --v-ink-2: #d4d4d8;
+  --v-muted: #a1a1aa;
+  --v-hairline: rgba(255, 255, 255, 0.1);
+  --v-control: #71717a;
+  --v-accent: #38bdf8;
+  --v-accent-hover: #7dd3fc;
+  --v-accent-press: #0ea5e9;
+  --v-accent-ink: #09090b;
+  --v-accent-soft: rgba(56, 189, 248, 0.12);
+  --v-accent-soft-hover: rgba(56, 189, 248, 0.18);
+  --v-success: #34d399;
+  --v-success-soft: rgba(52, 211, 153, 0.12);
+  --v-warn: #fbbf24;
+  --v-warn-soft: rgba(251, 191, 36, 0.12);
+  --v-danger: #f87171;
+  --v-danger-soft: rgba(248, 113, 113, 0.12);
+  --v-shadow-card: 0 1px 2px rgb(0 0 0 / 0.35), 0 2px 8px rgb(0 0 0 / 0.3);
+  --v-shadow-raised: 0 4px 12px rgb(0 0 0 / 0.45), 0 12px 28px rgb(0 0 0 / 0.5);
+  --v-shadow-float: 0 8px 30px rgb(0 0 0 / 0.65);
+}
+
+@media (width >= 48rem) {
+  :root {
+    --header-h: 4rem;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--v-canvas);
+  --color-surface: var(--v-surface);
+  --color-surface-2: var(--v-surface-2);
+  --color-fill: var(--v-fill);
+  --color-fill-strong: var(--v-fill-strong);
+  --color-ink: var(--v-ink);
+  --color-ink-2: var(--v-ink-2);
+  --color-muted: var(--v-muted);
+  --color-hairline: var(--v-hairline);
+  --color-control: var(--v-control);
+  --color-accent: var(--v-accent);
+  --color-accent-hover: var(--v-accent-hover);
+  --color-accent-press: var(--v-accent-press);
+  --color-accent-ink: var(--v-accent-ink);
+  --color-accent-soft: var(--v-accent-soft);
+  --color-accent-soft-hover: var(--v-accent-soft-hover);
+  --color-success: var(--v-success);
+  --color-success-soft: var(--v-success-soft);
+  --color-warn: var(--v-warn);
+  --color-warn-soft: var(--v-warn-soft);
+  --color-danger: var(--v-danger);
+  --color-danger-soft: var(--v-danger-soft);
 
   --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -67,9 +134,9 @@
   --radius-card: 1rem;
   --radius-sheet: 1.25rem;
 
-  --shadow-card: 0 1px 1px rgb(0 0 0 / 0.3), 0 2px 8px rgb(0 0 0 / 0.4);
-  --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.6);
-  --shadow-float: 0 -1px 0 rgb(0 0 0 / 0.3), 0 -8px 32px rgb(0 0 0 / 0.5);
+  --shadow-card: var(--v-shadow-card);
+  --shadow-raised: var(--v-shadow-raised);
+  --shadow-float: var(--v-shadow-float);
 
   --container-page: 68rem;
   --container-prose: 40rem;
@@ -80,35 +147,23 @@
 }
 
 @layer base {
-  :root {
-    /* Height of the sticky site header. Pinned bars sit directly under it. */
-    --header-h: 3.5rem;
-  }
-
-  @media (width >= 48rem) {
-    :root {
-      --header-h: 4rem;
-    }
-  }
-
   html {
-    background: var(--color-canvas);
-    color: var(--color-ink);
+    background: var(--v-canvas);
+    color: var(--v-ink);
+    color-scheme: light;
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
   }
 
-  /* Anything in the page that is focused or linked to stops clear of the sticky header
-     (WCAG 2.4.11, technique C43). A margin on the content rather than scroll-padding on html:
-     with padding, the header's own links counted as hidden behind the header, so tabbing into
-     it from far down the page scrolled all the way back to the top. */
+  html.dark {
+    color-scheme: dark;
+  }
+
   main,
   main :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
     scroll-margin-top: calc(var(--header-h) + 1rem);
   }
 
-  /* A pinned bar's own controls are always on screen while it's pinned. Without this, focusing
-     one would "reveal" it by scrolling the page until the bar came unstuck. */
   @media (min-height: 32rem) {
     [data-pinned-bar] :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
       scroll-margin-top: 0;
@@ -149,7 +204,7 @@
   }
 
   ::selection {
-    background: rgba(34,211,238,0.3);
+    background: color-mix(in srgb, var(--v-accent) 24%, transparent);
   }
 
   :focus {
@@ -157,7 +212,7 @@
   }
 
   :focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+    outline: 3px solid color-mix(in srgb, var(--v-accent) 55%, transparent);
     outline-offset: 2px;
   }
 
@@ -177,13 +232,19 @@
   }
 
   ::placeholder {
-    color: var(--color-muted);
+    color: var(--v-muted);
     opacity: 1;
   }
 
   input[type="date"],
   input[type="time"],
   select {
+    color-scheme: light;
+  }
+
+  html.dark input[type="date"],
+  html.dark input[type="time"],
+  html.dark select {
     color-scheme: dark;
   }
 
@@ -199,26 +260,20 @@
       transition-duration: 1ms !important;
       scroll-behavior: auto !important;
     }
-
-    .rb-decorative-motion,
-    [style*="shine"],
-    [style*="aurora-"],
-    [style*="star-move-"] {
-      animation: none !important;
-    }
   }
 
   @media print {
-    :root {
-      --color-canvas: #ffffff;
-      --color-surface: #ffffff;
-      --color-surface-2: #f4f4f5;
-      --color-fill: #f4f4f5;
-      --color-fill-strong: #e4e4e7;
-      --color-ink: #09090b;
-      --color-ink-2: #27272a;
-      --color-muted: #52525b;
-      --color-hairline: #d4d4d8;
+    :root,
+    html.dark {
+      --v-canvas: #ffffff;
+      --v-surface: #ffffff;
+      --v-surface-2: #f4f4f5;
+      --v-fill: #f4f4f5;
+      --v-fill-strong: #e4e4e7;
+      --v-ink: #09090b;
+      --v-ink-2: #27272a;
+      --v-muted: #52525b;
+      --v-hairline: #d4d4d8;
     }
 
     html,
@@ -227,11 +282,6 @@
       color: #09090b !important;
     }
   }
-}
-
-@utility rb-dot-grid {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
-  background-size: 24px 24px;
 }
 
 @utility tabular {
@@ -247,8 +297,6 @@
   }
 }
 
-/* Content that scrolls under a pinned bar: anything focused stops below the header and the bar,
-   not under them. The bar publishes its height as --pin-h (0 when it isn't pinned). */
 @utility pin-clear {
   & :where(a[href], button, input, select, textarea, summary, [tabindex], [id]) {
     scroll-margin-top: calc(var(--header-h) + var(--pin-h, 0px) + 1rem);
@@ -260,36 +308,35 @@
   width: 100%;
   min-height: 3rem;
   border-radius: var(--radius-field);
-  border: 1px solid var(--color-control);
-  background: var(--color-surface);
+  border: 1px solid var(--v-control);
+  background: var(--v-surface);
   padding: 0.6875rem 1rem;
   font-size: var(--text-body);
   line-height: 1.5rem;
-  color: var(--color-ink);
+  color: var(--v-ink);
   transition:
     border-color 160ms var(--ease-out-quint),
     box-shadow 160ms var(--ease-out-quint);
 
   &:hover {
-    border-color: var(--color-ink-2);
+    border-color: var(--v-ink-2);
   }
 
   &:focus-visible {
     outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 22%, transparent);
+    border-color: var(--v-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--v-accent) 22%, transparent);
   }
 
   &[aria-invalid="true"] {
-    border-color: var(--color-danger);
+    border-color: var(--v-danger);
   }
 
   &[aria-invalid="true"]:focus-visible {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 18%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--v-danger) 18%, transparent);
   }
 }
 
-/* The slim bar that shows while a link or search is loading. It creeps toward the end and waits there. */
 @keyframes nav-progress {
   from {
     width: 8%;
@@ -305,143 +352,86 @@
   }
 }
 
-@keyframes shine {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
-}
-
-@keyframes aurora-1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(60px, -40px) scale(1.1); }
-  66% { transform: translate(-40px, 60px) scale(0.95); }
-}
-
-@keyframes aurora-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(-60px, 40px) scale(1.05); }
-  66% { transform: translate(40px, -60px) scale(1.1); }
-}
-
-@keyframes aurora-3 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(50px, 50px) scale(1.08); }
-}
-
-@keyframes star-move-bottom {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(-50%, -50%); }
-}
-
-@keyframes star-move-top {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(50%, 50%); }
-}
-
-@keyframes float-badge {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); }
-}
-
-
-
 @utility auth-field {
   display: block;
   width: 100%;
   min-height: 3.5rem;
   border-radius: 1rem;
-  border: 2px solid var(--color-control);
-  background: var(--color-surface);
+  border: 2px solid var(--v-control);
+  background: var(--v-surface);
   padding: 0.75rem 1rem;
   font-size: var(--text-body);
   line-height: 1.5rem;
-  color: var(--color-ink);
+  color: var(--v-ink);
   transition:
     border-color 160ms var(--ease-out-quint),
     box-shadow 160ms var(--ease-out-quint),
     background-color 160ms var(--ease-out-quint);
 
   &:hover {
-    border-color: var(--color-ink-2);
+    border-color: var(--v-ink-2);
   }
 
   &:focus-visible {
     outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent);
+    border-color: var(--v-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--v-accent) 20%, transparent);
   }
 
   &[aria-invalid="true"] {
-    border-color: var(--color-danger);
-    background: var(--color-danger-soft);
+    border-color: var(--v-danger);
+    background: var(--v-danger-soft);
   }
 }
 
-/* A button that sits on a darker "ledge" and presses into it. */
+/* Tactile solid button (no neon glow or gradients). */
 @utility btn-chunky {
   position: relative;
   display: inline-flex;
   width: 100%;
-  min-height: 3.5rem;
+  min-height: 3.25rem;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 1rem;
+  border-radius: 9999px;
   padding: 0 1.5rem;
   font-size: var(--text-body);
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   text-decoration: none;
   user-select: none;
   transition:
-    transform 90ms var(--ease-out-quint),
-    box-shadow 90ms var(--ease-out-quint),
-    background-color 160ms var(--ease-out-quint);
+    transform 120ms var(--ease-out-quint),
+    background-color 160ms var(--ease-out-quint),
+    border-color 160ms var(--ease-out-quint),
+    opacity 160ms var(--ease-out-quint);
 
   &:active:not(:disabled) {
-    transform: translateY(4px);
+    transform: scale(0.98);
   }
 
   &:disabled {
     cursor: not-allowed;
+    opacity: 0.55;
   }
 }
 
 @utility btn-chunky-primary {
-  background-color: #22d3ee;
-  background-image: linear-gradient(135deg, #22d3ee, #3b82f6);
-  color: #09090b;
-  box-shadow: 0 4px 0 rgba(34, 211, 238, 0.3), 0 0 20px rgba(34, 211, 238, 0.22);
-  font-weight: 700;
+  background: var(--v-ink);
+  color: var(--v-canvas);
 
   &:hover:not(:disabled) {
-    background-color: #67e8f9;
-    background-image: linear-gradient(135deg, #67e8f9, #60a5fa);
-    box-shadow: 0 4px 0 rgba(34, 211, 238, 0.35), 0 0 30px rgba(34, 211, 238, 0.35);
-  }
-
-  &:active:not(:disabled) {
-    box-shadow: 0 0 0 rgba(34, 211, 238, 0.3), 0 0 20px rgba(34, 211, 238, 0.22);
+    opacity: 0.88;
   }
 }
 
 @utility btn-chunky-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  color: #67e8f9;
-  border: 1px solid rgba(34, 211, 238, 0.3);
-  box-shadow: 0 4px 0 rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px);
+  background: var(--v-surface);
+  color: var(--v-ink);
+  border: 1px solid var(--v-hairline);
 
   &:hover:not(:disabled) {
-    background: rgba(34, 211, 238, 0.1);
-    border-color: rgba(34, 211, 238, 0.5);
-  }
-
-  &:active:not(:disabled) {
-    box-shadow: 0 0 0 rgba(255, 255, 255, 0.05);
+    background: var(--v-surface-2);
+    border-color: var(--v-control);
   }
 }

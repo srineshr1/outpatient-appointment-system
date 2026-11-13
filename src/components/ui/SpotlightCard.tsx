@@ -1,91 +1,55 @@
 "use client";
 
-import { useRef, useState, type ComponentProps, type ElementType, type MouseEvent } from "react";
+import type { ComponentProps } from "react";
+import { useTheme } from "@/components/providers/ThemeProvider";
+import {
+  SpotlightCard as ReactBitsSpotlightCard,
+  type SpotlightCardProps as ReactBitsSpotlightCardProps,
+} from "@/components/reactbits/SpotlightCard";
 
 interface SpotlightCardProps extends ComponentProps<"div"> {
   spotlightColor?: string;
   glowColor?: string;
+  intensity?: number;
+  borderGlow?: number;
+  proximity?: number;
   as?: "div" | "li" | "article" | "section";
 }
 
 export function SpotlightCard({
-  children,
   className = "",
-  spotlightColor = "rgba(34, 211, 238, 0.12)",
-  glowColor = "rgba(34, 211, 238, 0.06)",
-  as: Tag = "div",
+  spotlightColor,
+  glowColor: _glowColor,
+  intensity = 0.04,
+  borderGlow = 0.14,
+  proximity = 0,
+  as = "div",
   style,
-  onMouseMove,
-  onMouseEnter,
-  onMouseLeave,
   ...props
 }: SpotlightCardProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [opacity, setOpacity] = useState(0);
-
-  const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setPosition({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-    }
-    onMouseMove?.(event);
-  };
-
-  const handleMouseEnter = (event: MouseEvent<HTMLDivElement>) => {
-    setOpacity(1);
-    onMouseEnter?.(event);
-  };
-
-  const handleMouseLeave = (event: MouseEvent<HTMLDivElement>) => {
-    setOpacity(0);
-    onMouseLeave?.(event);
-  };
-
-  const Component = Tag as ElementType;
-
+  const { theme } = useTheme();
+  const rbProps = props as Omit<
+    ReactBitsSpotlightCardProps,
+    "as" | "theme" | "spotlightColor" | "intensity" | "borderGlow" | "proximity" | "className" | "style"
+  >;
   return (
-    <Component
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      className={`relative overflow-hidden rounded-sheet border border-hairline bg-surface [box-shadow:inset_0_1px_0_rgba(255,255,255,0.06),var(--shadow-card)] transition-shadow duration-300 hover:[box-shadow:inset_0_1px_0_rgba(255,255,255,0.09),var(--shadow-raised)] ${className}`.trim()}
+    <ReactBitsSpotlightCard
+      as={as}
+      theme={theme}
+      spotlightColor={spotlightColor}
+      intensity={intensity}
+      borderGlow={borderGlow}
+      proximity={proximity}
+      flare={false}
+      smoothing={0.25}
+      className={`rounded-sheet border border-hairline bg-surface shadow-card ${className}`.trim()}
       style={{
-        backgroundImage: "radial-gradient(ellipse at 50% 0%, rgba(34, 211, 238, 0.04) 0%, transparent 60%)",
+        ["--spotlight-card-surface" as string]: "var(--v-surface)",
+        ["--spotlight-card-border" as string]: "var(--v-hairline)",
+        ["--spotlight-card-shadow" as string]: "var(--v-shadow-card)",
         ...style,
       }}
-      {...props}
-    >
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[inherit] p-px transition-opacity duration-300"
-        style={{
-          opacity,
-          background: `radial-gradient(280px circle at ${position.x}px ${position.y}px, rgba(34, 211, 238, 0.45), transparent 65%)`,
-          WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-          WebkitMaskComposite: "xor",
-          mask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
-          maskComposite: "exclude",
-        }}
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300"
-        style={{
-          opacity,
-          background: `radial-gradient(500px circle at ${position.x}px ${position.y}px, ${spotlightColor}, transparent 42%)`,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300"
-        style={{
-          opacity: opacity * 0.5,
-          background: `radial-gradient(300px circle at ${position.x}px ${position.y}px, ${glowColor}, transparent 60%)`,
-        }}
-      />
-      {children}
-    </Component>
+      {...rbProps}
+    />
   );
 }

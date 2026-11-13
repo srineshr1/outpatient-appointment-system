@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
+import { Magnet } from "@/components/reactbits/Magnet";
 import { buttonClass } from "@/components/ui/button-styles";
 
 interface PendingCard {
@@ -377,30 +378,42 @@ export function AssistantDock({ user }: { user: DockUser }) {
     user.role === "doctor"
       ? "Ask about today's book, your hours, or a clash. I prepare a cancellation or a move, and I wait for you to confirm before anything changes."
       : "Ask about your visits, a doctor, or a free time. I prepare a booking, a move, a cancellation or a payment, and I wait for you to confirm before anything changes.";
+  const suggestions =
+    user.role === "doctor"
+      ? ["What is on today's book?", "Show my hours this week", "Check for any clashes"]
+      : ["Show my upcoming visits", "Find a free time", "List available doctors"];
 
   return (
     <>
       {open ? null : (
-        <button
-          ref={launcherRef}
-          type="button"
-          aria-label="Ask the clinic assistant"
-          className="fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 grid size-14 place-items-center rounded-full bg-accent text-white shadow-float hover:bg-accent-hover active:bg-accent-press"
-          onClick={() => setOpen(true)}
+        <Magnet
+          padding={24}
+          magnetStrength={2}
+          maxOffset={5}
+          wrapperClassName="fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40"
+          style={{ position: "fixed" }}
         >
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
-            <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
-          </svg>
-        </button>
+          <button
+            ref={launcherRef}
+            type="button"
+            aria-label="Ask the clinic assistant"
+            className="grid size-14 place-items-center rounded-full bg-ink text-canvas shadow-raised transition-all hover:opacity-90 active:scale-95"
+            onClick={() => setOpen(true)}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
+            </svg>
+          </button>
+        </Magnet>
       )}
       {open ? (
         <dialog
           ref={panelRef}
           open
           aria-labelledby={titleId}
-          className="fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] w-auto max-w-none flex-col rounded-t-3xl border border-hairline bg-surface p-0 shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
+          className="fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] w-auto max-w-none flex-col overflow-hidden rounded-t-3xl border border-hairline bg-surface p-0 text-ink shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
         >
-          <div className="flex items-start justify-between gap-3 border-b border-hairline px-4 py-3">
+          <div className="flex items-start justify-between gap-3 border-b border-hairline bg-surface px-4 py-3">
             <div>
               <h2 id={titleId} className="text-callout font-semibold text-ink">Clinic assistant</h2>
               <p className="text-caption text-muted">{user.role === "doctor" ? "Your book" : user.name}</p>
@@ -412,8 +425,30 @@ export function AssistantDock({ user }: { user: DockUser }) {
           {voiceNote ? <p className="px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
           <div ref={scrollerRef} className="mt-2 flex-1 space-y-3 overflow-y-auto px-4 py-3" aria-live="polite">
             <p className="text-callout text-ink-2">{intro}</p>
+            {messages.length === 0 && !waiting && !pending ? (
+              <fieldset className="flex flex-wrap gap-2 border-0 p-0 pt-1">
+                <legend className="sr-only">Suggested questions</legend>
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => void send(suggestion)}
+                    className="rounded-full border border-hairline bg-surface-2 px-3 py-1.5 text-left text-caption font-medium text-ink-2 transition-colors hover:border-control hover:bg-fill hover:text-ink"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </fieldset>
+            ) : null}
             {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-accent-soft px-3 py-2 text-callout text-ink" : "mr-6 text-callout text-ink"}>
+              <div
+                key={`${message.role}-${index}`}
+                className={
+                  message.role === "user"
+                    ? "ml-8 rounded-2xl bg-ink px-3.5 py-2.5 text-callout text-canvas"
+                    : "mr-6 rounded-2xl border border-hairline bg-surface-2 px-3.5 py-2.5 text-callout text-ink"
+                }
+              >
                 <p className="whitespace-pre-wrap">{message.content}</p>
                 {message.payUrl ? (
                   <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
@@ -422,7 +457,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
             ))}
             {waiting ? <p className="text-callout text-muted">Checking the book…</p> : null}
             {pending ? (
-              <div className="rounded-2xl border border-hairline bg-canvas p-3">
+              <div className="rounded-2xl border border-hairline bg-surface-2 p-3.5 shadow-card">
                 <p className="text-callout font-semibold text-ink">{pending.title}</p>
                 <p className="mt-1 text-callout text-ink-2">{pending.summary}</p>
                 <p className="mt-1 text-caption text-muted">Nothing changes until you confirm. This offer expires {expiryLabel(pending.expiresAt)}.</p>
@@ -438,7 +473,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
             ) : null}
           </div>
           <form
-            className="flex items-center gap-2 border-t border-hairline p-3"
+            className="flex items-center gap-2 border-t border-hairline bg-surface-2 p-3"
             onSubmit={(event) => {
               event.preventDefault();
               void send(draft);
@@ -459,15 +494,17 @@ export function AssistantDock({ user }: { user: DockUser }) {
                   if (!waiting) void send(draft);
                 }}
                 placeholder={listening ? "Listening…" : "Ask about a visit"}
-                className="h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pr-12 pl-4 text-callout text-ink outline-none focus:border-accent"
+                className="h-12 w-full resize-none rounded-full border border-hairline bg-canvas py-3 pr-12 pl-4 text-callout text-ink placeholder:text-muted outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
               <button
                 type="button"
                 aria-label={speaking ? "Stop speaking" : voiceOn ? "Stop voice" : "Speak"}
                 aria-pressed={voiceOn}
                 onClick={() => (speaking ? interrupt() : toggleVoice())}
-                className={`absolute top-1/2 right-1.5 grid size-8 -translate-y-1/2 place-items-center rounded-full ${
-                  voiceOn || speaking ? "bg-accent text-white" : "bg-fill text-ink hover:bg-fill-strong"
+                className={`absolute top-1/2 right-1.5 grid size-8 -translate-y-1/2 place-items-center rounded-full transition-colors ${
+                  voiceOn || speaking
+                    ? "bg-ink text-canvas"
+                    : "bg-fill text-ink-2 hover:bg-fill-strong hover:text-ink"
                 }`}
               >
                 {speaking ? (
@@ -480,7 +517,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 )}
               </button>
             </div>
-            <button type="submit" className={`${buttonClass("primary")} h-12`} disabled={waiting || !draft.trim()}>
+            <button type="submit" className={`${buttonClass("primary")} h-12 shrink-0`} disabled={waiting || !draft.trim()}>
               Send
             </button>
           </form>

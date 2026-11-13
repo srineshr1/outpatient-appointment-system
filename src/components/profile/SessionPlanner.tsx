@@ -182,7 +182,7 @@ export function SessionPlanner({
                 <h2 id="add-session" className="text-title3 font-semibold text-ink">
                   {editing ? `Editing ${editing.label || "consulting session"}` : addTitle}
                 </h2>
-                <p className="mt-1 text-callout text-zinc-400">
+                <p className="mt-1 text-callout text-muted">
                   Choose the days, the dates, and the hours. The week stays beside you and draws the new block after that.
                 </p>
                 <div className="mt-4">

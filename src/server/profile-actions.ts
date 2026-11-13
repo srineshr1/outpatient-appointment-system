@@ -93,6 +93,11 @@ export async function savePatientProfile(_previous: FormState, formData: FormDat
 
 const DOCTOR_KEYS = ["name", "specialty", "qualification", "years", "room", "fee", "bio", "languages"];
 
+function sessionReturnBase(formData: FormData): string {
+  const requested = text(formData, "returnTo").trim();
+  return requested === "/dashboard/sessions/manage" ? "/dashboard/sessions/manage" : "/dashboard/sessions";
+}
+
 export async function saveDoctorProfile(_previous: FormState, formData: FormData): Promise<FormState> {
   const user = await ownDoctor("/dashboard/profile");
   const name = text(formData, "name").replace(/\s+/g, " ").trim();
@@ -125,7 +130,7 @@ export async function saveDoctorProfile(_previous: FormState, formData: FormData
     summary: `${name} · doctor profile`,
   });
   refresh();
-  if (text(formData, "welcome") === "1") redirect("/dashboard/sessions?welcome=1");
+  if (text(formData, "welcome") === "1") redirect("/dashboard/sessions/manage?welcome=1");
   redirect("/dashboard/profile?saved=1");
 }
 
@@ -177,7 +182,8 @@ function legacyBlobStore(): boolean {
 }
 
 export async function saveSession(_previous: FormState, formData: FormData): Promise<FormState> {
-  const user = await ownDoctor("/dashboard/sessions");
+  const returnBase = sessionReturnBase(formData);
+  const user = await ownDoctor(returnBase);
   const store = await getStore();
   const id = text(formData, "id");
   const input = sessionInput(formData);
@@ -322,14 +328,15 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
   // A unique stamp: the workspace form resets only on a save that actually landed.
   const lent = plan.notice ? `&lent=${encodeURIComponent(plan.notice)}` : "";
   const moved = `${displaced > 0 ? `&displaced=${displaced}` : ""}${shifted > 0 ? `&shifted=${shifted}` : ""}`;
-  redirect(`/dashboard/sessions?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${lent}${moved}`);
+  redirect(`${returnBase}?saved=${existing ? "updated" : "created"}&v=${now().getTime().toString(36)}${lent}${moved}`);
 }
 
 export async function archiveSession(formData: FormData): Promise<void> {
-  const user = await ownDoctor("/dashboard/sessions");
+  const returnBase = sessionReturnBase(formData);
+  const user = await ownDoctor(returnBase);
   const store = await getStore();
   const session = await store.getConsultSession(text(formData, "id"));
-  if (!session || session.doctorId !== user.id || session.archivedAt) redirect("/dashboard/sessions?notice=missing");
+  if (!session || session.doctorId !== user.id || session.archivedAt) redirect(`${returnBase}?notice=missing`);
   const removed = { ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() };
   const upcoming = await upcomingIn(user.id, session.id);
   let displaced = 0;
@@ -337,7 +344,7 @@ export async function archiveSession(formData: FormData): Promise<void> {
     // Only an explicit "Notify them and offer new times" may remove a session that has reservations.
     const stranded = displacedBy(await store.listAppointments({ doctorId: user.id }), session, removed, todayIso(now()));
     const offerable = stranded.length === upcoming && !legacyBlobStore();
-    const ask = `/dashboard/sessions?notice=busy&n=${upcoming}${offerable ? `&displace=${encodeURIComponent(session.id)}` : ""}`;
+    const ask = `${returnBase}?notice=busy&n=${upcoming}${offerable ? `&displace=${encodeURIComponent(session.id)}` : ""}`;
     const confirmed = displaceConfirmed(formData);
     if (!confirmed || !offerable) redirect(ask);
     const result = await displaceAndSave(user, session, removed, [], confirmed).catch((error: unknown) => {
@@ -351,7 +358,7 @@ export async function archiveSession(formData: FormData): Promise<void> {
       await store.saveConsultSession(removed, []);
     } catch (error) {
       if (error instanceof Error && error.message.includes("Reserved sessions may change")) {
-        redirect("/dashboard/sessions?notice=busy&n=1");
+        redirect(`${returnBase}?notice=busy&n=1`);
       }
       throw error;
     }
@@ -366,5 +373,5 @@ export async function archiveSession(formData: FormData): Promise<void> {
     summary: `${session.label || "Session"} · ${session.startTime}–${session.endTime}`,
   });
   refresh();
-  redirect(`/dashboard/sessions?saved=removed${displaced > 0 ? `&displaced=${displaced}` : ""}`);
+  redirect(`${returnBase}?saved=removed${displaced > 0 ? `&displaced=${displaced}` : ""}`);
 }

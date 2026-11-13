@@ -34,7 +34,7 @@ export function DisplacedPatients({ entries }: { entries: readonly DisplacedEntr
       <h2 id="displaced-patients" className="text-title3 font-semibold text-ink">
         Displaced patients
       </h2>
-      <p className="mt-1 text-callout text-zinc-300">
+      <p className="mt-1 text-callout text-ink-2">
         Visits in hours you removed. Each patient was offered new times; until they choose, those times are held for them.
       </p>
       <ul className="mt-4 divide-y divide-hairline">
@@ -44,9 +44,9 @@ export function DisplacedPatients({ entries }: { entries: readonly DisplacedEntr
             <li key={entry.visit.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-3">
               <div className="min-w-0">
                 <p className="text-body font-medium text-ink">
-                  {entry.visit.patientName} <span className="text-callout font-normal text-zinc-400">· {entry.visit.reference}</span>
+                  {entry.visit.patientName} <span className="text-callout font-normal text-muted">· {entry.visit.reference}</span>
                 </p>
-                <p className="text-callout text-zinc-300 tabular">
+                <p className="text-callout text-ink-2 tabular">
                   {original ? `Was ${original} · ` : ""}
                   {detail(entry)}
                 </p>

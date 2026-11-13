@@ -26,17 +26,17 @@ export function NotificationPrefsForm({ initial }: { initial: DoctorNotifyPrefs 
       {OPTIONS.map((option) => (
         <label
           key={option.key}
-          className="flex cursor-pointer items-start gap-3 rounded-field border border-hairline bg-surface-2/60 p-3.5 transition-colors hover:border-white/15 hover:bg-surface-2"
+          className="flex cursor-pointer items-start gap-3 rounded-field border border-hairline bg-surface-2 p-3.5 transition-colors hover:border-control hover:bg-fill"
         >
           <input
             type="checkbox"
             name={option.key}
             defaultChecked={initial[option.key]}
-            className="mt-0.5 size-5 shrink-0 cursor-pointer accent-accent [color-scheme:dark]"
+            className="mt-0.5 size-5 shrink-0 cursor-pointer accent-accent"
           />
           <span>
             <span className="block text-body font-semibold text-ink">{option.label}</span>
-            <span className="mt-0.5 block text-callout text-zinc-300">{option.hint}</span>
+            <span className="mt-0.5 block text-callout text-ink-2">{option.hint}</span>
           </span>
         </label>
       ))}

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /** A grey placeholder block that pulses while the real content loads. Hidden from screen readers. */
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`animate-pulse rounded-md bg-zinc-800/80 motion-reduce:animate-none ${className}`} />;
+  return <div aria-hidden="true" className={`animate-pulse rounded-md bg-fill-strong/80 motion-reduce:animate-none ${className}`} />;
 }
 
 /**

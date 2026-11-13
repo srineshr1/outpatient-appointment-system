@@ -109,7 +109,7 @@ function Bar() {
     <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-[70] h-[3px]">
       <div
         data-nav-progress={phase}
-        className={`h-full rounded-r-full bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_10px_rgba(34,211,238,0.6)] ${
+        className={`h-full rounded-r-full bg-ink ${
           phase === "running"
             ? "[animation:nav-progress_9s_cubic-bezier(0.1,0.6,0.2,1)_forwards]"
             : phase === "done"
