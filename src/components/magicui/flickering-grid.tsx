@@ -155,13 +155,16 @@ export const FlickeringGrid: React.FC<FlickeringGridProps> = ({
     let gridParams: ReturnType<typeof setupCanvas> | null = null;
 
     const updateCanvasSize = () => {
-      const newWidth = width || container.clientWidth || 800;
-      const newHeight = height || container.clientHeight || 800;
+      const winW = typeof window !== "undefined" ? window.innerWidth : 1200;
+      const winH = typeof window !== "undefined" ? window.innerHeight : 800;
+      const newWidth = width || container.clientWidth || winW;
+      const newHeight = height || container.clientHeight || winH;
       setCanvasSize({ width: newWidth, height: newHeight });
       gridParams = setupCanvas(canvas, newWidth, newHeight);
     };
 
     updateCanvasSize();
+    window.addEventListener("resize", updateCanvasSize);
 
     let lastTime = performance.now();
     let isVisible = true;
@@ -217,6 +220,7 @@ export const FlickeringGrid: React.FC<FlickeringGridProps> = ({
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      window.removeEventListener("resize", updateCanvasSize);
       if (resizeObserver) resizeObserver.disconnect();
       if (intersectionObserver) intersectionObserver.disconnect();
     };

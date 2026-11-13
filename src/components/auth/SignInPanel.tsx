@@ -245,65 +245,66 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
               handleEmailSubmit();
             }}
             noValidate
+            className="space-y-3.5"
           >
             <div>
-              <div className="flex items-center justify-between px-1 mb-1.5">
-                <label htmlFor="email" className="text-callout font-medium text-ink-2 dark:text-zinc-200">
-                  {staff ? "Practice email" : "Email"}
-                </label>
-                <button
-                  type="button"
-                  onClick={() => go("forgot")}
-                  className="text-callout text-accent hover:underline dark:text-cyan-300 underline-offset-4"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <div className="relative flex items-center">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  inputMode="email"
-                  spellCheck={false}
-                  autoComplete="username email"
-                  autoFocus
-                  readOnly={pending}
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      handleEmailSubmit();
-                    }
-                  }}
-                  placeholder="name@example.com"
-                  aria-invalid={Boolean(error) || undefined}
-                  aria-describedby={error ? "form-error" : undefined}
-                  className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 pr-10 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-                <button
-                  type="button"
-                  onClick={handleEmailSubmit}
-                  aria-label="Continue with email"
-                  className="absolute right-1.5 inline-flex size-8 items-center justify-center rounded-md text-ink-2 hover:bg-ink/10 hover:text-ink transition-colors"
-                >
-                  <ArrowRight className="size-4" />
-                </button>
-              </div>
+              <label htmlFor="email" className="block px-1 text-callout font-medium text-ink-2 dark:text-zinc-200 mb-1.5">
+                {staff ? "Practice email" : "Email"}
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                inputMode="email"
+                spellCheck={false}
+                autoComplete="username email"
+                autoFocus
+                readOnly={pending}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleEmailSubmit();
+                  }
+                }}
+                placeholder={staff ? "Enter your practice email..." : "Enter your email..."}
+                aria-invalid={Boolean(error) || undefined}
+                aria-describedby={error ? "form-error" : undefined}
+                className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              />
             </div>
+
             <ErrorText id="form-error" message={error} />
-            {staff ? null : (
-              <p className="mt-4 text-center text-callout text-ink-2">
-                New here?{" "}
-                <button type="button" onClick={() => go("signup")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
+
+            <Button
+              type="submit"
+              className="h-11 w-full rounded-md bg-zinc-900 font-medium text-zinc-100 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200 transition-colors shadow-sm"
+            >
+              Continue
+            </Button>
+
+            <div className="flex items-center justify-between px-1 pt-1">
+              <button
+                type="button"
+                onClick={() => go("forgot")}
+                className="text-callout text-accent hover:underline dark:text-cyan-300 underline-offset-4"
+              >
+                Forgot password?
+              </button>
+              {staff ? null : (
+                <button
+                  type="button"
+                  onClick={() => go("signup")}
+                  className="text-callout font-medium text-accent hover:underline dark:text-cyan-300 underline-offset-4"
+                >
                   Create an account
                 </button>
-              </p>
-            )}
+              )}
+            </div>
           </form>
         ) : (
-          <form onSubmit={submitSignIn} noValidate className="space-y-4">
+          <form onSubmit={submitSignIn} noValidate className="space-y-3.5">
             <div className="flex items-center justify-between rounded-md border border-ink/12 bg-surface-2/60 px-3.5 py-2 text-callout">
               <div className="flex items-center gap-2 truncate">
                 <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-caption font-semibold text-accent dark:text-cyan-300">
@@ -351,7 +352,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
                     submitSignIn(event);
                   }
                 }}
-                placeholder="Enter your password"
+                placeholder="Enter your password..."
                 aria-invalid={Boolean(error) || undefined}
                 aria-describedby={error ? "form-error" : undefined}
                 className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
@@ -383,17 +384,15 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
   return (
     <AuroraBackground className="relative grid min-h-dvh place-items-center overflow-hidden bg-canvas px-5 py-12">
-      {/* Background Flickering Grid */}
-      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+      {/* Background Flickering Grid — full screen edge to edge */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <FlickeringGrid
-          className="absolute inset-0 size-full [mask-image:radial-gradient(650px_circle_at_center,white,transparent)]"
+          className="size-full"
           squareSize={4}
           gridGap={6}
           color="#60A5FA"
-          maxOpacity={0.5}
+          maxOpacity={0.35}
           flickerChance={0.1}
-          height={800}
-          width={800}
         />
       </div>
 
@@ -418,19 +417,24 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
         {/* Right: Google, or, the form */}
         <div className="w-full rounded-sheet border border-ink/10 bg-surface/80 p-6 shadow-raised backdrop-blur-xl md:p-8">
-          {staff || view === "forgot" || (view === "signin" && authStep === "password") ? null : (
+          {view === "forgot" || (view === "signin" && authStep === "password") ? null : (
             <>
               <Button
-                variant="outline"
                 asChild
-                className="h-11 w-full rounded-md border-ink/15 bg-ink/[0.04] text-body font-medium text-ink hover:border-ink/25 hover:bg-ink/[0.08]"
+                className="h-11 w-full rounded-md bg-white text-zinc-950 hover:bg-zinc-100 font-medium shadow-sm transition-colors border border-zinc-200/80 flex items-center justify-center gap-2.5"
               >
-                <a href={googleHref} className="flex h-11 w-full items-center justify-center gap-3">
+                <a
+                  href={googleHref}
+                  aria-label="Sign in with Google"
+                  className="flex h-11 w-full items-center justify-center gap-2.5 no-underline"
+                >
                   <GoogleMark />
-                  <span>{view === "signup" ? "Sign up with Google" : "Sign in with Google"}</span>
+                  <span className="font-medium text-zinc-900">
+                    {view === "signup" ? "Sign up with Google" : "Continue with Google"}
+                  </span>
                 </a>
               </Button>
-              <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
+              <div className="my-5 flex items-center gap-3 text-caption font-medium text-muted" aria-hidden="true">
                 <span className="h-px flex-1 bg-ink/10" />
                 OR
                 <span className="h-px flex-1 bg-ink/10" />
