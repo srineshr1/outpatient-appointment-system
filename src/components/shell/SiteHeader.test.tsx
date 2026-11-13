@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { STORAGE_KEY } from "@/lib/booking-state";
 import { signOutAction } from "@/server/auth-actions";
 import { navigation, renderWithProviders } from "@/test/utils";
-import { SiteHeader, currentFor, initialsFor, navLinks, roleLabel } from "./SiteHeader";
+import { SiteHeader, accountLinks, currentFor, initialsFor, navLinks, roleLabel } from "./SiteHeader";
 
 // Signing out clears the session cookie on the server; here we only check the client side of it.
 vi.mock("@/server/auth-actions", () => ({ signOutAction: vi.fn() }));
@@ -31,7 +31,7 @@ describe("SiteHeader", () => {
   it("names the practice and has no booking progress bar", () => {
     navigation.pathname = "/doctors/cho";
     renderWithProviders(<SiteHeader user={patient} />);
-    expect(screen.getByRole("link", { name: "Westbrook Medical Practice" })).toHaveAttribute("href", "/book");
+    expect(screen.getByRole("link", { name: "Westbrook Medical Practice" })).toHaveAttribute("href", "/appointments");
     expect(screen.queryByRole("navigation", { name: "Booking progress" })).not.toBeInTheDocument();
     expect(screen.queryByText(/current step/)).not.toBeInTheDocument();
   });
@@ -157,6 +157,45 @@ describe("SiteHeader", () => {
     await waitFor(() => expect(signOutAction).toHaveBeenCalled());
     expect(JSON.parse(window.sessionStorage.getItem(STORAGE_KEY)!).held).toBeNull();
   });
+
+  it("glides to sign-out with danger styling on hover or focus", async () => {
+    renderWithProviders(<SiteHeader user={patient} />);
+    const button = screen.getByRole("button", { name: "Ann Lee, account" });
+    await userEvent.click(button);
+    const panel = panelOf(button);
+    const signOutBtn = within(panel).getByRole("button", { name: "Sign out" });
+    const firstLink = within(panel).getByRole("link", { name: /Your appointments/i });
+
+    // Initially active on first current link, sign out is not active
+    expect(signOutBtn).not.toHaveClass("text-danger");
+
+    // Hovering sign out activates danger state
+    await userEvent.hover(signOutBtn);
+    expect(signOutBtn).toHaveClass("text-danger");
+
+    // Hovering back to a normal link reverts danger state
+    await userEvent.hover(firstLink);
+    expect(signOutBtn).not.toHaveClass("text-danger");
+  });
+
+  it("doctor account menu contains only profile, notifications, and sign-out (no duplicated clinic book/session links)", async () => {
+    const ownDoctor = { ...doctor, id: "cho", doctorId: "cho" };
+    navigation.pathname = "/dashboard";
+    renderWithProviders(<SiteHeader user={ownDoctor} />);
+    const button = screen.getByRole("button", { name: "Dr Helen Cho, account" });
+    await userEvent.click(button);
+    const panel = panelOf(button);
+
+    // Profile and email alerts are present
+    expect(within(panel).getByRole("link", { name: "Your profile" })).toHaveAttribute("href", "/dashboard/profile");
+    expect(within(panel).getByRole("link", { name: "Email alerts" })).toHaveAttribute("href", "/dashboard/notifications");
+    expect(within(panel).getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+
+    // Redundant navigation links (which live in the header navbar) must not be in the account dropdown
+    expect(within(panel).queryByRole("link", { name: "Clinic book" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("link", { name: "View sessions" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("link", { name: "Edit sessions" })).not.toBeInTheDocument();
+  });
 });
 
 describe("header helpers", () => {
@@ -187,6 +226,14 @@ describe("header helpers", () => {
     expect(currentFor("/dashboard/sessions", "/dashboard/sessions")).toBe("page");
     expect(currentFor("/dashboard/sessions", "/dashboard/sessions/manage")).toBeUndefined();
     expect(currentFor("/dashboard/sessions/manage", "/dashboard/sessions/manage")).toBe("page");
+  });
+
+  it("keeps clinic book, view sessions, and edit sessions out of accountLinks for doctors", () => {
+    const ownDoctor = { role: "doctor" as const, id: "doc-1", doctorId: "doc-1" };
+    expect(accountLinks(ownDoctor)).toEqual([
+      { href: "/dashboard/profile", label: "Your profile", tag: "Bio" },
+      { href: "/dashboard/notifications", label: "Email alerts", tag: "Prefs" },
+    ]);
   });
 
   it("treats choosing a time and the form as part of booking", () => {

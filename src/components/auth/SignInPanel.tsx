@@ -7,6 +7,7 @@ import { Alert } from "@/components/icons";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
+import { FlickeringGrid } from "@/registry/magicui/flickering-grid";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { buttonClass } from "@/components/ui/button-styles";
 import { Spinner as ButtonSpinner } from "@/components/ui/Spinner";
@@ -263,7 +264,21 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
   }
 
   return (
-    <AuroraBackground className="grid min-h-dvh place-items-center bg-canvas px-5 py-12">
+    <AuroraBackground className="relative grid min-h-dvh place-items-center overflow-hidden bg-canvas px-5 py-12">
+      {/* Background Flickering Grid */}
+      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
+        <FlickeringGrid
+          className="absolute inset-0 size-full [mask-image:radial-gradient(650px_circle_at_center,white,transparent)]"
+          squareSize={4}
+          gridGap={6}
+          color="#60A5FA"
+          maxOpacity={0.5}
+          flickerChance={0.1}
+          height={800}
+          width={800}
+        />
+      </div>
+
       <div className="relative z-10 grid w-full max-w-4xl items-center gap-10 md:grid-cols-2 md:gap-12">
         {/* Left: the practice */}
         <div className="text-center md:text-left">

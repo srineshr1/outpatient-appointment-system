@@ -313,7 +313,7 @@ describe("routing and sessions", () => {
     expect(destinationFor("admin", "/admin/payments")).toBe("/admin/payments");
     expect(destinationFor("admin", "/book/details")).toBe("/admin");
     expect(destinationFor("reception", "/admin")).toBe("/dashboard");
-    expect(destinationFor("patient", "/admin/people")).toBe("/book");
+    expect(destinationFor("patient", "/admin/people")).toBe("/appointments");
   });
 
   it("names a device without keeping the user agent", () => {

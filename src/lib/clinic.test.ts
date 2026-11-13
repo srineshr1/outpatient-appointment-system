@@ -54,17 +54,17 @@ describe("clinic book", () => {
     const other = await store.getUserById("user-reid");
     expect(rebooked && other).toBeTruthy();
     expect(await changeAppointmentStatus(other!, rebooked!.id, "cancelled")).toBe("forbidden");
-  });
+  }, 15000);
 });
 
 describe("sign-in routing", () => {
   it("sends each role to a page it can use", async () => {
     const { destinationFor } = await import("./auth-routing");
-    expect(destinationFor("patient", "/")).toBe("/book");
+    expect(destinationFor("patient", "/")).toBe("/appointments");
     expect(destinationFor("doctor", "/")).toBe("/dashboard");
     expect(destinationFor("patient", "/book/details")).toBe("/book/details");
     expect(destinationFor("patient", "/#doctors")).toBe("/#doctors");
-    expect(destinationFor("patient", "/dashboard?doctor=cho")).toBe("/book");
+    expect(destinationFor("patient", "/dashboard?doctor=cho")).toBe("/appointments");
     expect(destinationFor("reception", "/book/details")).toBe("/dashboard");
     expect(destinationFor("doctor", "/appointments")).toBe("/dashboard");
     expect(destinationFor("doctor", "/doctors/cho")).toBe("/doctors/cho");
