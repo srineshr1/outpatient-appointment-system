@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useMemo, useRef, useState } from "react";
 import { TimeWheelPicker } from "@/components/doctors/TimeWheel";
 import { CLINIC_END, CLINIC_START, clinicWeekday, sessionIsPast } from "@/components/doctors/schedule-model";
-import { Alert, Calendar, Check, ChevronLeft, ChevronRight, Clock, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
+import { Alert, Calendar, ChevronLeft, ChevronRight, Clock, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
 import { GlideSelect } from "@/components/reactbits/GlideSelect";
 import { RubberSegment } from "@/components/reactbits/RubberSegment";
@@ -989,12 +989,9 @@ export function SessionStudio({
               <div className="rounded-card border border-hairline bg-surface-2/60 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <label
-                      htmlFor="studio-recurring"
-                      className="cursor-pointer text-callout font-semibold text-ink"
-                    >
+                    <span className="text-callout font-semibold text-ink">
                       Recurring
-                    </label>
+                    </span>
                     <p className="text-caption text-muted">
                       {isRecurring
                         ? "Repeats weekly between From and Until dates."
