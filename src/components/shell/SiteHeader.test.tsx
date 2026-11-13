@@ -31,7 +31,7 @@ describe("SiteHeader", () => {
   it("names the practice and has no booking progress bar", () => {
     navigation.pathname = "/doctors/cho";
     renderWithProviders(<SiteHeader user={patient} />);
-    expect(screen.getByRole("link", { name: "Westbrook Medical Practice" })).toHaveAttribute("href", "/book");
+    expect(screen.getByRole("link", { name: "Westbrook Medical Practice" })).toHaveAttribute("href", "/appointments");
     expect(screen.queryByRole("navigation", { name: "Booking progress" })).not.toBeInTheDocument();
     expect(screen.queryByText(/current step/)).not.toBeInTheDocument();
   });

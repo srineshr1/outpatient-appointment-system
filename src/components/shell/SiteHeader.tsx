@@ -2,16 +2,13 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useId,
   useRef,
   useState,
-  type ComponentProps,
   type CSSProperties,
   type FocusEvent,
   type RefObject,
@@ -20,7 +17,7 @@ import { Bell, Check, ChevronDown, ChevronRight, Close, Menu, Phone, SignOut } f
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { GLIDE_EASE_TUPLE, useGlidePill } from "@/components/reactbits/GlideSelect";
-import { PillNav } from "@/components/reactbits/PillNav";
+import { RubberSegment } from "@/components/reactbits/RubberSegment";
 import { buttonClass } from "@/components/ui/button-styles";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { homeFor } from "@/lib/auth-routing";
@@ -161,34 +158,9 @@ function leftBy(event: FocusEvent<HTMLElement>): boolean {
   return next instanceof Node && !event.currentTarget.contains(next);
 }
 
-const PathnameContext = createContext("/");
-
-/** Bridges Next.js Link into ReactBits PillNav while preserving "page" vs "true" aria-current semantics. */
-function NavPillLink({ href, className = "", ...props }: ComponentProps<typeof Link>) {
-  const pathname = useContext(PathnameContext);
-  const hrefString = typeof href === "string" ? href : "";
-  const current = hrefString ? currentFor(hrefString, pathname) : undefined;
-  return (
-    <Link
-      href={href}
-      {...props}
-      aria-current={current}
-      className={`${className} aria-[current=true]:text-[var(--pn-strong)]`.trim()}
-    />
-  );
-}
-
-const PILL_NAV_STYLE = {
-  "--pn-shadow": "none",
-  "--pn-edge": "var(--v-hairline)",
-  "--pn-rim": "transparent",
-  "--pn-ring": "var(--v-accent)",
-  "--pn-text": "var(--v-ink-2)",
-  "--pn-pill-shadow": "0 1px 2px rgb(0 0 0 / 0.08)",
-} as CSSProperties;
-
 export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unread?: number }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { theme } = useTheme();
   const { dispatch } = useBooking();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -235,28 +207,26 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
           <Brand href={homeHref} />
 
           <div className="hidden min-w-0 md:block">
-            <PathnameContext.Provider value={pathname}>
-              <PillNav
-                items={links}
-                activeHref={activeHref}
-                linkComponent={NavPillLink}
-                theme={theme}
-                layout="joined"
-                size="md"
-                surface="solid"
-                itemStyle="plain"
-                hoverEffect="glide"
-                indicator="pill"
-                highlightColor="var(--v-ink)"
-                highlightTextColor="var(--v-canvas)"
-                barColor="var(--v-surface-2)"
-                textColor="var(--v-ink)"
-                collapse="never"
-                intro={false}
-                ariaLabel="Main"
-                style={PILL_NAV_STYLE}
-              />
-            </PathnameContext.Provider>
+            <RubberSegment
+              aria-label="Main"
+              items={links.map((link) => ({
+                value: link.href,
+                label: link.label,
+                href: link.href,
+                "aria-current": currentFor(link.href, pathname),
+              }))}
+              value={activeHref}
+              onChange={(href) => router.push(href)}
+              equalSlots={false}
+              size="md"
+              radius={999}
+              inset={3}
+              trackColor="var(--v-surface-2)"
+              thumbColor="var(--v-ink)"
+              textColor="var(--v-ink)"
+              activeTextColor="var(--v-canvas)"
+              className="border border-hairline shadow-xs"
+            />
           </div>
 
           <div className="ml-auto flex items-center gap-1 min-[360px]:gap-1.5 md:gap-2">

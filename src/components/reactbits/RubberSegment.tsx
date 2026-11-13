@@ -1,10 +1,21 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import Link from 'next/link';
 import { animate, motion, useMotionValue, useReducedMotion, useTransform, type MotionValue } from 'motion/react';
 
+import './RubberSegment.css';
+
 export type RubberSegmentSize = 'sm' | 'md' | 'lg';
-export type RubberSegmentItem = string | { value: string; label: ReactNode; icon?: ReactNode };
+export type RubberSegmentItem =
+  | string
+  | {
+      value: string;
+      label: ReactNode;
+      icon?: ReactNode;
+      href?: string;
+      'aria-current'?: 'page' | 'true' | 'step' | 'location' | 'date' | boolean;
+    };
 
 export interface RubberSegmentProps {
   items: RubberSegmentItem[];
@@ -27,6 +38,8 @@ export interface RubberSegmentProps {
   disabled?: boolean;
   className?: string;
   'aria-label'?: string;
+  role?: string;
+  asNav?: boolean;
 }
 
 type Slot = { l: number; r: number };
@@ -100,19 +113,20 @@ const RubberSegment: React.FC<RubberSegmentProps> = ({
   draggable = true,
   disabled = false,
   className = '',
-  'aria-label': ariaLabel = 'Segmented control'
+  'aria-label': ariaLabel = 'Segmented control',
+  role,
+  asNav = false,
 }) => {
   const list = items.map(item => (typeof item === 'string' ? { value: item, label: item } : item));
   const [inner, setInner] = useState<string | undefined>(defaultValue ?? list[0]?.value);
   const current = value !== undefined ? value : inner;
-  const index = Math.max(
-    0,
-    list.findIndex(item => item.value === current)
-  );
+  const selectedIndex = list.findIndex(item => item.value === current);
+  const hasSelection = selectedIndex >= 0;
+  const index = hasSelection ? selectedIndex : 0;
   const reduce = useReducedMotion();
 
-  const trackRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const trackRef = useRef<HTMLElement>(null);
+  const itemRefs = useRef<(HTMLElement | null)[]>([]);
   const slots = useRef<Slot[]>([]);
   const box = useRef<DOMRect | null>(null);
   const committed = useRef(index);
@@ -340,16 +354,19 @@ const RubberSegment: React.FC<RubberSegmentProps> = ({
   };
 
   const preset = SIZES[size] || SIZES.md;
+  const isNav = asNav || role === 'navigation' || list.some(item => typeof item !== 'string' && Boolean(item.href));
+  const RootTag = isNav ? 'nav' : 'div';
+  const effectiveRole = role ?? (isNav ? undefined : 'radiogroup');
 
   return (
-    <div
-      ref={trackRef}
-      role="radiogroup"
+    <RootTag
+      ref={trackRef as any}
+      role={effectiveRole}
       aria-label={ariaLabel}
       aria-disabled={disabled || undefined}
       data-equal={equalSlots ? '' : undefined}
       data-draggable={draggable && !disabled ? '' : undefined}
-      className={`group relative inline-grid grid-flow-col auto-cols-auto align-middle select-none touch-pan-y [font-family:inherit] [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] p-[var(--rs-inset)] rounded-[var(--rs-radius)] [background:var(--rs-track)] data-[equal]:auto-cols-[minmax(0,1fr)] data-[held]:cursor-grabbing aria-disabled:pointer-events-none aria-disabled:opacity-50${className ? ` ${className}` : ''}`}
+      className={`rubber-segment${className ? ` ${className}` : ''}`}
       style={
         {
           '--rs-track': trackColor,
@@ -363,7 +380,6 @@ const RubberSegment: React.FC<RubberSegmentProps> = ({
           '--rs-font': `${preset.font}px`,
           '--rs-pad': `${preset.pad}px`,
           '--rs-min': `${preset.min}px`,
-          '--rs-ease-out': 'cubic-bezier(0.23, 1, 0.32, 1)'
         } as CSSProperties
       }
       onPointerMove={handlePointerMove}
@@ -371,41 +387,70 @@ const RubberSegment: React.FC<RubberSegmentProps> = ({
       onPointerCancel={handlePointerCancel}
       onLostPointerCapture={handlePointerCancel}
     >
-      {list.map((item, i) => (
-        <button
-          key={item.value}
-          ref={el => {
-            itemRefs.current[i] = el;
-          }}
-          type="button"
-          role="radio"
-          aria-checked={i === index}
-          tabIndex={i === index ? 0 : -1}
-          disabled={disabled}
-          className="inline-flex h-[calc(var(--rs-h)-var(--rs-inset)*2)] min-w-[var(--rs-min)] items-center justify-center gap-1.5 m-0 border-0 bg-transparent px-[var(--rs-pad)] py-0 rounded-[var(--rs-thumb-radius)] [font:inherit] text-[length:var(--rs-font)] font-medium leading-none whitespace-nowrap outline-none [transition:opacity_160ms_ease,transform_160ms_var(--rs-ease-out)] motion-reduce:[transition:opacity_160ms_ease] cursor-pointer [color:var(--rs-ink)] opacity-70 aria-checked:cursor-default group-data-[draggable]:aria-checked:cursor-grab group-data-[held]:cursor-grabbing data-[pressed]:[transform:scale(0.96)] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:[outline-color:var(--rs-thumb)] [@media(hover:hover)_and_(pointer:fine)]:[&[aria-checked=false]:hover]:opacity-90"
-          onPointerDown={e => handlePointerDown(e, i)}
-          onKeyDown={handleKeyDown}
-        >
-          {item.icon}
-          {item.label}
-        </button>
-      ))}
+      {list.map((item, i) => {
+        const isCurrent = item.value === current;
+        const href = typeof item !== 'string' ? item.href : undefined;
+        const ariaCurrent = typeof item !== 'string' ? item['aria-current'] ?? (isCurrent ? 'page' : undefined) : undefined;
+        if (href) {
+          return (
+            <Link
+              key={item.value}
+              ref={el => {
+                itemRefs.current[i] = el;
+              }}
+              href={href}
+              aria-current={ariaCurrent}
+              tabIndex={isCurrent ? 0 : -1}
+              className="rubber-segment__item"
+              onPointerDown={e => handlePointerDown(e, i)}
+              onKeyDown={handleKeyDown}
+              onClick={e => {
+                if (drag.current?.live) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              {typeof item !== 'string' ? item.icon : null}
+              {typeof item !== 'string' ? item.label : item}
+            </Link>
+          );
+        }
+        return (
+          <button
+            key={item.value}
+            ref={el => {
+              itemRefs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={i === index}
+            tabIndex={i === index ? 0 : -1}
+            disabled={disabled}
+            className="rubber-segment__item"
+            onPointerDown={e => handlePointerDown(e, i)}
+            onKeyDown={handleKeyDown}
+          >
+            {typeof item !== 'string' ? item.icon : null}
+            {typeof item !== 'string' ? item.label : item}
+          </button>
+        );
+      })}
       <motion.div
-        className="pointer-events-none absolute inset-[var(--rs-inset)] grid grid-flow-col auto-cols-auto group-data-[equal]:auto-cols-[minmax(0,1fr)] [background:var(--rs-thumb)] [color:var(--rs-ink-active)]"
+        className="rubber-segment__thumb"
         aria-hidden="true"
-        style={{ clipPath }}
+        style={{
+          clipPath,
+          opacity: hasSelection ? 1 : 0,
+        }}
       >
         {list.map(item => (
-          <span
-            key={item.value}
-            className="inline-flex h-[calc(var(--rs-h)-var(--rs-inset)*2)] min-w-[var(--rs-min)] items-center justify-center gap-1.5 m-0 border-0 bg-transparent px-[var(--rs-pad)] py-0 rounded-[var(--rs-thumb-radius)] [font:inherit] text-[length:var(--rs-font)] font-medium leading-none whitespace-nowrap outline-none [transition:opacity_160ms_ease,transform_160ms_var(--rs-ease-out)] motion-reduce:[transition:opacity_160ms_ease] cursor-default [color:inherit]"
-          >
-            {item.icon}
-            {item.label}
+          <span key={item.value} className="rubber-segment__item rubber-segment__copy">
+            {typeof item !== 'string' ? item.icon : null}
+            {typeof item !== 'string' ? item.label : item}
           </span>
         ))}
       </motion.div>
-    </div>
+    </RootTag>
   );
 };
 
