@@ -277,14 +277,14 @@ export function SessionsViewer({
     [sessions, visits, trims, monday, today],
   );
 
-  const weekOccurrences = useMemo(
-    () => week.days.flatMap((day) => day.sessions),
-    [week],
-  );
-
   const activeDays = useMemo(
     () => week.days.filter((day) => day.sessions.length > 0),
     [week.days],
+  );
+
+  const weekOccurrences = useMemo(
+    () => week.days.flatMap((day) => day.sessions),
+    [week],
   );
 
   const selected = useMemo(
