@@ -8,6 +8,7 @@ async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
   const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
   if (email.endsWith("@halden.example")) {
     await page.locator("#email").fill(email);
+    await page.locator("#email").press("Enter");
     await page.locator("#password").fill(DEMO_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
   } else {
@@ -43,8 +44,8 @@ async function chooseFirstOpenTime(page: import("@playwright/test").Page) {
 test("a patient booking appears on that doctor’s clinic book", async ({ page }) => {
   await page.goto("/sign-in");
   await signInWithEmail(page, "ann.lee@halden.example");
-  await expect(page).toHaveURL(/\/book$/);
-  await expect(page.getByRole("heading", { level: 1, name: /Hi Ann/ })).toBeVisible();
+  await expect(page).toHaveURL(/\/appointments$/);
+  await expect(page.getByRole("heading", { level: 1, name: /Welcome back, Ann/ })).toBeVisible();
 
   await page.goto("/doctors/reid");
   await chooseFirstOpenTime(page);
@@ -83,8 +84,8 @@ test("a new patient signs up with just an email and their name", async ({ page }
   await page.goto("/register");
   await expect(page).toHaveURL(/\/sign-in$/);
   await signInWithEmail(page, email, "Sam Patel");
-  await expect(page).toHaveURL(/\/book$/);
-  await expect(page.getByRole("heading", { level: 1, name: /Hi Sam/ })).toBeVisible();
+  await expect(page).toHaveURL(/\/appointments$/);
+  await expect(page.getByRole("heading", { level: 1, name: /Welcome back, Sam/ })).toBeVisible();
 });
 
 test("clinic staff cannot book as a patient", async ({ page }) => {

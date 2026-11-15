@@ -17,7 +17,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("password sign-in", () => {
   it("signs in with email and password and shows the same message for any mismatch", async () => {
     renderWithProviders(<SignInPanel nextPath="/book" mode="patient" doctors={doctors} />);
-    await userEvent.type(screen.getByLabelText("Email"), "sam@example.com");
+    await userEvent.type(screen.getByLabelText("Email"), "sam@example.com{enter}");
     await userEvent.type(screen.getByLabelText("Password"), "wrong-password");
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(vi.mocked(signInWithPassword)).toHaveBeenCalledWith({ email: "sam@example.com", password: "wrong-password", next: "/book" });
@@ -61,5 +61,21 @@ describe("password sign-in", () => {
     await userEvent.click(screen.getByRole("button", { name: "Email me a reset link" }));
     expect(vi.mocked(requestPasswordReset)).toHaveBeenCalledWith({ email: "dr@example.com" });
     expect(await screen.findByText(/we’ve sent a link/)).toBeInTheDocument();
+  });
+
+  it("allows switching between Patient and Doctor roles via GlideSelect dropdown", async () => {
+    renderWithProviders(<SignInPanel nextPath="/" mode="patient" doctors={doctors} />);
+    const roleSelect = screen.getByRole("combobox", { name: "Account role" });
+    expect(roleSelect).toHaveTextContent("Patient");
+    expect(screen.getByPlaceholderText("Enter your email...")).toBeInTheDocument();
+
+    // Open dropdown and select Doctor
+    await userEvent.click(roleSelect);
+    const doctorOption = await screen.findByRole("option", { name: /Doctor/i });
+    await userEvent.click(doctorOption);
+
+    expect(roleSelect).toHaveTextContent("Doctor");
+    expect(screen.getByPlaceholderText("Enter your practice email...")).toBeInTheDocument();
+    expect(screen.getByText("Clinic staff sign-in")).toBeInTheDocument();
   });
 });

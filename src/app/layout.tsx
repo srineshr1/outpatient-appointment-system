@@ -75,7 +75,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </a>
         <NavProgress />
         <Providers initialNow={initialNow} initialTheme={initialTheme}>
-          <SiteChrome>
+          <SiteChrome slot="header">
             {/* The header needs the signed-in person. The page below doesn't wait for it to start showing. */}
             <Suspense fallback={<HeaderSkeleton />}>
               <HeaderWithUser />
@@ -84,7 +84,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <main id="main" tabIndex={-1} className="flex-1 outline-none">
             {children}
           </main>
-          <SiteChrome>
+          <SiteChrome slot="footer">
             <SiteFooter />
           </SiteChrome>
         </Providers>

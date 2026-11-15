@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useActionState, useMemo, useRef, useState } from "react";
 import { TimeWheelPicker } from "@/components/doctors/TimeWheel";
 import { CLINIC_END, CLINIC_START, clinicWeekday, sessionIsPast } from "@/components/doctors/schedule-model";
-import { Alert, Calendar, Check, ChevronLeft, ChevronRight, Clock, Edit, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
+import { Alert, Calendar, ChevronLeft, ChevronRight, Clock, Info, Pin, Plus, Sliders, Users } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
 import { GlideSelect } from "@/components/reactbits/GlideSelect";
 import { RubberSegment } from "@/components/reactbits/RubberSegment";
 import { SquishSwitch } from "@/components/reactbits/SquishSwitch";
 import { Button, ButtonLink, buttonClass } from "@/components/ui/Button";
+import { CalendarRangeSelect } from "@/components/ui/calendar-range-select";
+import type { DateRange } from "react-day-picker";
 import { Card, Notice } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
 import { PendingButton } from "@/components/ui/PendingButton";
@@ -36,7 +38,6 @@ import {
   toMinutes,
   visitWhenLabel,
   WAVE_MINUTES,
-  WEEKDAY_NAMES,
   type SessionInput,
 } from "@/lib/sessions";
 import { archiveSession, saveSession } from "@/server/profile-actions";
@@ -467,6 +468,44 @@ export function SessionStudio({
     });
   };
 
+  const recurringRange = useMemo<DateRange | undefined>(() => {
+    if (!draft.startDate) return undefined;
+    const [sY, sM, sD] = draft.startDate.split("-").map(Number);
+    if (!sY || !sM || !sD) return undefined;
+    const from = new Date(sY, sM - 1, sD);
+    if (!draft.endDate) return { from, to: undefined };
+    const [eY, eM, eD] = draft.endDate.split("-").map(Number);
+    if (!eY || !eM || !eD) return { from, to: undefined };
+    const to = new Date(eY, eM - 1, eD);
+    return { from, to };
+  }, [draft.startDate, draft.endDate]);
+
+  const handleRangeSelect = (range: DateRange | undefined) => {
+    if (!range?.from) return;
+    const formatIso = (d: Date) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    let from = range.from;
+    let to = range.to ?? range.from;
+    if (to < from) {
+      const tmp = from;
+      from = to;
+      to = tmp;
+    }
+    const nextStart = formatIso(from);
+    const nextEnd = formatIso(to);
+    const wd = clinicWeekday(nextStart);
+    setDraft((prev) => ({
+      ...prev,
+      startDate: nextStart,
+      endDate: nextEnd,
+      ...(wd ? { weekdays: [wd] } : {}),
+    }));
+  };
+
   // Only a saved session that has ended is read-only. A new draft on a past date stays editable: the
   // schedule check below asks for today or a later date instead of locking the Date field.
   const past = useMemo(() => (editing ? sessionIsPast(editing, today) : false), [editing, today]);
@@ -634,14 +673,6 @@ export function SessionStudio({
     }));
   };
 
-  const toggleWeekday = (day: number) => {
-    setDraft((prev) => {
-      const exists = prev.weekdays.includes(day);
-      const nextDays = exists ? prev.weekdays.filter((d) => d !== day) : [...prev.weekdays, day].sort((a, b) => a - b);
-      return { ...prev, weekdays: nextDays };
-    });
-  };
-
   const slotOptions = useMemo(() => {
     const base = new Set<number>(STREAM_SLOT_MINUTES);
     if (draft.slotMinutes) base.add(draft.slotMinutes);
@@ -667,40 +698,38 @@ export function SessionStudio({
 
   return (
     <div className="mx-auto max-w-[92rem] px-4 pt-6 pb-16 md:px-6 xl:px-8">
-      {/* 1. Outer Studio Header ("Add / Edit panel") */}
+      {/* 1. Outer Studio Header */}
       <section
         aria-label="Add or edit sessions"
-        className="rounded-sheet border border-hairline bg-surface p-5 shadow-card md:p-6"
+        className="flex flex-wrap items-center justify-between gap-4"
       >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-caption text-muted">
-              <Sliders size={14} className="text-accent" />
-              <span>{doctorName}</span>
-              <span aria-hidden="true">·</span>
-              <span className="tabular">
-                {sessions.length} active {sessions.length === 1 ? "session" : "sessions"}
-              </span>
-            </div>
-            <h1 className="mt-1.5 text-title2 font-semibold tracking-tight text-ink md:text-title1">
-              Add / Edit panel
-            </h1>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-caption text-muted">
+            <Sliders size={14} className="text-accent" />
+            <span>{doctorName}</span>
+            <span aria-hidden="true">·</span>
+            <span className="tabular">
+              {sessions.length} active {sessions.length === 1 ? "session" : "sessions"}
+            </span>
           </div>
+          <h1 className="mt-1.5 text-title2 font-semibold tracking-tight text-ink md:text-title1">
+            Add / Edit
+          </h1>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Button
-              variant={isCreateMode ? "primary" : "secondary"}
-              size="md"
-              onClick={() => startCreate()}
-            >
-              <Plus size={16} />
-              New session
-            </Button>
-            <ButtonLink href="/dashboard/sessions" variant="secondary" size="md">
-              <Calendar size={16} />
-              View schedule
-            </ButtonLink>
-          </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            variant={isCreateMode ? "primary" : "secondary"}
+            size="md"
+            onClick={() => startCreate()}
+          >
+            <Plus size={16} />
+            New session
+          </Button>
+          <ButtonLink href="/dashboard/sessions" variant="secondary" size="md">
+            <Calendar size={16} />
+            View schedule
+          </ButtonLink>
         </div>
       </section>
 
@@ -780,13 +809,9 @@ export function SessionStudio({
         {/* LEFT PANEL — "X session" form */}
         <div ref={editorRef} className="min-w-0 scroll-mt-[calc(var(--header-h)+1rem)]">
         <Card className="min-w-0 rounded-sheet p-5 md:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-4">
             <div className="min-w-0 max-w-full flex-1">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-2 px-2.5 py-0.5 text-caption font-medium text-ink-2">
-                {editing ? <Edit size={12} /> : <Plus size={12} />}
-                {editing ? "Editing session" : "Creating session"}
-              </span>
-              <h2 className="mt-2 truncate text-title2 font-semibold text-ink" title={sessionHeading}>
+              <h2 className="truncate text-title2 font-semibold text-ink" title={sessionHeading}>
                 {sessionHeading}
               </h2>
             </div>
@@ -825,6 +850,7 @@ export function SessionStudio({
             <input type="hidden" name="returnTo" value="/dashboard/sessions/manage" />
             <input type="hidden" name="viewDate" value={selectedDate} />
             <input type="hidden" name="id" value={editing?.id ?? ""} />
+            <input type="hidden" name="room" value={draft.room || room || "Room 1"} />
             <input type="hidden" name="kind" value={draft.kind} />
             <input type="hidden" name="mode" value={draft.mode} />
             <input type="hidden" name="startTime" value={draft.startTime} />
@@ -850,36 +876,20 @@ export function SessionStudio({
             )}
 
             <fieldset disabled={past} className="space-y-5 disabled:opacity-65">
-              {/* Name & Room */}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field id="studio-label" label="Session name" optional>
-                  {({ id }) => (
-                    <input
-                      id={id}
-                      name="label"
-                      value={draft.label}
-                      maxLength={60}
-                      placeholder="e.g. Morning clinic"
-                      onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))}
-                      className="field"
-                    />
-                  )}
-                </Field>
-                <Field id="studio-room" label="Room or clinic">
-                  {({ id }) => (
-                    <input
-                      id={id}
-                      name="room"
-                      value={draft.room}
-                      maxLength={60}
-                      required
-                      placeholder="Room 6"
-                      onChange={(e) => setDraft((prev) => ({ ...prev, room: e.target.value }))}
-                      className="field"
-                    />
-                  )}
-                </Field>
-              </div>
+              {/* Session name */}
+              <Field id="studio-label" label="Session name" optional>
+                {({ id }) => (
+                  <input
+                    id={id}
+                    name="label"
+                    value={draft.label}
+                    maxLength={60}
+                    placeholder="e.g. Morning clinic"
+                    onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))}
+                    className="field"
+                  />
+                )}
+              </Field>
 
               {/* TIME ROW: Time : [ Start ] [ End ] */}
               <div className="rounded-card border border-hairline bg-surface-2/60 p-4">
@@ -977,15 +987,12 @@ export function SessionStudio({
               <div className="rounded-card border border-hairline bg-surface-2/60 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <label
-                      htmlFor="studio-recurring"
-                      className="cursor-pointer text-callout font-semibold text-ink"
-                    >
+                    <span className="text-callout font-semibold text-ink">
                       Recurring
-                    </label>
+                    </span>
                     <p className="text-caption text-muted">
                       {isRecurring
-                        ? "Repeats weekly on your chosen days between From and Until dates."
+                        ? "Repeats weekly between From and Until dates."
                         : "Runs once on a single date."}
                     </p>
                   </div>
@@ -1016,56 +1023,19 @@ export function SessionStudio({
                     </Field>
                   </div>
                 ) : (
-                  <div className="space-y-4 border-t border-hairline pt-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Field id="studio-from-date" label="From date">
-                        {({ id }) => (
-                          <input
-                            id={id}
-                            type="date"
-                            value={draft.startDate}
-                            onChange={(e) => setDraft((prev) => ({ ...prev, startDate: e.target.value }))}
-                            className="field tabular"
-                          />
-                        )}
-                      </Field>
-                      <Field id="studio-until-date" label="Until date">
-                        {({ id }) => (
-                          <input
-                            id={id}
-                            type="date"
-                            value={draft.endDate}
-                            onChange={(e) => setDraft((prev) => ({ ...prev, endDate: e.target.value }))}
-                            className="field tabular"
-                          />
-                        )}
-                      </Field>
-                    </div>
-
-                    <div>
-                      <span className="mb-2 block text-caption font-semibold text-ink">Days</span>
-                      <div className="flex flex-wrap gap-2">
-                        {WEEKDAY_NAMES.map((dayName, idx) => {
-                          const dayNum = idx + 1;
-                          const active = draft.weekdays.includes(dayNum);
-                          return (
-                            <button
-                              key={dayName}
-                              type="button"
-                              aria-pressed={active}
-                              onClick={() => toggleWeekday(dayNum)}
-                              className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-callout font-medium transition-colors ${
-                                active
-                                  ? "border-accent bg-accent text-accent-ink"
-                                  : "border-hairline bg-surface text-ink-2 hover:border-control hover:text-ink"
-                              }`}
-                            >
-                              {active ? <Check size={13} /> : null}
-                              {dayName}
-                            </button>
-                          );
-                        })}
+                  <div className="space-y-3 border-t border-hairline pt-4">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-full flex items-center justify-between pb-2">
+                        <span className="text-callout font-semibold text-ink">Date range</span>
+                        <span className="text-caption text-muted tabular">
+                          {draft.startDate}{draft.endDate ? ` to ${draft.endDate}` : ""}
+                        </span>
                       </div>
+                      <CalendarRangeSelect
+                        dateRange={recurringRange}
+                        onSelect={handleRangeSelect}
+                        className="rounded-xl border border-hairline bg-surface p-3 shadow-xs"
+                      />
                     </div>
                   </div>
                 )}
@@ -1215,9 +1185,62 @@ export function SessionStudio({
                 )}
               </div>
 
-              {/* CANCEL & SUBMIT ROW */}
+              {/* ACTIONS ROW: Remove session on left, Cancel & Submit on right */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4">
+                {/* Left side: Remove session (when editing) */}
+                {editing ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!confirmRetire ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        disabled={past}
+                        onClick={() => setConfirmRetire(true)}
+                        className="border-danger/40 bg-danger-soft text-danger hover:bg-danger/15"
+                      >
+                        Remove session
+                      </Button>
+                    ) : (
+                      <>
+                        <PendingButton
+                          formAction={archiveSession}
+                          formNoValidate
+                          pendingLabel="Removing…"
+                          disabled={past}
+                          className={buttonClass(
+                            "secondary",
+                            "md",
+                            "border-danger/45 bg-danger-soft text-danger hover:bg-danger/15",
+                          )}
+                        >
+                          {editingUpcoming > 0 ? "Continue removal…" : "Confirm remove"}
+                        </PendingButton>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="md"
+                          onClick={() => setConfirmRetire(false)}
+                        >
+                          Keep
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div />
+                )}
+
+                {/* Right side: places delta + Cancel + Submit */}
                 <div className="flex flex-wrap items-center gap-2.5">
+                  {editing ? (
+                    <span className="text-caption text-muted tabular mr-1">
+                      {placesDelta === 0
+                        ? `${newPlaces} places/block`
+                        : `${placesDelta > 0 ? "+" : ""}${placesDelta} places vs current`}
+                    </span>
+                  ) : null}
+
                   {editing ? (
                     <Button variant="secondary" size="md" onClick={resetDraft} disabled={past || !dirty}>
                       Cancel
@@ -1238,64 +1261,9 @@ export function SessionStudio({
                     </PendingButton>
                   ) : null}
                 </div>
-
-                {editing ? (
-                  <span className="text-caption text-muted tabular">
-                    {placesDelta === 0
-                      ? `${newPlaces} places/block`
-                      : `${placesDelta > 0 ? "+" : ""}${placesDelta} places vs current`}
-                  </span>
-                ) : null}
               </div>
             </fieldset>
           </form>
-
-          {/* Retire session bar */}
-          {editing ? (
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-card border border-hairline bg-surface-2/60 px-4 py-3.5">
-              <div className="min-w-0">
-                <p className="text-callout font-semibold text-ink">Remove this session</p>
-                <p className="text-caption text-muted">
-                  {editingUpcoming > 0
-                    ? `${editingUpcoming} upcoming ${editingUpcoming === 1 ? "visit" : "visits"} booked.`
-                    : "Removes future booking availability while keeping past records."}
-                </p>
-              </div>
-              <form action={archiveSession} className="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="returnTo" value="/dashboard/sessions/manage" />
-                <input type="hidden" name="viewDate" value={selectedDate} />
-                <input type="hidden" name="id" value={editing.id} />
-                {!confirmRetire ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    disabled={past}
-                    onClick={() => setConfirmRetire(true)}
-                    className="border-danger/40 bg-danger-soft text-danger hover:bg-danger/15"
-                  >
-                    Remove session
-                  </Button>
-                ) : (
-                  <>
-                    <PendingButton
-                      pendingLabel="Removing…"
-                      disabled={past}
-                      className={buttonClass(
-                        "secondary",
-                        "md",
-                        "border-danger/45 bg-danger-soft text-danger hover:bg-danger/15",
-                      )}
-                    >
-                      {editingUpcoming > 0 ? "Continue removal…" : "Confirm remove"}
-                    </PendingButton>
-                    <Button variant="plain" size="md" onClick={() => setConfirmRetire(false)}>
-                      Keep
-                    </Button>
-                  </>
-                )}
-              </form>
-            </div>
-          ) : null}
         </Card>
         </div>
 

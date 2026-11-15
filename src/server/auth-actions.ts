@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { authenticate, createDoctorSelfSignup, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
+import { DEMO_PASSWORD, demoAccounts } from "@/lib/demo-accounts";
 import { clearFailures, consumeResetToken, isEmail, issueResetToken, lockedFor, recordFailure } from "@/lib/login-codes";
 import { isDeliverableEmail, sendPasswordReset } from "@/lib/mailer";
 import { normalisePhone, PHONE_INVALID_MESSAGE } from "@/lib/phone";
@@ -67,6 +68,16 @@ export async function signInWithPassword(input: { email: string; password: strin
   // redirect() throws, so it runs outside the store guard.
   if (result.ok) redirect(result.message);
   return result;
+}
+
+/** One-click demo sign-in. The shared password stays on the server. */
+export async function signInAsDemo(input: { who: "patient" | "doctor"; next: string }): Promise<AuthResult> {
+  const account =
+    input.who === "doctor"
+      ? demoAccounts.find((item) => item.id === "user-rudraksha")
+      : demoAccounts.find((item) => item.id === "user-patient-demo");
+  if (!account) return { ok: false, error: "Demo sign-in is unavailable." };
+  return signInWithPassword({ email: account.email, password: DEMO_PASSWORD, next: input.next });
 }
 
 /** A new account: name, email, password (twice) and whether they are a patient or a doctor. */

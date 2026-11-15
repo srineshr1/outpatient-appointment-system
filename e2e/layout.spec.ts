@@ -17,6 +17,7 @@ async function expectAccessible(page: Page) {
 async function signInAsAnn(page: Page) {
   await page.goto("/sign-in?next=%2Fbook");
   await page.locator("#email").fill("ann.lee@halden.example");
+  await page.locator("#email").press("Enter");
   await page.locator("#password").fill("Halden-demo-2026");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/book$/);

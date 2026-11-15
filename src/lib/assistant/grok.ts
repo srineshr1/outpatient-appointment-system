@@ -27,15 +27,99 @@ function answer(reply: string, pending: PendingCard | null, slots: SlotLink[]): 
 }
 
 const ENDPOINT = "https://api.x.ai/v1/responses";
+const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const MAX_STEPS = 4;
+const CALL_TIMEOUT_MS = 15_000;
+/** Stop starting another provider once the turn has already used this much time. */
+const FAILOVER_BUDGET_MS = 35_000;
+const COOL_MS = 2 * 60_000;
+export const ASSISTANT_BUSY = "The assistant is busy. Please try again in a moment.";
 
-export function assistantModel(): string {
-  if (process.env.GEMINI_API_KEY?.trim()) return process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite";
+const cooledUntil = new Map<string, number>();
+
+export function resetProviderChainForTests(): void {
+  cooledUntil.clear();
+}
+
+function geminiModel(): string {
+  return process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite";
+}
+
+function groqModel(): string {
+  return process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b";
+}
+
+function xaiModel(): string {
   return process.env.XAI_MODEL?.trim() || "grok-4.3";
 }
 
+export function assistantModel(): string {
+  if (process.env.GEMINI_API_KEY?.trim() || process.env.GEMINI_API_KEY_2?.trim()) return geminiModel();
+  if (process.env.GROQ_API_KEY?.trim()) return groqModel();
+  return xaiModel();
+}
+
 export function assistantConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY?.trim() || process.env.XAI_API_KEY?.trim());
+  return Boolean(
+    process.env.GEMINI_API_KEY?.trim() ||
+      process.env.GEMINI_API_KEY_2?.trim() ||
+      process.env.GROQ_API_KEY?.trim() ||
+      process.env.XAI_API_KEY?.trim(),
+  );
+}
+
+class ProviderError extends Error {
+  readonly status: number;
+  readonly failover: boolean;
+
+  constructor(status: number, failover: boolean) {
+    super(ASSISTANT_BUSY);
+    this.name = "ProviderError";
+    this.status = status;
+    this.failover = failover;
+  }
+}
+
+/** Quota, auth, and outage failures are worth trying the next account. A 400 is our request. */
+function canFailover(status: number): boolean {
+  return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
+}
+
+function cooling(id: string, nowMs: number): boolean {
+  const until = cooledUntil.get(id) ?? 0;
+  if (until <= nowMs) {
+    cooledUntil.delete(id);
+    return false;
+  }
+  return true;
+}
+
+function cool(id: string, nowMs: number): void {
+  cooledUntil.set(id, nowMs + COOL_MS);
+}
+
+async function postProvider(url: string, headers: Record<string, string>, payload: unknown): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    });
+  } catch {
+    throw new ProviderError(0, true);
+  }
+  const raw = await response.text();
+  let body: unknown;
+  try {
+    body = raw ? (JSON.parse(raw) as unknown) : {};
+  } catch {
+    throw new ProviderError(response.status || 502, canFailover(response.status));
+  }
+  if (!response.ok) throw new ProviderError(response.status, canFailover(response.status));
+  return body;
 }
 
 function systemPrompt(user: PublicUser, language: DetectedLanguage, locked = false): string {
@@ -100,37 +184,19 @@ function callsOf(output: Array<Record<string, unknown>>) {
 }
 
 async function complete(input: unknown[], tools: ReturnType<typeof toolSpecs>): Promise<GrokBody> {
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${process.env.XAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: assistantModel(),
+  return (await postProvider(
+    ENDPOINT,
+    { authorization: `Bearer ${process.env.XAI_API_KEY ?? ""}` },
+    {
+      model: xaiModel(),
       input,
       tools,
       store: false,
       max_output_tokens: 1200,
       parallel_tool_calls: true,
-    }),
-    signal: AbortSignal.timeout(25_000),
-  });
-  const raw = await response.text();
-  let body: GrokBody;
-  try {
-    body = JSON.parse(raw) as GrokBody;
-  } catch {
-    throw new Error(`The assistant service returned an unreadable response (${response.status}).`);
-  }
-  if (!response.ok) {
-    const message = body.error?.message?.slice(0, 240) || `The assistant service returned ${response.status}.`;
-    throw new Error(message);
-  }
-  return body;
+    },
+  )) as GrokBody;
 }
-
-const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
 interface GeminiBody {
   output_text?: string;
@@ -168,34 +234,82 @@ function geminiCalls(steps: Array<Record<string, unknown>>) {
   return calls;
 }
 
-async function completeGemini(input: unknown[], tools: ReturnType<typeof toolSpecs>, system: string): Promise<GeminiBody> {
-  const response = await fetch(GEMINI_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": process.env.GEMINI_API_KEY ?? "",
+async function completeGemini(input: unknown[], tools: ReturnType<typeof toolSpecs>, system: string, apiKey: string): Promise<GeminiBody> {
+  return (await postProvider(
+    GEMINI_ENDPOINT,
+    { "x-goog-api-key": apiKey },
+    { model: geminiModel(), store: false, system_instruction: system, input, tools },
+  )) as GeminiBody;
+}
+
+interface GroqToolCall {
+  id?: string;
+  function?: { name?: string; arguments?: string };
+}
+
+interface GroqMessage {
+  role?: string;
+  content?: string | null;
+  tool_calls?: GroqToolCall[];
+}
+
+interface GroqBody {
+  choices?: Array<{ message?: GroqMessage }>;
+}
+
+function groqTools(tools: ReturnType<typeof toolSpecs>) {
+  return tools.map((tool) => ({
+    type: "function",
+    function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+  }));
+}
+
+async function completeGroq(messages: unknown[], tools: ReturnType<typeof toolSpecs>): Promise<GroqBody> {
+  return (await postProvider(
+    GROQ_ENDPOINT,
+    { authorization: `Bearer ${process.env.GROQ_API_KEY ?? ""}` },
+    {
+      model: groqModel(),
+      messages,
+      tools: groqTools(tools),
+      tool_choice: "auto",
+      parallel_tool_calls: true,
+      max_tokens: 1200,
     },
-    body: JSON.stringify({
-      model: assistantModel(),
-      store: false,
-      system_instruction: system,
-      input,
-      tools,
-    }),
-    signal: AbortSignal.timeout(25_000),
-  });
-  const raw = await response.text();
-  let body: GeminiBody;
+  )) as GroqBody;
+}
+
+interface ToolState {
+  pending: PendingCard | null;
+  slots: SlotLink[];
+}
+
+/** Run one tool call. A thrown provider error is not caught here, so the chain can fail over. */
+async function applyCall(user: PublicUser, name: string, rawArgs: unknown, state: ToolState): Promise<unknown> {
+  let args: unknown = {};
+  if (typeof rawArgs === "string") {
+    try {
+      args = JSON.parse(rawArgs) as unknown;
+    } catch {
+      args = {};
+    }
+  } else if (rawArgs && typeof rawArgs === "object") {
+    args = rawArgs;
+  }
+  let result: ToolResult;
   try {
-    body = JSON.parse(raw) as GeminiBody;
-  } catch {
-    throw new Error(`The assistant service returned an unreadable response (${response.status}).`);
+    result = await runTool(user, name, args);
+  } catch (error) {
+    console.error(`[assistant] Tool ${name} failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    result = { forModel: { error: "That couldn't be read from the clinic book. Please try again." } };
   }
-  if (!response.ok) {
-    const message = body.error?.message?.slice(0, 240) || `The assistant service returned ${response.status}.`;
-    throw new Error(message);
+  let forModel = result.forModel;
+  if (result.slots?.length) state.slots = mergeSlotLinks(state.slots, result.slots);
+  if (result.pending) {
+    if (!state.pending) state.pending = result.pending;
+    else forModel = { error: "Only one change can wait for confirmation at a time. Ask the user about the first one." };
   }
-  return body;
+  return forModel;
 }
 
 /** Gemini Interactions API. store:false so clinic details are not kept on Google. */
@@ -203,7 +317,8 @@ async function askGemini(
   user: PublicUser,
   history: { role: "user" | "assistant"; content: string }[],
   language: DetectedLanguage,
-  locked = false,
+  locked: boolean,
+  apiKey: string,
 ): Promise<ModelAnswer> {
   const tools = toolSpecs(user);
   const system = systemPrompt(user, language, locked);
@@ -212,41 +327,18 @@ async function askGemini(
       ? { type: "user_input", content: [{ type: "text", text: message.content }] }
       : { type: "model_output", content: [{ type: "text", text: message.content }] },
   );
-  let pending: PendingCard | null = null;
-  let slots: SlotLink[] = [];
+  const state: ToolState = { pending: null, slots: [] };
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const body = await completeGemini(input, tools, system);
+    const body = await completeGemini(input, tools, system, apiKey);
     const steps = body.steps ?? [];
     const calls = geminiCalls(steps);
     if (calls.length === 0) {
-      return answer(geminiText(body) || "I couldn't put that into words. Please ask again.", pending, slots);
+      return answer(geminiText(body) || "I couldn't put that into words. Please ask again.", state.pending, state.slots);
     }
     input = [...input, ...steps];
     for (const call of calls) {
-      let args: unknown = {};
-      if (typeof call.arguments === "string") {
-        try {
-          args = JSON.parse(call.arguments) as unknown;
-        } catch {
-          args = {};
-        }
-      } else if (call.arguments && typeof call.arguments === "object") {
-        args = call.arguments;
-      }
-      let result: ToolResult;
-      try {
-        result = await runTool(user, call.name, args);
-      } catch (error) {
-        console.error(`[assistant] Tool ${call.name} failed: ${error instanceof Error ? error.message : "unknown error"}`);
-        result = { forModel: { error: "That couldn't be read from the clinic book. Please try again." } };
-      }
-      let forModel = result.forModel;
-      if (result.slots?.length) slots = mergeSlotLinks(slots, result.slots);
-      if (result.pending) {
-        if (!pending) pending = result.pending;
-        else forModel = { error: "Only one change can wait for confirmation at a time. Ask the user about the first one." };
-      }
+      const forModel = await applyCall(user, call.name, call.arguments, state);
       input.push({
         type: "function_result",
         name: call.name,
@@ -255,7 +347,60 @@ async function askGemini(
       });
     }
   }
-  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", pending, slots);
+  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", state.pending, state.slots);
+}
+
+/** Groq's OpenAI-compatible chat completions. Tool results are not stored on our side. */
+async function askGroq(
+  user: PublicUser,
+  history: { role: "user" | "assistant"; content: string }[],
+  language: DetectedLanguage,
+  locked: boolean,
+): Promise<ModelAnswer> {
+  const tools = toolSpecs(user);
+  let messages: unknown[] = [{ role: "system", content: systemPrompt(user, language, locked) }, ...history];
+  const state: ToolState = { pending: null, slots: [] };
+
+  for (let step = 0; step < MAX_STEPS; step += 1) {
+    const body = await completeGroq(messages, tools);
+    const message = body.choices?.[0]?.message;
+    const calls = (message?.tool_calls ?? []).filter((call) => call.id && call.function?.name);
+    const text = typeof message?.content === "string" ? message.content.trim() : "";
+    if (calls.length === 0) {
+      return answer(text || "I couldn't put that into words. Please ask again.", state.pending, state.slots);
+    }
+    messages = [...messages, message];
+    for (const call of calls) {
+      const forModel = await applyCall(user, call.function?.name ?? "", call.function?.arguments, state);
+      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(forModel).slice(0, 12_000) });
+    }
+  }
+  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", state.pending, state.slots);
+}
+
+async function askXai(
+  user: PublicUser,
+  history: { role: "user" | "assistant"; content: string }[],
+  language: DetectedLanguage,
+  locked: boolean,
+): Promise<ModelAnswer> {
+  const tools = toolSpecs(user);
+  let input: unknown[] = [{ role: "system", content: systemPrompt(user, language, locked) }, ...history];
+  const state: ToolState = { pending: null, slots: [] };
+
+  for (let step = 0; step < MAX_STEPS; step += 1) {
+    const body = await complete(input, tools);
+    const calls = callsOf(body.output ?? []);
+    if (calls.length === 0) {
+      return answer(textOf(body) || "I couldn't put that into words. Please ask again.", state.pending, state.slots);
+    }
+    input = [...input, ...(body.output ?? [])];
+    for (const call of calls) {
+      const forModel = await applyCall(user, call.name, call.arguments, state);
+      input.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(forModel).slice(0, 12_000) });
+    }
+  }
+  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", state.pending, state.slots);
 }
 
 /**
@@ -286,48 +431,31 @@ async function askModel(
   language: DetectedLanguage,
   locked = false,
 ): Promise<ModelAnswer> {
-  if (!assistantConfigured()) {
-    throw new Error("The assistant is not configured. Set GEMINI_API_KEY or XAI_API_KEY on the server.");
+  const chain: { id: string; run: () => Promise<ModelAnswer> }[] = [];
+  const first = process.env.GEMINI_API_KEY?.trim();
+  const second = process.env.GEMINI_API_KEY_2?.trim();
+  if (first) chain.push({ id: "gemini-1", run: () => askGemini(user, history, language, locked, first) });
+  if (second) chain.push({ id: "gemini-2", run: () => askGemini(user, history, language, locked, second) });
+  if (process.env.GROQ_API_KEY?.trim()) chain.push({ id: "groq", run: () => askGroq(user, history, language, locked) });
+  if (process.env.XAI_API_KEY?.trim()) chain.push({ id: "xai", run: () => askXai(user, history, language, locked) });
+  if (chain.length === 0) {
+    throw new Error("The assistant is not configured. Set GEMINI_API_KEY, GROQ_API_KEY, or XAI_API_KEY on the server.");
   }
-  if (process.env.GEMINI_API_KEY?.trim()) return askGemini(user, history, language, locked);
-  const tools = toolSpecs(user);
-  let input: unknown[] = [{ role: "system", content: systemPrompt(user, language, locked) }, ...history];
-  let pending: PendingCard | null = null;
-  let slots: SlotLink[] = [];
 
-  for (let step = 0; step < MAX_STEPS; step += 1) {
-    const body = await complete(input, tools);
-    const calls = callsOf(body.output ?? []);
-    if (calls.length === 0) {
-      return answer(textOf(body) || "I couldn't put that into words. Please ask again.", pending, slots);
-    }
-    input = [...input, ...(body.output ?? [])];
-    for (const call of calls) {
-      let args: unknown = {};
-      if (typeof call.arguments === "string") {
-        try {
-          args = JSON.parse(call.arguments) as unknown;
-        } catch {
-          args = {};
-        }
-      } else if (call.arguments && typeof call.arguments === "object") {
-        args = call.arguments;
-      }
-      let result: ToolResult;
-      try {
-        result = await runTool(user, call.name, args);
-      } catch (error) {
-        console.error(`[assistant] Tool ${call.name} failed: ${error instanceof Error ? error.message : "unknown error"}`);
-        result = { forModel: { error: "That couldn't be read from the clinic book. Please try again." } };
-      }
-      let forModel = result.forModel;
-      if (result.slots?.length) slots = mergeSlotLinks(slots, result.slots);
-      if (result.pending) {
-        if (!pending) pending = result.pending;
-        else forModel = { error: "Only one change can wait for confirmation at a time. Ask the user about the first one." };
-      }
-      input.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(forModel).slice(0, 12_000) });
+  const started = Date.now();
+  for (const provider of chain) {
+    const nowMs = Date.now();
+    if (cooling(provider.id, nowMs)) continue;
+    if (nowMs - started > FAILOVER_BUDGET_MS) break;
+    try {
+      return await provider.run();
+    } catch (error) {
+      const status = error instanceof ProviderError ? error.status : 0;
+      const failover = error instanceof ProviderError && error.failover;
+      console.error(`[assistant] ${provider.id} failed status=${status}`);
+      if (!failover) throw new Error(ASSISTANT_BUSY);
+      cool(provider.id, nowMs);
     }
   }
-  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", pending, slots);
+  throw new Error(ASSISTANT_BUSY);
 }

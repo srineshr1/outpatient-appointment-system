@@ -62,8 +62,7 @@ export function DoctorNotificationsWorkspace({
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-5 pt-6 pb-20 md:px-8 md:pt-10">
       {/* Hero header */}
-      <Card className="rounded-sheet p-6 md:p-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <span className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface-2 px-3.5 py-1.5 text-caption font-semibold text-ink">
               <Bell size={14} className="text-accent" />
@@ -99,7 +98,6 @@ export function DoctorNotificationsWorkspace({
             </ButtonLink>
           </div>
         </div>
-      </Card>
 
       {/* Saved feedback notice */}
       {saved && !hasActionError ? (

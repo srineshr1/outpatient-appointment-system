@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { DemoLoginButtons } from "@/components/auth/DemoLoginButtons";
 import { SignInPanel } from "@/components/auth/SignInPanel";
 import { destinationFor } from "@/lib/auth-routing";
 import { getDoctors } from "@/lib/repository";
@@ -39,14 +40,17 @@ export default async function SignInPage({ searchParams }: Props) {
   const doctors = await getDoctors();
 
   return (
-    // A new key per mode resets the form when switching between patient and staff.
-    <SignInPanel
-      key={mode}
-      nextPath={nextPath}
-      mode={mode}
-      doctors={doctors}
-      notice={notice}
-      initialView={query.mode === "signup" ? "signup" : "signin"}
-    />
+    <>
+      {/* A new key per mode resets the form when switching between patient and staff. */}
+      <SignInPanel
+        key={mode}
+        nextPath={nextPath}
+        mode={mode}
+        doctors={doctors}
+        notice={notice}
+        initialView={query.mode === "signup" ? "signup" : "signin"}
+      />
+      <DemoLoginButtons nextPath={nextPath} appearance="minimal" />
+    </>
   );
 }

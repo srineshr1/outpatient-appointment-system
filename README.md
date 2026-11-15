@@ -64,10 +64,13 @@ npm run make-doctor -- you@example.com cho "Dr Your Name"
 | Variable | Purpose |
 | --- | --- |
 | `AUTH_SECRET` | Long random string. Keys the stored code hashes and the assistant's confirmation tokens. **Set it in production.** |
-| `GEMINI_API_KEY` | Server-side key for the clinic assistant (Gemini Interactions API). Never expose it to the browser. Without this or `XAI_API_KEY` the assistant panel explains that it is not configured |
-| `GEMINI_MODEL` | Optional. Defaults to `gemini-3.5-flash-lite` |
-| `XAI_API_KEY` | Optional alternative to Gemini (xAI, `https://api.x.ai/v1`). Used only when `GEMINI_API_KEY` is unset |
-| `XAI_MODEL` | Optional. Defaults to `grok-4.3` when the xAI key is the one in use |
+| `GEMINI_API_KEY` | First Gemini account for the clinic assistant (Interactions API). Tried first. Never expose it to the browser |
+| `GEMINI_API_KEY_2` | Second Gemini account. Used only when the first Gemini call fails (quota, auth, or outage) |
+| `GEMINI_MODEL` | Optional. Both Gemini accounts. Defaults to `gemini-3.5-flash-lite` |
+| `GROQ_API_KEY` | Groq (`https://api.groq.com/openai/v1`). Used only when both Gemini calls fail or are unset |
+| `GROQ_MODEL` | Optional. Defaults to `openai/gpt-oss-120b` |
+| `XAI_API_KEY` | Optional last resort after Groq (xAI, `https://api.x.ai/v1`) |
+| `XAI_MODEL` | Optional. Defaults to `grok-4.3` |
 | `RESEND_API_KEY`, `MAIL_FROM` | Send codes by email through [Resend](https://resend.com). `MAIL_FROM` must be on a verified domain, e.g. `Westbrook <signin@yourdomain>` |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay API keys (`rzp_test_…` for test mode). Without them online payment is hidden and bookings are paid at the desk. The provider sits behind `src/lib/payments/provider.ts`, so Stripe can be added beside `razorpay.ts` |
 | `RAZORPAY_WEBHOOK_SECRET` | Secret set on the Razorpay webhook (`/api/webhooks/razorpay`). Events: `payment.captured`, `payment.authorized`, `payment.failed`, `order.paid`, `refund.created`, `refund.processed`, `refund.failed`. Without it webhooks answer 503 |
@@ -75,6 +78,8 @@ npm run make-doctor -- you@example.com cho "Dr Your Name"
 | `REMINDER_OFFSETS_MINUTES` | Optional, e.g. `1440,120` (the default). The `reminder_offsets_minutes` row in `clinic_settings` wins. Hold length is `hold_minutes` in `clinic_settings` (default 15) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable “Sign in with Google”. Register the redirect URI `<site>/auth/google/callback` in Google Cloud (OAuth client, type Web) |
 | `SHOW_LOGIN_CODES=1` | Show codes on screen in a production build with no mail key. For demos and e2e only |
+
+The assistant tries the first Gemini account, then the second Gemini account, then Groq, then xAI when that key is set. A signed-in patient or doctor can send 8 assistant messages a minute and 60 a day. A confirmation click does not use that allowance. Without any of the keys above, the panel says the assistant is not configured.
 
 ### Email codes through Supabase (the hosted app)
 

@@ -59,6 +59,7 @@ async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
   const left = page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
   if (email.endsWith("@halden.example")) {
     await page.locator("#email").fill(email);
+    await page.locator("#email").press("Enter");
     await page.locator("#password").fill(DEMO_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
   } else {
@@ -158,6 +159,7 @@ test("sign-in: email and password; a wrong password gets one generic message", a
   await expectAccessible(page);
 
   await page.locator("#email").fill("ann.lee@halden.example");
+  await page.locator("#email").press("Enter");
   await page.locator("#password").fill("not-the-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "don’t match" })).toBeVisible();

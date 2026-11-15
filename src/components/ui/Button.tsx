@@ -1,112 +1,126 @@
-"use client";
+import * as React from "react"
+import Link from "next/link"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
 
-import Link from "next/link";
-import { motion, type HTMLMotionProps } from "motion/react";
-import type { ComponentProps, ReactNode } from "react";
-import { Magnet } from "@/components/reactbits/Magnet";
-import { Spinner } from "@/components/ui/Spinner";
-import { spring } from "@/lib/motion";
-import { buttonClass, type ButtonSize, type ButtonVariant } from "./button-styles";
+import { cn } from "@/lib/utils"
+import { buttonClass } from "./button-styles"
 
-export { buttonClass, type ButtonSize, type ButtonVariant };
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+        plain: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        md: "h-10 px-4 py-2",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+)
 
-function MagneticWrap({
-  enabled,
-  fullWidth,
-  disabled,
-  children,
-}: {
-  enabled: boolean;
-  fullWidth: boolean;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
-  if (!enabled) return children;
-  return (
-    <Magnet
-      padding={24}
-      magnetStrength={2}
-      maxOffset={4}
-      disabled={disabled}
-      wrapperClassName={fullWidth ? "w-full" : undefined}
-      innerClassName={fullWidth ? "w-full" : undefined}
-    >
-      {children}
-    </Magnet>
-  );
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+  loading?: boolean
+  loadingLabel?: string
 }
 
-type ButtonProps = Omit<HTMLMotionProps<"button">, "children"> & {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  loading?: boolean;
-  loadingLabel?: string;
-  magnetic?: boolean;
-  children: ReactNode;
-};
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      className,
+      variant,
+      size,
+      asChild = false,
+      loading = false,
+      loadingLabel,
+      disabled,
+      children,
+      onClick,
+      ...props
+    },
+    ref,
+  ) => {
+    if (asChild) {
+      return (
+        <Slot
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          {...props}
+        >
+          {children}
+        </Slot>
+      )
+    }
 
-export function Button({
-  variant = "primary",
-  size = "md",
-  loading = false,
-  loadingLabel,
-  magnetic = false,
-  className = "",
-  type = "button",
-  disabled,
-  children,
-  ...props
-}: ButtonProps) {
-  const inactive = Boolean(disabled) || loading;
-  const fullWidth = className.split(/\s+/).includes("w-full");
-  return (
-    <MagneticWrap enabled={magnetic} fullWidth={fullWidth} disabled={inactive}>
-      <motion.button
-        type={type}
-        disabled={disabled}
-        aria-disabled={loading || undefined}
+    const isInactive = disabled || loading
+
+    return (
+      <button
+        ref={ref}
+        className={cn(buttonVariants({ variant, size, className }))}
+        disabled={isInactive}
         aria-busy={loading || undefined}
-        whileTap={inactive ? undefined : { scale: 0.98 }}
-        transition={spring.press}
-        className={buttonClass(variant, size, className)}
+        aria-disabled={isInactive || undefined}
+        onClick={loading ? (e) => e.preventDefault() : onClick}
         {...props}
-        onClick={loading ? (event) => event.preventDefault() : props.onClick}
       >
-        {loading ? <Spinner /> : null}
-        {loading && loadingLabel ? loadingLabel : children}
-      </motion.button>
-    </MagneticWrap>
-  );
+        {loading ? (
+          <>
+            <span
+              className="mr-2 inline-block size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+              aria-hidden="true"
+            />
+            {loadingLabel ?? children}
+          </>
+        ) : (
+          children
+        )}
+      </button>
+    )
+  },
+)
+Button.displayName = "Button"
+
+export interface ButtonLinkProps
+  extends Omit<React.ComponentProps<typeof Link>, "className">,
+    VariantProps<typeof buttonVariants> {
+  className?: string
 }
-
-const MotionLink = motion.create(Link);
-
-type ButtonLinkProps = Omit<ComponentProps<typeof MotionLink>, "children"> & {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  magnetic?: boolean;
-  children: ReactNode;
-};
 
 export function ButtonLink({
-  variant = "primary",
-  size = "md",
-  magnetic = false,
-  className = "",
+  className,
+  variant,
+  size,
   children,
   ...props
 }: ButtonLinkProps) {
-  const fullWidth = className.split(/\s+/).includes("w-full");
   return (
-    <MagneticWrap enabled={magnetic} fullWidth={fullWidth}>
-      <MotionLink
-        whileTap={{ scale: 0.98 }}
-        transition={spring.press}
-        className={buttonClass(variant, size, className)}
-        {...props}
-      >
-        {children}
-      </MotionLink>
-    </MagneticWrap>
-  );
+    <Button asChild variant={variant} size={size} className={className}>
+      <Link {...props}>{children}</Link>
+    </Button>
+  )
 }
+
+export { Button, buttonVariants, buttonClass }

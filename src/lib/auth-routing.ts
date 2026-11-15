@@ -11,8 +11,8 @@ function under(path: string, prefixes: readonly string[]): boolean {
 
 /** Each role's own starting page. */
 export function homeFor(role: Role): string {
-  // Patients land on the booking page: the landing page is for people who are not signed in yet.
-  if (role === "patient") return "/book";
+  // Patients land on their health and appointments portal; doctors on clinic book.
+  if (role === "patient") return "/appointments";
   if (role === "admin") return "/admin";
   return "/dashboard";
 }

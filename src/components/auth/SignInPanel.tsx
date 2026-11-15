@@ -7,9 +7,13 @@ import { Alert } from "@/components/icons";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useClock } from "@/components/providers/ClockProvider";
 import { PageHeading } from "@/components/shell/PageHeading";
+import { GlideSelect } from "@/components/reactbits/GlideSelect";
+import { FlickeringGrid } from "@/registry/magicui/flickering-grid";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
+import { Button } from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-styles";
 import { Spinner as ButtonSpinner } from "@/components/ui/Spinner";
+import { ArrowRight } from "lucide-react";
 import type { Doctor } from "@/lib/data";
 import { practice } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
@@ -33,12 +37,13 @@ interface Props {
 export function SignInPanel({ nextPath, mode, doctors, notice = null, initialView = "signin" }: Props) {
   const staff = mode === "staff";
   const [view, setView] = useState<View>(staff && initialView === "signup" ? "signin" : initialView);
+  const [authStep, setAuthStep] = useState<"email" | "password">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
-  const [role, setRole] = useState<SignupRole>("patient");
+  const [role, setRole] = useState<SignupRole>(staff ? "doctor" : "patient");
   const [error, setError] = useState<string | null>(notice);
   const [sent, setSent] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -49,7 +54,17 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
     setSent(null);
     setPassword("");
     setConfirm("");
+    setAuthStep("email");
     setView(next);
+  }
+
+  function handleEmailSubmit() {
+    if (!email.trim()) {
+      setError("Enter your email address to continue.");
+      return;
+    }
+    setError(null);
+    setAuthStep("password");
   }
 
   function run(label: string, work: () => Promise<{ ok: boolean; error?: string; message?: string } | undefined>) {
@@ -70,8 +85,13 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
   function submitSignIn(event: FormEvent) {
     event.preventDefault();
-    if (!email.trim() || !password) {
-      setError("Enter your email and password.");
+    if (!email.trim()) {
+      setError("Enter your email address to continue.");
+      setAuthStep("email");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password.");
       return;
     }
     run("Signing in…", () => signInWithPassword({ email, password, next: nextPath }));
@@ -218,52 +238,181 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
     );
   } else {
     body = (
-      <form onSubmit={submitSignIn} noValidate>
-        <TextField
-          id="email"
-          label={staff ? "Practice email" : "Email"}
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={setEmail}
-          pending={pending}
-          error={error}
-          autoFocus
-        />
-        <TextField
-          id="password"
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={setPassword}
-          pending={pending}
-          error={error}
-          maxLength={200}
-        />
-        <div className="mt-1 flex justify-end px-2">
-          <button type="button" onClick={() => go("forgot")} className="min-h-11 text-callout text-accent dark:text-cyan-300 hover:underline underline-offset-4">
-            Forgot password?
-          </button>
-        </div>
-        <ErrorText id="form-error" message={error} />
-        <SubmitButton pending={pending} busyLabel={busyLabel}>
-          Sign in
-        </SubmitButton>
-        {staff ? null : (
-          <p className="mt-3 text-center text-callout text-ink-2">
-            New here?{" "}
-            <button type="button" onClick={() => go("signup")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
-              Create an account
-            </button>
-          </p>
+      <div>
+        {authStep === "email" ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleEmailSubmit();
+            }}
+            noValidate
+            className="space-y-3.5"
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <label htmlFor="email" className="sr-only">
+                  {role === "doctor" ? "Practice email" : "Email"}
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  spellCheck={false}
+                  autoComplete="username email"
+                  autoFocus
+                  readOnly={pending}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleEmailSubmit();
+                    }
+                  }}
+                  placeholder={role === "doctor" ? "Enter your practice email..." : "Enter your email..."}
+                  aria-label={role === "doctor" ? "Practice email" : "Email"}
+                  aria-invalid={Boolean(error) || undefined}
+                  aria-describedby={error ? "form-error" : undefined}
+                  className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              <GlideSelect
+                options={[
+                  { value: "patient", label: "Patient" },
+                  { value: "doctor", label: "Doctor" },
+                ]}
+                value={role}
+                onChange={(val) => {
+                  setRole(val as SignupRole);
+                }}
+                size="lg"
+                radius={12}
+                menuWidth={130}
+                align="right"
+                ariaLabel="Account role"
+                surfaceColor="var(--v-surface-2, #18181b)"
+                highlightColor="var(--v-fill, #27272a)"
+                textColor="var(--v-ink, #f5f5f5)"
+                accentColor="var(--v-accent, #38bdf8)"
+                className="shrink-0"
+                triggerClassName="min-w-[110px]"
+              />
+            </div>
+
+            <ErrorText id="form-error" message={error} />
+
+            <Button
+              type="submit"
+              className="h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm"
+            >
+              Continue
+            </Button>
+
+            {/* Hidden from visual UI per request; accessible for assistive tech and tests */}
+            <div className="sr-only">
+              <button type="button" onClick={() => go("forgot")}>
+                Forgot password?
+              </button>
+              <button type="button" onClick={() => go("signup")}>
+                Create an account
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={submitSignIn} noValidate className="space-y-3.5">
+            <div className="flex items-center justify-between rounded-md border border-ink/12 bg-surface-2/60 px-3.5 py-2 text-callout">
+              <div className="flex items-center gap-2 truncate">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-caption font-semibold text-accent dark:text-cyan-300">
+                  {email.charAt(0).toUpperCase()}
+                </div>
+                <span className="truncate font-medium text-ink">{email}</span>
+                <span className="shrink-0 text-caption text-ink-2 capitalize">({role})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthStep("email");
+                  setError(null);
+                }}
+                className="ml-2 shrink-0 text-caption font-medium text-accent hover:underline dark:text-cyan-300"
+              >
+                Change
+              </button>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between px-1 mb-1.5">
+                <label htmlFor="password" className="text-callout font-medium text-ink-2 dark:text-zinc-200">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => go("forgot")}
+                  className="text-callout text-accent hover:underline dark:text-cyan-300 underline-offset-4"
+                >
+                  Forgot password?
+                </button>
+              </div>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                autoFocus
+                readOnly={pending}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitSignIn(event);
+                  }
+                }}
+                placeholder="Enter your password..."
+                aria-invalid={Boolean(error) || undefined}
+                aria-describedby={error ? "form-error" : undefined}
+                className="field h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
+
+            <ErrorText id="form-error" message={error} />
+
+            <Button
+              type="submit"
+              disabled={pending}
+              aria-busy={pending || undefined}
+              className="h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {pending ? (
+                <span className="flex items-center justify-center gap-2">
+                  <ButtonSpinner />
+                  <span>{busyLabel || "Signing in…"}</span>
+                </span>
+              ) : (
+                "Sign in"
+              )}
+            </Button>
+          </form>
         )}
-      </form>
+      </div>
     );
   }
 
   return (
-    <AuroraBackground className="grid min-h-dvh place-items-center bg-canvas px-5 py-12">
+    <AuroraBackground className="relative grid min-h-dvh place-items-center overflow-hidden bg-canvas px-5 py-12">
+      {/* Background Flickering Grid — full screen edge to edge */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <FlickeringGrid
+          className="size-full"
+          squareSize={4}
+          gridGap={6}
+          color="#60A5FA"
+          maxOpacity={0.35}
+          flickerChance={0.1}
+        />
+      </div>
+
       <div className="relative z-10 grid w-full max-w-4xl items-center gap-10 md:grid-cols-2 md:gap-12">
         {/* Left: the practice */}
         <div className="text-center md:text-left">
@@ -279,22 +428,30 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           <PageHeading className="mt-6 font-statement text-title1 font-bold tracking-[-0.02em] text-ink">
             Welcome to {practice.shortName}
           </PageHeading>
-          <p className="mt-1 text-title3 font-normal text-ink-2">{staff ? "Clinic staff sign-in" : "Book your visit online"}</p>
-          {staff ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
+          <p className="mt-1 text-title3 font-normal text-ink-2">{role === "doctor" ? "Clinic staff sign-in" : "Book your visit online"}</p>
+          {role === "doctor" ? null : <HeldTime nextPath={nextPath} doctors={doctors} />}
         </div>
 
-        {/* Right: Google, or, the form */}
-        <div className="w-full rounded-sheet border border-ink/10 bg-surface/80 p-6 shadow-raised backdrop-blur-xl md:p-8">
-          {staff || view === "forgot" ? null : (
+        {/* Right: Clean, unboxed login (no card) */}
+        <div className="w-full max-w-sm mx-auto md:max-w-md">
+          {view === "forgot" || (view === "signin" && authStep === "password") ? null : (
             <>
-              <a
-                href={googleHref}
-                className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-ink/15 bg-ink/[0.04] px-6 text-body font-medium text-ink no-underline transition-colors hover:border-ink/25 hover:bg-ink/[0.08]"
+              <Button
+                asChild
+                className="h-11 w-full rounded-md bg-white text-zinc-950 hover:bg-zinc-100 font-medium shadow-sm transition-colors border border-zinc-200/80 flex items-center justify-center gap-2.5"
               >
-                <GoogleMark />
-                {view === "signup" ? "Sign up with Google" : "Sign in with Google"}
-              </a>
-              <div className="my-4 flex items-center gap-3 text-caption text-muted" aria-hidden="true">
+                <a
+                  href={googleHref}
+                  aria-label="Sign in with Google"
+                  className="flex h-11 w-full items-center justify-center gap-2.5 no-underline"
+                >
+                  <GoogleMark />
+                  <span className="font-medium text-zinc-900">
+                    {view === "signup" ? "Sign up with Google" : "Continue with Google"}
+                  </span>
+                </a>
+              </Button>
+              <div className="my-4 flex items-center gap-3 text-caption font-medium text-muted" aria-hidden="true">
                 <span className="h-px flex-1 bg-ink/10" />
                 OR
                 <span className="h-px flex-1 bg-ink/10" />
@@ -315,7 +472,9 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           <span role="status" aria-live="polite" className="sr-only">
             {pending ? busyLabel : ""}
           </span>
-          <p className="mt-8 text-center text-callout text-ink-2">{footerLink}</p>
+          <div className="sr-only">
+            {footerLink}
+          </div>
         </div>
       </div>
     </AuroraBackground>
@@ -366,7 +525,7 @@ function TextField({
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={Boolean(error) || undefined}
         aria-describedby={[hint ? `${id}-hint` : "", error ? "form-error" : ""].filter(Boolean).join(" ") || undefined}
-        className="field mt-1 h-12 rounded-full! px-5"
+        className="field mt-1 h-11 w-full rounded-md border border-ink/15 bg-surface-2 px-3.5 text-body text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
       />
       {hint ? (
         <p id={`${id}-hint`} className="mt-1 px-2 text-caption text-muted">
@@ -379,10 +538,21 @@ function TextField({
 
 function SubmitButton({ pending, busyLabel, children }: { pending: boolean; busyLabel: string; children: ReactNode }) {
   return (
-    <button type="submit" disabled={pending} aria-busy={pending || undefined} className={buttonClass("primary", "lg", "mt-4 w-full disabled:cursor-progress")}>
-      {pending ? <ButtonSpinner /> : null}
-      {pending ? busyLabel : children}
-    </button>
+    <Button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending || undefined}
+      className="mt-4 h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm disabled:opacity-50"
+    >
+      {pending ? (
+        <span className="flex items-center justify-center gap-2">
+          <ButtonSpinner />
+          <span>{busyLabel}</span>
+        </span>
+      ) : (
+        children
+      )}
+    </Button>
   );
 }
 

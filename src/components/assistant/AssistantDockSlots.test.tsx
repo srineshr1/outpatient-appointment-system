@@ -36,7 +36,7 @@ describe("AssistantDock open times", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AssistantDock user={{ name: "Srinesh", role: "patient" }} />);
-    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
     const box = screen.getByLabelText("Message");
     fireEvent.change(box, { target: { value: "Can u find the available slots for doom" } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -60,7 +60,7 @@ describe("AssistantDock open times", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AssistantDock user={doctor} />);
-    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
     const box = screen.getByLabelText("Message");
     fireEvent.change(box, { target: { value: "open slots today" } });
     fireEvent.keyDown(box, { key: "Enter" });

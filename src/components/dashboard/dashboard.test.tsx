@@ -145,7 +145,7 @@ describe("Doctor Dashboard Redesign", () => {
     expect(screen.getByRole("link", { name: /View sessions/ })).toHaveAttribute("href", "/dashboard/sessions");
     expect(screen.getByRole("link", { name: /Edit sessions/ })).toHaveAttribute("href", "/dashboard/sessions/manage");
     expect(screen.getByRole("button", { name: /Mark complete/ })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Add / Edit panel" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^Add \/ Edit/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
   });
 
@@ -192,7 +192,7 @@ describe("Doctor Dashboard Redesign", () => {
     );
   });
 
-  it("SessionStudio renders Add / Edit panel and toggles Until date when Recurring is clicked", async () => {
+  it("SessionStudio renders Add / Edit header and toggles Date range calendar when Recurring is clicked", async () => {
     renderWithProviders(
       <SessionStudio
         doctorId="doc-1"
@@ -216,7 +216,7 @@ describe("Doctor Dashboard Redesign", () => {
     const returnInputs = document.querySelectorAll('input[name="returnTo"]') as NodeListOf<HTMLInputElement>;
     expect(returnInputs.length).toBeGreaterThan(0);
     expect(Array.from(returnInputs).every((el) => el.value === "/dashboard/sessions/manage")).toBe(true);
-    expect(screen.getByRole("heading", { name: "Add / Edit panel" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Add / Edit" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Calendar Preview" })).not.toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "Weeks of the month" })).toBeInTheDocument();
     const weekDots = screen.getAllByRole("tab", { name: /Week \d+/i });
@@ -237,11 +237,13 @@ describe("Doctor Dashboard Redesign", () => {
     expect(screen.getByText(/Sessions on Fri/i)).toBeInTheDocument();
 
     expect(screen.getByText("Affected bookings & schedule check")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Until date")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Date range/i)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("switch", { name: "Recurring" }));
-    expect(screen.getByLabelText("From date")).toBeInTheDocument();
-    expect(screen.getByLabelText("Until date")).toBeInTheDocument();
+    expect(screen.getByText(/Date range/i)).toBeInTheDocument();
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+    expect(screen.queryByLabelText("From date")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Until date")).not.toBeInTheDocument();
     expect(screen.queryByText(/Dashed blocks are the hours you just chose/)).not.toBeInTheDocument();
   });
 
@@ -298,6 +300,60 @@ describe("Doctor Dashboard Redesign", () => {
     expect(screen.getByRole("button", { name: "Submit changes" })).toBeEnabled();
   });
 
+  it("SessionStudio hides editing badge and visible room input while offering unified remove, cancel, and submit actions", async () => {
+    renderWithProviders(
+      <SessionStudio
+        doctorId="doc-1"
+        doctorName="Dr Asha Rao"
+        sessions={[SESSION_STREAM]}
+        visits={[]}
+        trims={[]}
+        today="2026-10-26"
+        nowMinutes={480}
+        room="Room 6"
+        initialSessionId="s-morning"
+        startInCreateMode={false}
+        profileComplete
+        notice={null}
+        noticeTone="info"
+        removingSession={null}
+        removingCount={0}
+      />,
+    );
+
+    // 1. "Editing session" badge is removed
+    expect(screen.queryByText(/editing session/i)).not.toBeInTheDocument();
+
+    // 2. Room or clinic is not a visible input field, but present as hidden input
+    expect(screen.queryByLabelText("Room or clinic")).not.toBeInTheDocument();
+    const hiddenRoom = document.querySelector('input[type="hidden"][name="room"]') as HTMLInputElement | null;
+    expect(hiddenRoom).not.toBeNull();
+    expect(hiddenRoom?.value).toBe("Room 6");
+
+    // 3. Action bar has Remove session on left and Cancel / Submit changes on right
+    const removeBtn = screen.getByRole("button", { name: "Remove session" });
+    const cancelBtn = screen.getByRole("button", { name: "Cancel" });
+    const submitBtn = screen.getByRole("button", { name: "Submit changes" });
+
+    expect(removeBtn).toBeInTheDocument();
+    expect(cancelBtn).toBeInTheDocument();
+    expect(submitBtn).toBeInTheDocument();
+
+    // Redundant bottom "Remove this session" card is gone
+    expect(screen.queryByText("Removes future booking availability while keeping past records.")).not.toBeInTheDocument();
+
+    // Clicking Remove session toggles confirmation state
+    await userEvent.click(removeBtn);
+    expect(screen.getByRole("button", { name: "Confirm remove" })).toBeInTheDocument();
+    const keepBtn = screen.getByRole("button", { name: "Keep" });
+    expect(keepBtn).toBeInTheDocument();
+
+    // Clicking Keep restores the initial Remove session button
+    await userEvent.click(keepBtn);
+    expect(screen.getByRole("button", { name: "Remove session" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Confirm remove" })).not.toBeInTheDocument();
+  });
+
   it("SessionStudio drops a save notice once the doctor moves to another day", async () => {
     renderWithProviders(
       <SessionStudio
@@ -345,6 +401,9 @@ describe("Doctor Dashboard Redesign", () => {
         sessionsCount={1}
       />,
     );
+
+    expect(screen.queryByText("Live on patient directory")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Your profile" })).not.toBeInTheDocument();
 
     const roomInput = screen.getByLabelText("Room or clinic");
     await userEvent.clear(roomInput);

@@ -292,59 +292,57 @@ export function ClinicBookView({
       {/* 1. Greeting Header ("Hello Dr X — You have X appointments") */}
       <section
         aria-labelledby="clinic-book-heading"
-        className="rounded-sheet border border-hairline bg-surface p-6 shadow-card md:p-8"
+        className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between"
       >
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <h1
-              id="clinic-book-heading"
-              className="text-title2 font-bold tracking-tight text-ink md:text-title1"
-            >
-              Hello {greetingName(userName, userRole)}
-            </h1>
+        <div className="min-w-0">
+          <h1
+            id="clinic-book-heading"
+            className="text-title2 font-bold tracking-tight text-ink md:text-title1"
+          >
+            Hello {greetingName(userName, userRole)}
+          </h1>
 
-            <p className="mt-1.5 text-body text-ink-2">
-              You have{" "}
-              <span className="font-semibold text-ink tabular">
-                {kpis.totalActiveAppointments}
-              </span>{" "}
-              {kpis.totalActiveAppointments === 1 ? "appointment" : "appointments"} scheduled (
-              <span className="tabular font-medium text-ink">{kpis.todayQueue}</span> today).
-            </p>
-            <p className="mt-1 text-caption text-muted">
-              You&apos;ll be signed out at{" "}
-              <time dateTime={expiresAt} className="tabular font-medium text-ink-2">
-                {expiresLabel}
-              </time>
-              .
-            </p>
-          </div>
+          <p className="mt-1.5 text-body text-ink-2">
+            You have{" "}
+            <span className="font-semibold text-ink tabular">
+              {kpis.totalActiveAppointments}
+            </span>{" "}
+            {kpis.totalActiveAppointments === 1 ? "appointment" : "appointments"} scheduled (
+            <span className="tabular font-medium text-ink">{kpis.todayQueue}</span> today).
+          </p>
+          <p className="mt-1 text-caption text-muted">
+            You&apos;ll be signed out at{" "}
+            <time dateTime={expiresAt} className="tabular font-medium text-ink-2">
+              {expiresLabel}
+            </time>
+            .
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {userRole === "doctor" ? (
-              <>
-                <ButtonLink href="/dashboard/sessions" variant="secondary" size="md">
-                  <Calendar size={16} />
-                  View sessions
-                </ButtonLink>
-                <ButtonLink href="/dashboard/sessions/manage" variant="primary" size="md">
-                  <Sliders size={16} />
-                  Edit sessions
-                </ButtonLink>
-              </>
-            ) : null}
-            {userRole === "admin" ? (
-              <ButtonLink href="/admin" variant="primary" size="md">
-                Admin console
-              </ButtonLink>
-            ) : null}
-            {userRole === "reception" ? (
-              <ButtonLink href="/book" variant="secondary" size="md">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {userRole === "doctor" ? (
+            <>
+              <ButtonLink href="/dashboard/sessions" variant="secondary" size="md">
                 <Calendar size={16} />
-                Book a visit
+                View sessions
               </ButtonLink>
-            ) : null}
-          </div>
+              <ButtonLink href="/dashboard/sessions/manage" variant="primary" size="md">
+                <Sliders size={16} />
+                Edit sessions
+              </ButtonLink>
+            </>
+          ) : null}
+          {userRole === "admin" ? (
+            <ButtonLink href="/admin" variant="primary" size="md">
+              Admin console
+            </ButtonLink>
+          ) : null}
+          {userRole === "reception" ? (
+            <ButtonLink href="/book" variant="secondary" size="md">
+              <Calendar size={16} />
+              Book a visit
+            </ButtonLink>
+          ) : null}
         </div>
       </section>
 

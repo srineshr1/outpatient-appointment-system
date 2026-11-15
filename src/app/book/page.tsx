@@ -52,7 +52,7 @@ export default async function BookPage() {
               Tap a doctor to see their week, then pick a time. You can book up to four weeks ahead.
             </p>
             {nextVisit && nextDoctor ? (
-              <div className="flex flex-wrap items-center gap-4 rounded-sheet border border-accent/20 dark:border-cyan-400/20 bg-surface p-4 shadow-card md:p-5 [background:linear-gradient(135deg,rgba(34,211,238,0.06)_0%,rgba(17,17,19,1)_60%)]">
+              <div className="flex flex-wrap items-center gap-4 rounded-sheet border border-hairline bg-surface p-4 shadow-card md:p-5">
                 <DoctorPortrait doctor={nextDoctor} size={48} className="ring-1 ring-ink/10" />
                 <p className="min-w-0 flex-1 text-callout text-ink-2">
                   <span className="block font-bold text-ink">Your next visit</span>
@@ -60,7 +60,7 @@ export default async function BookPage() {
                     {nextDoctor.short} · {formatWhen(nextVisit, today)} · {nextVisit.reference}
                   </span>
                 </p>
-                <Link href="/appointments" className="btn-chunky btn-chunky-secondary w-full sm:w-auto">
+                <Link href="/appointments" className="btn-chunky btn-chunky-primary w-full sm:w-auto">
                   Your appointments
                 </Link>
               </div>

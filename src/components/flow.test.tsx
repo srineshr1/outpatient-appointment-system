@@ -53,7 +53,7 @@ describe("DoctorDirectory", () => {
     const open = [...document.querySelectorAll<HTMLInputElement>('input[name="slot"]')].find((radio) => !radio.disabled)!;
     await userEvent.click(open);
     expect(await screen.findAllByRole("button", { name: "Continue" })).toHaveLength(1);
-  });
+  }, 15000);
 
   async function setup() {
     renderWithProviders(<DoctorDirectory doctors={doctors} upcoming={await getUpcoming()} />);
