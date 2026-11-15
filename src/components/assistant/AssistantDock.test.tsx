@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AssistantDock, DOCK_SIZE_KEY, LANGUAGE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, QUICK_PROMPTS, clampDockSize } from "./AssistantDock";
+import { AssistantDock, CHATS_KEY, DOCK_SIZE_KEY, LANGUAGE_KEY, LOCALE_KEY, MIC_BLOCKED, NO_RECOGNITION, QUICK_PROMPTS, clampDockSize } from "./AssistantDock";
 
 const dockCss = readFileSync(join(process.cwd(), "src/components/assistant/AssistantDock.css"), "utf8");
 
@@ -47,7 +47,7 @@ function setDesktop(matches: boolean) {
 
 function openDock() {
   render(<AssistantDock user={doctor} />);
-  fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+  fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
 }
 
 beforeEach(() => {
@@ -76,7 +76,7 @@ describe("AssistantDock", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AssistantDock user={doctor} />);
-    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
     const box = screen.getByLabelText("Message");
     fireEvent.change(box, { target: { value: "How many sessions today?" } });
 
@@ -267,7 +267,11 @@ describe("AssistantDock cancel", () => {
     ask("Cancel my 10:00 visit");
 
     expect(await screen.findByText("Cancel this visit")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Take it off the book" }));
+    const confirm = screen.getByRole("button", { name: /Hold to take it off the book/ });
+    fireEvent.pointerDown(confirm, { button: 0, isPrimary: true, pointerId: 1, pointerType: "mouse", clientX: 4, clientY: 4 });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2200));
+    });
 
     const cancel = await screen.findByRole("button", { name: "Cancel request" });
     fireEvent.click(cancel);
@@ -276,7 +280,7 @@ describe("AssistantDock cancel", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/assistant/confirm");
     expect(confirmInit.signal.aborted).toBe(true);
     expect(screen.getByText("Cancel this visit")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Take it off the book" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Press and hold for 2 seconds to confirm/ })).toBeEnabled();
     expect(document.querySelector(".thought-line[data-working]")).toBeNull();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
 
@@ -297,7 +301,7 @@ describe("AssistantDock cancel", () => {
     const init = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
     expect(init.signal.aborted).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
     await act(async () => {
       resolve({ ok: true, json: async () => ({ reply: "You have two sessions today." }) });
     });
@@ -953,12 +957,12 @@ describe("AssistantDock scrolling and thought line contrast", () => {
       expect(line.closest(".font-semibold")).not.toBeNull();
       expect(line.closest(".text-ink-2")).toBeNull();
       expect(line.closest(".text-muted")).toBeNull();
-      expect(line.style.getPropertyValue("--tl-color")).toBe("var(--color-ink, #1d1d1f)");
+      expect(line.style.getPropertyValue("--tl-color")).toBe("var(--color-ink)");
       expect(line.style.getPropertyValue("--tl-font")).toBe("16px");
-      // The words are never painted transparent or clipped through background-clip.
+      // The sweep is the published text shimmer, not an inline transparent color.
       const breath = line.querySelector(".thought-line__breath") as HTMLElement;
+      expect(breath.textContent).not.toBe("");
       expect(breath.style.color).not.toBe("transparent");
-      expect(breath.style.webkitTextFillColor ?? "").not.toBe("transparent");
       expect(line.querySelector(".thought-line__timer")).not.toBeNull();
     }
 
@@ -967,8 +971,7 @@ describe("AssistantDock scrolling and thought line contrast", () => {
     expect(working).toHaveAttribute("data-working");
     expect(working.querySelector(".thought-line__text[data-active]")).toHaveTextContent("Checking…");
     expectSolidInk(working);
-    // The animation is back while waiting: the shimmer layer is on (drawn by AssistantDock.css
-    // as a sheen behind the words and a gleam under them), and the sparkle breathes.
+    // Waiting runs the React Bits shimmer: the working words carry data-shimmer and the sparkle.
     expect(working.querySelector(".thought-line__breath[data-shimmer]")).not.toBeNull();
     expect(working.querySelector(".thought-line__glyph")).not.toBeNull();
     expect(working.style.getPropertyValue("--tl-shimmer")).toBe("1.8s");
@@ -986,34 +989,17 @@ describe("AssistantDock scrolling and thought line contrast", () => {
     expectSolidInk(settled);
   });
 
-  it("keeps the dock's thinking-line CSS free of transparent, clipped text and dimmed settles", () => {
+  it("does not cancel the React Bits shimmer from the dock", () => {
     const css = dockCss.replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(css).not.toMatch(/color:\s*transparent/);
-    expect(css).not.toMatch(/text-fill-color:\s*transparent/);
-    expect(css).not.toMatch(/background-clip:\s*text/);
-    expect(css).toMatch(/--tl-done:\s*1;/);
-    expect(css).toMatch(/--tl-timer:\s*1;/);
-    expect(css).toMatch(/font-weight:\s*600;/);
-    expect(css).toMatch(/color:\s*var\(--color-ink, #1d1d1f\)/);
-  });
-
-  it("animates the waiting line on separate layers, never by clipping the words", () => {
-    const css = dockCss.replace(/\/\*[\s\S]*?\*\//g, "");
-    // The words under the shimmer keep a solid fill and are never clipped.
-    const words = css.match(/\.thought-line__breath\[data-shimmer\]\s*\{[^}]*\}/)?.[0] ?? "";
-    expect(words).toMatch(/-webkit-text-fill-color:\s*var\(--color-ink, #1d1d1f\)\s*!important/);
-    expect(words).toMatch(/background-clip:\s*border-box\s*!important/);
-    // Motion: a sheen behind the words, a gleam under them, and a twinkling sparkle.
-    const sheen = css.match(/\[data-shimmer\]::before\s*\{[^}]*\}/)?.[0] ?? "";
-    const gleam = css.match(/\[data-shimmer\]::after\s*\{[^}]*\}/)?.[0] ?? "";
-    expect(sheen).toMatch(/z-index:\s*-1/);
-    expect(sheen).toMatch(/animation:\s*clinic-thought-sheen/);
-    expect(gleam).toMatch(/animation:\s*clinic-thought-gleam/);
-    expect(css).toMatch(/@keyframes clinic-thought-sheen/);
-    expect(css).toMatch(/@keyframes clinic-thought-gleam/);
-    expect(css).toMatch(/\.thought-line__glyph svg\s*\{[^}]*animation:\s*clinic-thought-twinkle/);
-    // Reduced motion turns the layers off.
-    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
+    const lineCss = readFileSync(join(process.cwd(), "src/components/assistant/ThoughtLine.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toMatch(/animation:\s*none/);
+    expect(css).not.toMatch(/text-fill-color/);
+    expect(css).not.toMatch(/background-clip/);
+    expect(css).not.toMatch(/var\(--color-ink,\s*#1d1d1f\)/);
+    const sweep = lineCss.match(/\.thought-line\[data-working\] \.thought-line__breath\[data-shimmer\]\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(sweep).toMatch(/animation:\s*thought-line-shimmer/);
+    expect(sweep).toMatch(/background-clip:\s*text/);
+    expect(lineCss).toMatch(/@keyframes thought-line-shimmer/);
   });
 
   it("sets the conversation in the dock's own typeface, not the site's Inter", () => {
@@ -1028,6 +1014,65 @@ describe("AssistantDock scrolling and thought line contrast", () => {
   });
 });
 
+describe("AssistantDock launcher and history", () => {
+  it("opens the full clinic chat from the circular launcher", () => {
+    render(<AssistantDock user={doctor} />);
+    const launcher = screen.getByRole("button", { name: "Full chat" });
+    expect(launcher).toHaveClass("rounded-full");
+    expect(screen.queryByRole("button", { name: "Ask the clinic assistant" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Ask$/ })).toBeNull();
+    fireEvent.click(launcher);
+    expect(screen.getByRole("heading", { name: "Clinic assistant" })).toHaveClass("sr-only");
+    expect(screen.queryByText("Your book")).toBeNull();
+    expect(screen.getByRole("button", { name: "History" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toHaveClass("rounded-full");
+    expect(screen.getByRole("combobox", { name: "Language" })).toHaveTextContent("Auto");
+    expect(screen.getByLabelText("Message")).toBeInTheDocument();
+  });
+
+  it("lists previous chats beside Auto and restores the one you pick", async () => {
+    window.localStorage.setItem(
+      CHATS_KEY,
+      JSON.stringify([
+        {
+          id: "c1",
+          title: "What's on my schedule today?",
+          updatedAt: Date.UTC(2026, 10, 12, 4, 30),
+          messages: [
+            { role: "user", content: "What's on my schedule today?" },
+            { role: "assistant", content: "Two sessions this morning." },
+          ],
+        },
+      ]),
+    );
+    openDock();
+    const history = screen.getByRole("button", { name: "History" });
+    const language = screen.getByRole("combobox", { name: "Language" });
+    expect(history.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(history);
+    const previous = screen.getByRole("region", { name: "Previous chats" });
+    expect(previous).toHaveClass("h-full");
+    expect(within(previous).queryByRole("button", { name: "New chat" })).toBeNull();
+    fireEvent.click(within(previous).getByRole("button", { name: /What's on my schedule today/ }));
+    expect(screen.getByText("Two sessions this morning.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Previous chats" })).toBeNull());
+  });
+
+  it("keeps a conversation in History for the next visit", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "Two sessions today." }) });
+    vi.stubGlobal("fetch", fetchMock);
+    openDock();
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "How many sessions today?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => {
+      const saved = JSON.parse(window.localStorage.getItem(CHATS_KEY) ?? "[]") as { title: string }[];
+      expect(saved[0]?.title).toBe("How many sessions today?");
+    });
+  });
+});
+
 describe("AssistantDock quick prompts", () => {
   const patient = { name: "Asha Rao", role: "patient" as const };
 
@@ -1037,7 +1082,7 @@ describe("AssistantDock quick prompts", () => {
 
   it("shows the doctor's prompts in an empty conversation", () => {
     render(<AssistantDock user={doctor} />);
-    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
     expect(promptList()).not.toBeNull();
     for (const prompt of QUICK_PROMPTS.doctor) expect(screen.getByRole("button", { name: prompt })).toBeTruthy();
     expect(screen.queryByRole("button", { name: QUICK_PROMPTS.patient[0] })).toBeNull();
@@ -1045,7 +1090,7 @@ describe("AssistantDock quick prompts", () => {
 
   it("shows the patient's prompts in an empty conversation", () => {
     render(<AssistantDock user={patient} />);
-    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
     for (const prompt of QUICK_PROMPTS.patient) expect(screen.getByRole("button", { name: prompt })).toBeTruthy();
     expect(screen.queryByRole("button", { name: QUICK_PROMPTS.doctor[0] })).toBeNull();
   });
@@ -1054,7 +1099,7 @@ describe("AssistantDock quick prompts", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ reply: "Two visits are booked today." }) });
     vi.stubGlobal("fetch", fetchMock);
     render(<AssistantDock user={doctor} />);
-    fireEvent.click(screen.getByRole("button", { name: "Ask the clinic assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full chat" }));
 
     fireEvent.click(screen.getByRole("button", { name: "What's on my schedule today?" }));
 

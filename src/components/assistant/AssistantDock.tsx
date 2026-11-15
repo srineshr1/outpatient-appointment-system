@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import type { PublicUser } from "@/lib/clinic-types";
 import { isEcho } from "@/lib/assistant/echo";
 import {
@@ -20,14 +21,28 @@ import type { SlotLink } from "@/lib/assistant/slot-links";
 import { addDays, todayIso } from "@/lib/clock";
 import { formatShortDate } from "@/lib/format";
 import { buttonClass } from "@/components/ui/button-styles";
-import { MorphSurface } from "@/components/ui/morph-surface";
 import GlideSelect from "./GlideSelect";
 import type { GlideSelectOption } from "./GlideSelect";
 import ThoughtLine from "./ThoughtLine";
+import HoldButton from "./HoldButton";
 import VoicePill from "./VoicePill";
 import type { VoicePillSource, VoicePillStopReason } from "./VoicePill";
 import "./AssistantVoicePill.css";
 import "./AssistantDock.css";
+
+/** Copied from MorphSurface: the launcher box springs in width, height, and radius. */
+const SURFACE_SPRING = { type: "spring" as const, stiffness: 550, damping: 45, mass: 0.7 } as const;
+const LAUNCHER_SIZE = 56;
+
+/** Past tense shown for a moment after a hold confirms the card. */
+function heldDone(confirmLabel: string): string {
+  if (confirmLabel === "Add session") return "Added";
+  if (confirmLabel === "Change session") return "Changed";
+  if (confirmLabel === "Cancel visit") return "Cancelled";
+  if (confirmLabel === "Book") return "Booked";
+  if (confirmLabel === "Move") return "Moved";
+  return "Done";
+}
 
 interface PendingCard {
   token: string;
@@ -48,14 +63,13 @@ interface ChatMessage {
   thoughtFor?: number;
 }
 
-/** A 16px label stays readable above a reply, including on a white dock. */
+/** A 16px label stays readable above a reply. */
 const THOUGHT_FONT_SIZE = 16;
-/** Solid theme ink (near-black on the light dock) so the line never washes out. */
-const THOUGHT_INK = "var(--color-ink, #1d1d1f)";
-/** The sparkle breathes while waiting. The words themselves never dim (see AssistantDock.css). */
-const THOUGHT_BREATH = 0.45;
-/** One pass of the sheen and the underline gleam. */
-const THOUGHT_SHIMMER_SECONDS = 1.8;
+/**
+ * Theme ink with no comma. ThoughtLine's shimmer is a color-mix() gradient, and a
+ * fallback comma inside this variable breaks that gradient and hides the words.
+ */
+const THOUGHT_INK = "var(--color-ink)";
 
 /** Suggestion chips shown before the first message, by role. Each one is a real assistant task. */
 export const QUICK_PROMPTS = {
@@ -68,8 +82,9 @@ function secondsSince(startedAt: number): number {
 }
 
 /**
- * The React Bits thinking line. It breathes while a reply is on its way, then settles
- * into "Thought for Xs" above that reply. There are no steps: the API does not stream them.
+ * The React Bits thinking line. The sparkle and the label breathe while a reply is on
+ * its way, then the line settles into "Thought for Xs" above that reply.
+ * There are no steps: the API does not stream them.
  */
 function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }) {
   return (
@@ -79,12 +94,16 @@ function ThoughtRow({ working, elapsed }: { working: boolean; elapsed?: number }
         working={working}
         elapsed={elapsed}
         label="Checking…"
+        doneLabel="Thought for"
         glyph="sparkle"
         fontSize={THOUGHT_FONT_SIZE}
         color={THOUGHT_INK}
-        breathDepth={THOUGHT_BREATH}
+        breathPeriod={1.6}
+        breathDepth={0.45}
         shimmer
-        shimmerDuration={THOUGHT_SHIMMER_SECONDS}
+        shimmerDuration={1.8}
+        settleDuration={350}
+        settleBlur={2}
         collapsible
         collapseOnSettle
         showTimer
@@ -120,6 +139,70 @@ function pillSource(): VoicePillSource {
 
 /** The last language the user spoke or wrote in, so the next visit listens in it. */
 export const LOCALE_KEY = "clinic-assistant-locale";
+
+/** Previous assistant conversations on this browser, newest first. */
+export const CHATS_KEY = "clinic-assistant-chats";
+const CHAT_LIMIT = 20;
+
+interface StoredChat {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as ChatMessage;
+  return (message.role === "user" || message.role === "assistant") && typeof message.content === "string";
+}
+
+function readChats(): StoredChat[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(CHATS_KEY) ?? "[]") as unknown;
+    if (!Array.isArray(raw)) return [];
+    const chats: StoredChat[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const chat = item as StoredChat;
+      if (typeof chat.id !== "string" || typeof chat.title !== "string" || typeof chat.updatedAt !== "number") continue;
+      if (!Array.isArray(chat.messages) || !chat.messages.every(isChatMessage)) continue;
+      chats.push({ id: chat.id, title: chat.title, updatedAt: chat.updatedAt, messages: chat.messages });
+    }
+    return chats.slice(0, CHAT_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function writeChats(chats: StoredChat[]) {
+  try {
+    window.localStorage.setItem(CHATS_KEY, JSON.stringify(chats.slice(0, CHAT_LIMIT)));
+  } catch {
+    // Private mode or full storage: history just won't be kept.
+  }
+}
+
+function newChatId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `chat-${Date.now()}`;
+}
+
+function chatTitle(messages: ChatMessage[]): string {
+  const first = messages.find((message) => message.role === "user")?.content.trim() || "Chat";
+  return first.length > 80 ? `${first.slice(0, 79)}…` : first;
+}
+
+function chatStamp(updatedAt: number): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Kolkata",
+  }).format(updatedAt);
+}
 
 /**
  * The language picked in the dock's menu: "auto" (detect each message) or a language tag such
@@ -323,6 +406,8 @@ function desktopQuery(): MediaQueryList | null {
 export function AssistantDock({ user }: { user: DockUser }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
+  // Natural panel height, so the morph ends on the real chat instead of a fixed box.
+  const [fitHeight, setFitHeight] = useState<number | null>(null);
   // On a phone the floating launcher sits over the page's right edge (toggles, Submit buttons).
   // It tucks away while the page scrolls down and comes back on the way up or at the very bottom.
   const [tucked, setTucked] = useState(false);
@@ -358,6 +443,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const [pillOpen, setPillOpen] = useState(false);
   const [pillWave, setPillWave] = useState<VoicePillSource>("simulated");
   const [languageChoice, setLanguageChoice] = useState<string>(AUTO_LANGUAGE);
+  const [chats, setChats] = useState<StoredChat[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const panelRef = useRef<HTMLDialogElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -390,6 +478,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
   const abortRef = useRef<AbortController | null>(null);
   const pillOnRef = useRef(false);
   const pillDeniedRef = useRef(false);
+  const chatIdRef = useRef<string | null>(null);
+  const historyOpenRef = useRef(false);
 
   useEffect(() => {
     const choice = initialChoice();
@@ -401,6 +491,20 @@ export function AssistantDock({ user }: { user: DockUser }) {
   useEffect(() => { pendingRef.current = pending; }, [pending]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
+  useEffect(() => { historyOpenRef.current = historyOpen; }, [historyOpen]);
+  useEffect(() => { setChats(readChats()); }, []);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const id = chatIdRef.current ?? newChatId();
+    chatIdRef.current = id;
+    setActiveChatId(id);
+    const next: StoredChat = { id, title: chatTitle(messages), updatedAt: Date.now(), messages };
+    setChats((current) => {
+      const saved = [next, ...current.filter((chat) => chat.id !== id)].slice(0, CHAT_LIMIT);
+      writeChats(saved);
+      return saved;
+    });
+  }, [messages]);
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
@@ -410,7 +514,12 @@ export function AssistantDock({ user }: { user: DockUser }) {
     if (!open) return;
     inputRef.current?.focus();
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") closePanel();
+      if (event.key !== "Escape") return;
+      if (historyOpenRef.current) {
+        setHistoryOpen(false);
+        return;
+      }
+      closePanel();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -467,6 +576,7 @@ export function AssistantDock({ user }: { user: DockUser }) {
     const saved = readDockSize();
     setSize(saved ? clampDockSize(saved, window.innerWidth, window.innerHeight) : null);
     setPillWave(pillSource());
+    setFitHeight(null);
     setOpen(true);
   }
 
@@ -1045,6 +1155,20 @@ export function AssistantDock({ user }: { user: DockUser }) {
     if (voiceOnRef.current && !busyRef.current) startListen();
   }
 
+  function showChat(nextId: string | null, nextMessages: ChatMessage[]) {
+    abortInFlight();
+    voiceOff("");
+    chatIdRef.current = nextId;
+    setActiveChatId(nextId);
+    messagesRef.current = nextMessages;
+    setMessages(nextMessages);
+    setPending(null);
+    pendingRef.current = null;
+    setDraft("");
+    setInterim("");
+    setHistoryOpen(false);
+  }
+
   const intro =
     user.role === "doctor"
       ? "Ask about today's book, your hours, or a clash. I prepare a cancellation, a move, or a new or changed session, and I wait for you to confirm before anything changes."
@@ -1056,49 +1180,79 @@ export function AssistantDock({ user }: { user: DockUser }) {
 
   const dockStyle: CSSProperties | undefined =
     isDesktop && size ? { width: size.width, height: size.height, maxHeight: "none" } : undefined;
+  const historyId = `${titleId}-history`;
+  const heightCap = typeof window === "undefined" ? 640 : Math.min(window.innerHeight * 0.88, 640);
+  const targetWidth = !isDesktop
+    ? (typeof window === "undefined" ? 360 : window.innerWidth)
+    : (size?.width ?? 416);
+  const targetHeight = size?.height ?? fitHeight;
+  const grown = open && targetHeight != null;
+  const surfaceWidth = grown ? targetWidth : LAUNCHER_SIZE;
+  const surfaceHeight = grown ? Math.min(heightCap, targetHeight) : LAUNCHER_SIZE;
+
+  useLayoutEffect(() => {
+    if (!open || size?.height) return;
+    const node = panelRef.current;
+    if (!node) return;
+    const next = Math.min(heightCap, Math.ceil(node.scrollHeight));
+    if (next > 0) setFitHeight((current) => (current === next ? current : next));
+  }, [open, size, messages, pending, waiting, voiceNote, isDesktop, heightCap]);
 
   return (
-    <>
+    <motion.div
+      className={`fixed z-40 overflow-hidden border border-hairline bg-surface text-ink ${
+        open ? "shadow-float" : "shadow-raised"
+      } ${tucked && !open ? "pointer-events-none translate-y-24 opacity-0" : ""}`}
+      style={{
+        right: open && !isDesktop ? 0 : "1.25rem",
+        bottom: open && !isDesktop ? 0 : "max(1.25rem, env(safe-area-inset-bottom))",
+      }}
+      initial={false}
+      animate={{
+        width: surfaceWidth,
+        height: surfaceHeight,
+        borderRadius: grown ? 16 : 28,
+      }}
+      transition={
+        resizing || (open && !grown)
+          ? { duration: 0 }
+          : { ...SURFACE_SPRING, delay: open ? 0 : 0.08 }
+      }
+    >
       {open ? null : (
-        <div
-          className={`fixed right-5 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 transition-[transform,opacity] duration-200 ${
-            tucked ? "pointer-events-none translate-y-24 opacity-0" : ""
-          }`}
+        <button
+          ref={launcherRef}
+          type="button"
+          aria-label="Full chat"
+          title="Full chat"
+          onClick={openPanel}
+          className="grid size-full place-items-center rounded-full text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
         >
-          <MorphSurface
-            triggerRef={launcherRef}
-            dockLabel="Clinic assistant"
-            triggerLabel="Ask"
-            triggerAriaLabel="Ask the clinic assistant"
-            onDockClick={openPanel}
-            triggerIcon={
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
-              </svg>
-            }
-            placeholder={user.role === "doctor" ? "Ask about your schedule or times..." : "Ask about a visit, doctor, or times..."}
-            collapsedWidth="auto"
-            collapsedHeight={44}
-            expandedWidth={360}
-            expandedHeight={200}
-            onExpand={openPanel}
-            onSubmit={async (formData) => {
-              const message = formData.get("message") as string;
-              if (!message?.trim()) return;
-              openPanel();
-              void send(message);
-            }}
-          />
-        </div>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H9l-4 3.5V6.5Z" />
+          </svg>
+        </button>
       )}
-      {open ? (
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            key="full-chat"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={SURFACE_SPRING}
+            className="absolute right-0 bottom-0"
+            style={{ width: targetWidth, height: targetHeight ?? "auto" }}
+          >
         <dialog
           ref={panelRef}
           open
           aria-labelledby={titleId}
           style={dockStyle}
           data-resizing={resizing ? "true" : undefined}
-          className="clinic-dock fixed inset-x-0 bottom-0 z-40 m-0 flex max-h-[min(88dvh,40rem)] min-h-0 w-auto max-w-none flex-col overflow-hidden rounded-t-3xl border border-hairline bg-surface p-0 text-ink shadow-float pb-[env(safe-area-inset-bottom)] md:inset-auto md:right-5 md:bottom-5 md:w-[26rem] md:rounded-3xl"
+          className={`clinic-dock relative m-0 flex min-h-0 w-full max-w-none flex-col overflow-hidden bg-surface p-0 text-ink pb-[env(safe-area-inset-bottom)] ${
+            targetHeight != null && targetHeight >= heightCap ? "h-full" : "h-auto"
+          }`}
         >
           {isDesktop ? (
             <>
@@ -1127,10 +1281,22 @@ export function AssistantDock({ user }: { user: DockUser }) {
               </button>
             </>
           ) : null}
-          <div className={`relative z-[5] flex flex-shrink-0 items-start justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
-            <div className="min-w-0">
-              <h2 id={titleId} className="text-callout font-semibold text-ink">Clinic assistant</h2>
-              <p className="text-caption text-muted">{user.role === "doctor" ? "Your book" : user.name}</p>
+          <div className={`relative z-[5] flex flex-shrink-0 items-center justify-between gap-3 border-b border-hairline bg-surface px-4 py-3 ${isDesktop ? "pl-9" : ""}`}>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 id={titleId} className="sr-only">Clinic assistant</h2>
+              <button
+                type="button"
+                className="grid size-8 place-items-center rounded-full text-ink hover:bg-fill focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                aria-label="History"
+                aria-expanded={historyOpen}
+                aria-controls={historyId}
+                onClick={() => setHistoryOpen((value) => !value)}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                  <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+                </svg>
+              </button>
+              {user.role === "doctor" ? null : <p className="truncate text-caption text-muted">{user.name}</p>}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5">
               {/*
@@ -1158,11 +1324,64 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 glideDuration={220}
                 rememberPosition
               />
-              <button type="button" className={buttonClass("plain")} onClick={closePanel}>
-                Close
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={closePanel}
+                className="grid size-8 place-items-center rounded-full border border-hairline text-ink hover:bg-fill focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                  <path d="M3 3l8 8M11 3 3 11" />
+                </svg>
               </button>
             </div>
           </div>
+          <AnimatePresence>
+            {historyOpen ? (
+              <div className="absolute inset-0 z-30">
+                <motion.button
+                  type="button"
+                  aria-label="Close history"
+                  className="absolute inset-0 bg-black/45"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25, ease: [0.05, 0.7, 0.1, 1] }}
+                  onClick={() => setHistoryOpen(false)}
+                />
+                <motion.div
+                  id={historyId}
+                  role="region"
+                  aria-label="Previous chats"
+                  className="absolute inset-y-0 left-0 flex h-full w-64 max-w-[78%] flex-col bg-surface shadow-float"
+                  initial={{ x: "-100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "-100%" }}
+                  transition={{ duration: 0.28, ease: [0.05, 0.7, 0.1, 1] }}
+                >
+                  <p className="px-4 pt-4 pb-2 text-[15px] font-medium text-ink">Previous chats</p>
+                  {chats.length === 0 ? (
+                    <p className="px-4 py-3 text-caption text-muted">No previous chats yet.</p>
+                  ) : (
+                    <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+                      {chats.map((chat) => (
+                        <li key={chat.id}>
+                          <button
+                            type="button"
+                            className={`flex w-full flex-col items-start gap-0.5 px-4 py-2.5 text-left hover:bg-fill ${chat.id === activeChatId ? "bg-fill" : ""}`}
+                            onClick={() => showChat(chat.id, chat.messages)}
+                          >
+                            <span className="w-full truncate text-[15px] text-ink">{chat.title}</span>
+                            <span className="text-[12px] text-muted">{chatStamp(chat.updatedAt)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </motion.div>
+              </div>
+            ) : null}
+          </AnimatePresence>
           {voiceNote ? <p className="flex-shrink-0 px-4 pt-3 text-caption text-warn">{voiceNote}</p> : null}
           <div
             ref={scrollerRef}
@@ -1212,10 +1431,28 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 <p className="text-callout font-semibold text-ink">{pending.title}</p>
                 <p className="mt-1 text-callout text-ink-2">{pending.summary}</p>
                 <p className="mt-1 text-caption text-muted">Nothing changes until you confirm. This offer expires {expiryLabel(pending.expiresAt)}.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" className={buttonClass("primary")} disabled={waiting} onClick={() => void decide("confirm")}>
-                    {pending.confirmLabel}
-                  </button>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <HoldButton
+                    doneLabel={heldDone(pending.confirmLabel)}
+                    backgroundColor="#27272a"
+                    fillColor="#5227FF"
+                    textColor="#f5f5f5"
+                    fillTextColor="#ffffff"
+                    size="md"
+                    radius={14}
+                    fillDirection="right"
+                    holdTime={2000}
+                    releaseTime={200}
+                    pressScale={0.97}
+                    wave
+                    waveAmplitude={6}
+                    glow
+                    resetAfter={1200}
+                    disabled={waiting}
+                    onHold={() => void decide("confirm")}
+                  >
+                    {`Hold to ${pending.confirmLabel.charAt(0).toLowerCase()}${pending.confirmLabel.slice(1)}`}
+                  </HoldButton>
                   <button type="button" className={buttonClass("secondary")} disabled={waiting} onClick={() => void decide("reject")}>
                     Don't change
                   </button>
@@ -1296,7 +1533,9 @@ export function AssistantDock({ user }: { user: DockUser }) {
             )}
           </form>
         </dialog>
-      ) : null}
-    </>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
   );
 }
