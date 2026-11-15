@@ -189,14 +189,33 @@ describe("AssistantDock cancel", () => {
     fireEvent.keyDown(box, { key: "Enter" });
   }
 
+  it("shows an iMessage-style up-arrow Send button, disabled until there is text", () => {
+    openDock();
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toHaveAttribute("type", "submit");
+    expect(send).toHaveClass("clinic-send-button");
+    expect(send).toHaveAttribute("data-state", "send");
+    expect(send.querySelector('svg[data-icon="send-arrow"]')).not.toBeNull();
+    expect(send).not.toHaveTextContent(/\S/);
+    expect(send).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Hi" } });
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
   it("turns Send into an enabled Cancel while a reply is on its way", async () => {
     deferredFetch();
     openDock();
     ask("How many sessions today?");
 
     const cancel = await screen.findByRole("button", { name: "Cancel request" });
-    expect(cancel).toHaveTextContent("Cancel");
     expect(cancel).toBeEnabled();
+    expect(cancel).toHaveClass("clinic-send-button");
+    expect(cancel).toHaveAttribute("data-state", "stop");
+    expect(cancel.querySelector('svg[data-icon="stop-square"]')).not.toBeNull();
+    expect(cancel.querySelector('svg[data-icon="send-arrow"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Checking…");
   });

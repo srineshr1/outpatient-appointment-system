@@ -41,3 +41,92 @@
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+/*
+ * The composer's send button, iMessage style: a 36px filled circle with a bold white up arrow.
+ * Accent blue when there is something to send, a muted grey disc when the box is empty.
+ * While a reply is on its way the same circle becomes an iOS-red stop button with a white
+ * rounded square; pressing it aborts the request.
+ */
+.clinic-send-button {
+  --send-blue: var(--color-accent);
+  --send-red: #ff3b30;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  color: #ffffff;
+  background: var(--send-blue);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+:where(html.dark) .clinic-send-button {
+  /* The dark theme's accent is a pale sky blue; iMessage's dark-mode blue keeps the arrow white. */
+  --send-blue: #0a84ff;
+  --send-red: #ff453a;
+}
+
+.clinic-send-button[data-state="stop"] {
+  background: var(--send-red);
+}
+
+.clinic-send-button:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.clinic-send-button:not(:disabled):active {
+  transform: scale(0.92);
+}
+
+.clinic-send-button:disabled {
+  color: var(--color-muted);
+  background: var(--color-fill-strong);
+  cursor: default;
+}
+
+.clinic-send-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.clinic-send-button[data-state="stop"]:focus-visible {
+  outline-color: var(--send-red);
+}
+
+.clinic-send-icon {
+  display: block;
+}
+
+/* The arrow/stop swap pops in only when motion is welcome. */
+@media (prefers-reduced-motion: no-preference) {
+  .clinic-send-icon {
+    animation: clinic-send-swap 160ms ease-out;
+  }
+}
+
+@keyframes clinic-send-swap {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clinic-send-button {
+    transition: background-color 100ms ease;
+  }
+
+  .clinic-send-button:not(:disabled):active {
+    transform: none;
+  }
+}
