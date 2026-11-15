@@ -64,9 +64,16 @@ function visit(doctorId: string, overrides: Partial<AppointmentRecord> = {}): Ap
 }
 
 async function withModel<T>(replies: unknown[], run: (fetchMock: ReturnType<typeof vi.fn>) => Promise<T>): Promise<T> {
-  const saved = { xai: process.env.XAI_API_KEY, gemini: process.env.GEMINI_API_KEY };
+  const saved = {
+    xai: process.env.XAI_API_KEY,
+    gemini: process.env.GEMINI_API_KEY,
+    gemini2: process.env.GEMINI_API_KEY_2,
+    groq: process.env.GROQ_API_KEY,
+  };
   process.env.XAI_API_KEY = "test-key";
   delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY_2;
+  delete process.env.GROQ_API_KEY;
   const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify(replies.shift()) }));
   vi.stubGlobal("fetch", fetchMock);
   try {
@@ -75,7 +82,12 @@ async function withModel<T>(replies: unknown[], run: (fetchMock: ReturnType<type
     vi.unstubAllGlobals();
     if (saved.xai === undefined) delete process.env.XAI_API_KEY;
     else process.env.XAI_API_KEY = saved.xai;
-    if (saved.gemini !== undefined) process.env.GEMINI_API_KEY = saved.gemini;
+    if (saved.gemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = saved.gemini;
+    if (saved.gemini2 === undefined) delete process.env.GEMINI_API_KEY_2;
+    else process.env.GEMINI_API_KEY_2 = saved.gemini2;
+    if (saved.groq === undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY = saved.groq;
   }
 }
 

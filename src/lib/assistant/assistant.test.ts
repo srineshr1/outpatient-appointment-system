@@ -13,7 +13,7 @@ import { lockedLanguage } from "./language";
 import { prescriptions, searchDoctors, visitConflicts } from "./read";
 import { bookingHref, mergeSlotLinks, type SlotLink } from "./slot-links";
 import { runTool } from "./tools";
-import { handleTurn, resetTurnsForTests } from "./turn";
+import { allowTurn, ASSISTANT_MAX_BYTES, beginModelTurn, endModelTurn, handleTurn, readAssistantJson, resetTurnsForTests } from "./turn";
 
 beforeEach(() => {
   process.env.ASSISTANT_TOKEN_SECRET = "assistant-test-secret";
@@ -233,20 +233,45 @@ describe("assistant clinic actions", () => {
   });
 });
 
+const PROVIDER_KEYS = ["GEMINI_API_KEY", "GEMINI_API_KEY_2", "GROQ_API_KEY", "XAI_API_KEY"] as const;
+
+function saveProviderEnv(): Record<(typeof PROVIDER_KEYS)[number], string | undefined> {
+  return {
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_API_KEY_2: process.env.GEMINI_API_KEY_2,
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    XAI_API_KEY: process.env.XAI_API_KEY,
+  };
+}
+
+function restoreProviderEnv(saved: Record<(typeof PROVIDER_KEYS)[number], string | undefined>): void {
+  for (const key of PROVIDER_KEYS) {
+    const value = saved[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
+/** Leave only the named fake keys, so a developer .env.local cannot pick a different provider. */
+function useProviderKeys(keys: Partial<Record<(typeof PROVIDER_KEYS)[number], string>>): Record<(typeof PROVIDER_KEYS)[number], string | undefined> {
+  const saved = saveProviderEnv();
+  for (const key of PROVIDER_KEYS) delete process.env[key];
+  for (const [key, value] of Object.entries(keys)) {
+    if (value) process.env[key] = value;
+  }
+  return saved;
+}
+
 describe("assistant languages", () => {
   async function withXai<T>(replies: unknown[], run: (fetchMock: ReturnType<typeof vi.fn>) => Promise<T>): Promise<T> {
-    const saved = { xai: process.env.XAI_API_KEY, gemini: process.env.GEMINI_API_KEY };
-    process.env.XAI_API_KEY = "test-key";
-    delete process.env.GEMINI_API_KEY;
+    const saved = useProviderKeys({ XAI_API_KEY: "test-key" });
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify(replies.shift()) }));
     vi.stubGlobal("fetch", fetchMock);
     try {
       return await run(fetchMock);
     } finally {
       vi.unstubAllGlobals();
-      if (saved.xai === undefined) delete process.env.XAI_API_KEY;
-      else process.env.XAI_API_KEY = saved.xai;
-      if (saved.gemini !== undefined) process.env.GEMINI_API_KEY = saved.gemini;
+      restoreProviderEnv(saved);
     }
   }
 
@@ -365,9 +390,7 @@ describe("assistant open-time links", () => {
 
   it("passes the tools' open times through a turn alongside the reply", async () => {
     const patient = await account("user-patient-demo");
-    const saved = { xai: process.env.XAI_API_KEY, gemini: process.env.GEMINI_API_KEY };
-    process.env.XAI_API_KEY = "test-key";
-    delete process.env.GEMINI_API_KEY;
+    const saved = useProviderKeys({ XAI_API_KEY: "test-key" });
     const replies = [
       { output: [{ type: "function_call", name: "list_open_slots", call_id: "c1", arguments: JSON.stringify({ doctorId: "cho" }) }] },
       { output_text: "Dr Cho has times today and tomorrow. Tap one to book it." },
@@ -384,9 +407,7 @@ describe("assistant open-time links", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
       vi.unstubAllGlobals();
-      if (saved.xai === undefined) delete process.env.XAI_API_KEY;
-      else process.env.XAI_API_KEY = saved.xai;
-      if (saved.gemini !== undefined) process.env.GEMINI_API_KEY = saved.gemini;
+      restoreProviderEnv(saved);
     }
   });
 });
