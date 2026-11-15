@@ -4,6 +4,16 @@ import { useState } from "react";
 import { type DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar-range-select-utils/calendar";
 
+const rangeClassNames = {
+  range_start: "bg-blue-500/20 rounded-l-full",
+  range_end: "bg-blue-500/20 rounded-r-full",
+  range_middle: "bg-blue-500/20",
+  day_button:
+    "data-[range-end=true]:rounded-full! data-[range-start=true]:rounded-full! data-[range-start=true]:bg-blue-500! data-[range-start=true]:text-white! data-[range-start=true]:group-data-[focused=true]/day:ring-blue-500/20 data-[range-end=true]:bg-blue-500! data-[range-end=true]:text-white! data-[range-end=true]:group-data-[focused=true]/day:ring-blue-500/20 data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-transparent hover:rounded-full",
+  today:
+    "rounded-full bg-fill data-[selected=true]:bg-transparent! data-[selected=true]:rounded-none! [&_button[data-range-middle=true]]:bg-transparent!",
+};
+
 export interface CalendarRangeSelectProps {
   dateRange?: DateRange;
   onSelect?: (range: DateRange | undefined) => void;
@@ -24,14 +34,7 @@ export function CalendarRangeSelect({
       selected={dateRange}
       onSelect={onSelect}
       className={className}
-      classNames={{
-        range_start: "bg-blue-500/20 rounded-l-full",
-        range_end: "bg-blue-500/20 rounded-r-full",
-        day_button:
-          "data-[range-end=true]:rounded-full! data-[range-start=true]:rounded-full! data-[range-start=true]:bg-blue-500! data-[range-start=true]:text-white! data-[range-start=true]:group-data-[focused=true]/day:ring-blue-500/20  data-[range-end=true]:bg-blue-500! data-[range-end=true]:text-white! data-[range-end=true]:group-data-[focused=true]/day:ring-blue-500/20 data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-blue-500/20 hover:rounded-full",
-        today:
-          "data-[selected=true]:rounded-l-none! rounded-full bg-accent! data-[selected=true]:bg-blue-500/20! [&_button[data-range-middle=true]]:bg-transparent!",
-      }}
+      classNames={rangeClassNames}
     />
   );
 }
@@ -50,14 +53,7 @@ const CustomRangeSelectDemo = () => {
         selected={dateRange}
         onSelect={setDateRange}
         className="rounded-md border"
-        classNames={{
-          range_start: "bg-blue-500/20 rounded-l-full",
-          range_end: "bg-blue-500/20 rounded-r-full",
-          day_button:
-            "data-[range-end=true]:rounded-full! data-[range-start=true]:rounded-full! data-[range-start=true]:bg-blue-500! data-[range-start=true]:text-white! data-[range-start=true]:group-data-[focused=true]/day:ring-blue-500/20  data-[range-end=true]:bg-blue-500! data-[range-end=true]:text-white! data-[range-end=true]:group-data-[focused=true]/day:ring-blue-500/20 data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-blue-500/20 hover:rounded-full",
-          today:
-            "data-[selected=true]:rounded-l-none! rounded-full bg-accent! data-[selected=true]:bg-blue-500/20! [&_button[data-range-middle=true]]:bg-transparent!",
-        }}
+        classNames={rangeClassNames}
       />
     </>
   );

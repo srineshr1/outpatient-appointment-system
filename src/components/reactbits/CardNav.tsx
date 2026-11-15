@@ -52,6 +52,10 @@ export interface CardNavProps {
   ariaLabel?: string;
   className?: string;
   style?: React.CSSProperties;
+  /** Controls drawn on the right, just before Menu. */
+  end?: React.ReactNode;
+  /** No pill behind the bar until the menu is open. */
+  flat?: boolean;
 }
 
 const THEMES: Record<'dark' | 'light', Record<string, string>> = {
@@ -80,7 +84,7 @@ const THEMES: Record<'dark' | 'light', Record<string, string>> = {
     '--cn-highlight': 'rgba(255, 255, 255, 0.95)',
     '--cn-shadow': '0 24px 48px -24px rgba(24, 24, 27, 0.3), 0 6px 16px -10px rgba(24, 24, 27, 0.16)',
     '--cn-text': '#18181b',
-    '--cn-muted': 'rgba(244, 244, 27, 0.56)',
+    '--cn-muted': 'rgba(24, 24, 27, 0.56)',
     '--cn-hover': 'rgba(24, 24, 27, 0.05)',
     '--cn-ring': 'rgba(24, 24, 27, 0.45)',
     '--cn-tile': 'linear-gradient(180deg, #ffffff 0%, #f8f8fa 100%)',
@@ -199,7 +203,9 @@ export const CardNav: React.FC<CardNavProps> = ({
   onLinkClick,
   ariaLabel = 'Main',
   className = '',
-  style
+  style,
+  end,
+  flat = false
 }) => {
   const contentId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -488,7 +494,7 @@ export const CardNav: React.FC<CardNavProps> = ({
   return (
     <div
       ref={rootRef}
-      className={[ROOT, className].filter(Boolean).join(' ')}
+      className={[ROOT, flat ? 'card-nav--flat' : '', className].filter(Boolean).join(' ')}
       data-open={open ? '' : undefined}
       data-shown={shown || open ? '' : undefined}
       data-narrow={narrow ? '' : undefined}
@@ -498,32 +504,6 @@ export const CardNav: React.FC<CardNavProps> = ({
     >
       <nav ref={panelRef} className={PANEL} aria-label={ariaLabel}>
         <div ref={barRef} className={BAR}>
-          <button
-            ref={menuRef}
-            type="button"
-            className={MENU}
-            data-icon-only={menuLabel ? undefined : ''}
-            aria-expanded={open}
-            aria-controls={contentId}
-            aria-label={menuLabel ? undefined : open ? 'Close menu' : 'Open menu'}
-            onClick={() => setOpen(!open)}
-          >
-            <span className={BURGER} aria-hidden="true">
-              <span className={LINE_TOP} />
-              <span className={LINE_BOTTOM} />
-            </span>
-            {menuLabel && (
-              <span className={MENU_LABEL}>
-                <span className={WORD_OPEN} aria-hidden={open}>
-                  Menu
-                </span>
-                <span className={WORD_CLOSE} aria-hidden={!open}>
-                  Close
-                </span>
-              </span>
-            )}
-          </button>
-
           {logo && (
             <LinkComponent href={logoHref} className={LOGO} aria-label={logoAlt}>
               {typeof logo === 'string' ? (
@@ -535,7 +515,34 @@ export const CardNav: React.FC<CardNavProps> = ({
             </LinkComponent>
           )}
 
-          {cta && !narrow && ctaButton(cta, false)}
+          <div className="card-nav__end">
+            {end}
+            <button
+              ref={menuRef}
+              type="button"
+              className={MENU}
+              data-icon-only={menuLabel && !narrow ? undefined : ''}
+              aria-expanded={open}
+              aria-controls={contentId}
+              aria-label={menuLabel && !narrow ? undefined : open ? 'Close menu' : 'Open menu'}
+              onClick={() => setOpen(!open)}
+            >
+              <span className={BURGER} aria-hidden="true">
+                <span className={LINE_TOP} />
+                <span className={LINE_BOTTOM} />
+              </span>
+              {menuLabel && !narrow ? (
+                <span className={MENU_LABEL}>
+                  <span className={WORD_OPEN} aria-hidden={open}>
+                    Menu
+                  </span>
+                  <span className={WORD_CLOSE} aria-hidden={!open}>
+                    Close
+                  </span>
+                </span>
+              ) : null}
+            </button>
+          </div>
         </div>
 
         <div ref={contentRef} id={contentId} className={CONTENT} aria-hidden={!open}>
@@ -582,7 +589,7 @@ export const CardNav: React.FC<CardNavProps> = ({
               </div>
             ))}
           </div>
-          {cta && narrow && (
+          {cta ? (
             <div
               ref={element => {
                 cardRefs.current[items.length] = element;
@@ -590,7 +597,7 @@ export const CardNav: React.FC<CardNavProps> = ({
             >
               {ctaButton(cta, true)}
             </div>
-          )}
+          ) : null}
         </div>
         <span className={RIM} />
       </nav>

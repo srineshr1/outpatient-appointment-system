@@ -13,6 +13,7 @@ import {
   type FocusEvent,
   type RefObject,
 } from "react";
+import { BookAppointmentButton } from "@/components/booking/BookAppointmentButton";
 import { Bell, Check, ChevronDown, ChevronRight, Close, Menu, Phone, SignOut } from "@/components/icons";
 import { useBooking } from "@/components/providers/BookingProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
@@ -277,12 +278,9 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
                 >
                   Sign in
                 </Link>
-                <Link
-                  href={bookHref}
-                  className={buttonClass("primary", "md", "hidden md:inline-flex md:px-4 lg:px-5")}
-                >
-                  Book an appointment
-                </Link>
+                <div className="hidden md:block">
+                  <BookAppointmentButton href={bookHref} />
+                </div>
               </>
             )}
 
@@ -362,13 +360,7 @@ export function SiteHeader({ user, unread = 0 }: { user: HeaderUser | null; unre
                   </div>
                 ) : (
                   <div className="grid gap-2 px-3">
-                    <Link
-                      href={bookHref}
-                      onClick={() => setMenuOpen(false)}
-                      className={buttonClass("primary", "lg", "w-full")}
-                    >
-                      Book an appointment
-                    </Link>
+                    <BookAppointmentButton href={bookHref} fullWidth onClick={() => setMenuOpen(false)} />
                     <Link
                       href={signInHref}
                       onClick={() => setMenuOpen(false)}

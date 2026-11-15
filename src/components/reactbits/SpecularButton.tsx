@@ -468,7 +468,6 @@ const SpecularButton = ({
       gl.deleteBuffer(buffer);
       gl.deleteVertexArray(vao);
       gl.deleteProgram(program);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, []);
 

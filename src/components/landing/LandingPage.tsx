@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BookAppointmentButton } from "@/components/booking/BookAppointmentButton";
 import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { DoctorDirectory } from "@/components/directory/DoctorDirectory";
 import { Check, Clock, Lock, Phone, Pin } from "@/components/icons";
@@ -14,6 +15,7 @@ import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { GradientBadge } from "@/components/ui/GradientBadge";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
+import { SunMoonToggle } from "@/components/ui/SunMoonToggle";
 import { practice, type Doctor, type Slot } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
 import { spring } from "@/lib/motion";
@@ -103,18 +105,19 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
       {/* ---------- Interactive CardNav Floating Navigation ---------- */}
       <header className="relative z-30 pt-4 pb-1 px-4 sm:px-6 md:px-8 max-w-page mx-auto w-full">
         <CardNav
+          flat
           logo={
-            <span className="flex items-center gap-2.5 font-bold tracking-tight text-ink text-sm sm:text-base">
-              <span className="flex size-7 items-center justify-center rounded-lg bg-teal-600 text-white font-bold text-xs shadow-sm">
+            <span className="flex min-w-0 items-center gap-2.5 font-bold tracking-tight text-ink">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-xs font-bold text-white shadow-sm">
                 W
               </span>
-              <span className="hidden sm:inline">{practice.name}</span>
-              <span className="sm:hidden">Westbrook</span>
+              <span className="truncate text-sm sm:text-base">{practice.name}</span>
             </span>
           }
           logoHref="/"
           logoAlt={practice.name}
           items={HOSPITAL_NAV_ITEMS}
+          end={<SunMoonToggle />}
           cta={{
             label: "Book appointment",
             href: bookHref,
@@ -164,6 +167,9 @@ export function LandingPage({ doctors, upcoming, role }: Props) {
                 <Perk>Same day until {practice.sameDayClose}</Perk>
                 <Perk>Cancel online any time</Perk>
               </ul>
+              <div className="mt-8">
+                <BookAppointmentButton href={bookHref} animated />
+              </div>
             </motion.div>
 
             {/* Portrait collage */}
