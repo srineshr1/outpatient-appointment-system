@@ -1523,12 +1523,26 @@ export function AssistantDock({ user }: { user: DockUser }) {
               </span>
             </div>
             {waiting ? (
-              <button type="button" className={`${buttonClass("secondary")} h-12`} aria-label="Cancel request" onClick={cancelRequest}>
-                Cancel
+              // iOS-style stop: a red circle with a white rounded square. It aborts the request.
+              <button
+                type="button"
+                className="clinic-send-button"
+                data-state="stop"
+                aria-label="Cancel request"
+                onClick={cancelRequest}
+              >
+                <StopSquareIcon />
               </button>
             ) : (
-              <button type="submit" className={`${buttonClass("primary")} h-12`} disabled={!(interim || draft).trim()}>
-                Send
+              // iMessage-style send: a filled circle with a bold white up arrow.
+              <button
+                type="submit"
+                className="clinic-send-button"
+                data-state="send"
+                aria-label="Send"
+                disabled={!(interim || draft).trim()}
+              >
+                <SendArrowIcon />
               </button>
             )}
           </form>
@@ -1537,5 +1551,23 @@ export function AssistantDock({ user }: { user: DockUser }) {
         ) : null}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+/** The bold up arrow on the send button (iMessage style). */
+function SendArrowIcon() {
+  return (
+    <svg className="clinic-send-icon" data-icon="send-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <path d="M12 19.5V5M5.5 11.25 12 4.75l6.5 6.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The filled rounded square on the stop button. */
+function StopSquareIcon() {
+  return (
+    <svg className="clinic-send-icon" data-icon="stop-square" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <rect x="1" y="1" width="12" height="12" rx="3" fill="currentColor" />
+    </svg>
   );
 }
