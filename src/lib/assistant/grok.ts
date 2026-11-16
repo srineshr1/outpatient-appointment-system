@@ -166,7 +166,8 @@ function systemPrompt(user: PublicUser, language: DetectedLanguage, locked = fal
     "Do not reveal dates of birth, phone numbers, CHI numbers, or another person's visits. A doctor may use the patient names the tools return for their own book.",
     "Do not read out slot ids or confirmation tokens.",
     user.role === "patient"
-      ? "When the user asks what is free or open without naming a doctor, call list_open_slots once without doctorId (it covers every doctor) and do not search doctors first. When a tool returns open times, the app lists them under your reply, grouped by day, and each time opens the booking form for it. Do not list the times yourself. Say in one short sentence which doctors and days have times and that the user can tap a time to book it, or ask you to prepare the booking."
+      ? "To book, call book_time once with the doctor (a first name is enough; if the user doesn't repeat it, use the doctor from the conversation or the times shown earlier), the day (from the message or the conversation; omit if none) and the time as said ('11', '11:20', '1120'). Do not call search_doctors, list_open_slots or propose_book first. A short reply such as '11' or '11:20' right after times were shown is a booking request for that doctor and day. To move a visit, call move_to_time. If a tool asks a question, ask it; never say you couldn't finish. " +
+        "When the user asks what is free or open without naming a doctor, call list_open_slots once without doctorId (it covers every doctor) and do not search doctors first. When a tool returns open times, the app lists them under your reply, grouped by day, and each time opens the booking form for it. Do not list the times yourself. Say in one short sentence which doctors and days have times and that the user can tap a time to book it, or ask you to prepare the booking."
       : "When a tool returns open times, the app lists them under your reply, grouped by day. Do not list the times yourself. Summarise in one short sentence, for example how many are open and on which days.",
     ...(locked
       ? [
@@ -219,10 +220,9 @@ async function complete(input: unknown[], tools: ReturnType<typeof toolSpecs>): 
     {
       model: xaiModel(),
       input,
-      tools,
+      ...(tools.length ? { tools, parallel_tool_calls: true } : {}),
       store: false,
       max_output_tokens: 1200,
-      parallel_tool_calls: true,
     },
   )) as GrokBody;
 }
@@ -267,7 +267,7 @@ function geminiCalls(steps: Array<Record<string, unknown>>) {
 let geminiConfigRejected = false;
 
 async function completeGemini(input: unknown[], tools: ReturnType<typeof toolSpecs>, system: string, apiKey: string): Promise<GeminiBody> {
-  const base = { model: geminiModel(), store: false, system_instruction: system, input, tools };
+  const base = { model: geminiModel(), store: false, system_instruction: system, input, ...(tools.length ? { tools } : {}) };
   const post = (payload: unknown) => postProvider(GEMINI_ENDPOINT, { "x-goog-api-key": apiKey }, payload) as Promise<GeminiBody>;
   if (geminiConfigRejected) return post(base);
   try {
@@ -313,9 +313,7 @@ async function completeGroq(messages: unknown[], tools: ReturnType<typeof toolSp
     {
       model: groqModel(),
       messages,
-      tools: groqTools(tools),
-      tool_choice: "auto",
-      parallel_tool_calls: true,
+      ...(tools.length ? { tools: groqTools(tools), tool_choice: "auto", parallel_tool_calls: true } : {}),
       max_tokens: 1200,
       // gpt-oss reasons before answering; a short reply about the clinic book needs little.
       ...(/gpt-oss/.test(groqModel()) ? { reasoning_effort: "low" } : {}),
@@ -326,6 +324,19 @@ async function completeGroq(messages: unknown[], tools: ReturnType<typeof toolSp
 interface ToolState {
   pending: PendingCard | null;
   slots: SlotLink[];
+}
+
+/** The last step gets no tools, so the model has to answer (or ask) instead of calling another one. */
+function toolsFor(step: number, tools: ReturnType<typeof toolSpecs>): ReturnType<typeof toolSpecs> {
+  return step === MAX_STEPS - 1 ? [] : tools;
+}
+
+/** Never a dead end: a prepared change is shown for confirmation, otherwise ask one question. */
+export const CLARIFY_BOOKING = "Which doctor, day and time would you like? For example: “Book Dr Kavya Reddy tomorrow at 11:00”.";
+
+function wrapUp(state: ToolState): ModelAnswer {
+  if (state.pending) return answer("Please check the details below and confirm.", state.pending, state.slots);
+  return answer(CLARIFY_BOOKING, null, state.slots);
 }
 
 function parseArgs(rawArgs: unknown): unknown {
@@ -403,7 +414,14 @@ async function askGemini(
   const state: ToolState = { pending: null, slots: [] };
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const body = await timed(timing, () => completeGemini(input, tools, system, apiKey));
+    let body: GeminiBody;
+    try {
+      body = await timed(timing, () => completeGemini(input, toolsFor(step, tools), system, apiKey));
+    } catch (error) {
+      // A provider that won't take the tool-less last step still leaves a usable answer.
+      if (step === MAX_STEPS - 1) return wrapUp(state);
+      throw error;
+    }
     const steps = body.steps ?? [];
     const calls = geminiCalls(steps);
     if (calls.length === 0) {
@@ -420,7 +438,7 @@ async function askGemini(
       });
     });
   }
-  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", state.pending, state.slots);
+  return wrapUp(state);
 }
 
 /** Groq's OpenAI-compatible chat completions. Tool results are not stored on our side. */
@@ -436,7 +454,14 @@ async function askGroq(
   const state: ToolState = { pending: null, slots: [] };
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const body = await timed(timing, () => completeGroq(messages, tools));
+    let body: GroqBody;
+    try {
+      body = await timed(timing, () => completeGroq(messages, toolsFor(step, tools)));
+    } catch (error) {
+      // A provider that won't take the tool-less last step still leaves a usable answer.
+      if (step === MAX_STEPS - 1) return wrapUp(state);
+      throw error;
+    }
     const message = body.choices?.[0]?.message;
     const calls = (message?.tool_calls ?? []).filter((call) => call.id && call.function?.name);
     const text = typeof message?.content === "string" ? message.content.trim() : "";
@@ -454,7 +479,7 @@ async function askGroq(
       messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(outputs[index]).slice(0, 12_000) });
     });
   }
-  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", state.pending, state.slots);
+  return wrapUp(state);
 }
 
 async function askXai(
@@ -469,7 +494,14 @@ async function askXai(
   const state: ToolState = { pending: null, slots: [] };
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const body = await timed(timing, () => complete(input, tools));
+    let body: GrokBody;
+    try {
+      body = await timed(timing, () => complete(input, toolsFor(step, tools)));
+    } catch (error) {
+      // A provider that won't take the tool-less last step still leaves a usable answer.
+      if (step === MAX_STEPS - 1) return wrapUp(state);
+      throw error;
+    }
     const calls = callsOf(body.output ?? []);
     if (calls.length === 0) {
       return answer(textOf(body) || "I couldn't put that into words. Please ask again.", state.pending, state.slots);
@@ -480,7 +512,7 @@ async function askXai(
       input.push({ type: "function_call_output", call_id: call.callId, output: JSON.stringify(outputs[index]).slice(0, 12_000) });
     });
   }
-  return answer("I couldn't finish that in a few steps. Please ask for one thing at a time.", state.pending, state.slots);
+  return wrapUp(state);
 }
 
 /**

@@ -20,7 +20,7 @@ export interface SlotLink {
 }
 
 /** Tools whose results list open times. */
-export const SLOT_TOOLS = new Set(["list_open_slots", "next_available", "suggest_slots"]);
+export const SLOT_TOOLS = new Set(["list_open_slots", "next_available", "suggest_slots", "book_time", "move_to_time"]);
 
 /** Most times shown under one reply. */
 export const MAX_SLOT_LINKS = 24;

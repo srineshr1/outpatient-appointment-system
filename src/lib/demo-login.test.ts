@@ -44,10 +44,10 @@ function fakeStore(rows: Row[]) {
 const OWNER = { id: "user-rudraksha", email: "rudraksha.srinesh@gmail.com", role: "admin", doctorId: null, name: "Dr Rudraksha Srinesh", passwordHash: "scrypt$owner" };
 
 describe("one-click demo accounts", () => {
-  it("creates the demo patient with the demo password, no phone, and leaves other accounts alone", async () => {
+  it("creates the demo patient with the demo password, booking details, and leaves other accounts alone", async () => {
     const { store, rows } = fakeStore([{ ...OWNER }]);
     const account = await ensureDemoLogin(store, "patient");
-    expect(account).toMatchObject({ id: "user-patient-demo", email: "ann.lee@halden.example", role: "patient", doctorId: null, mobile: "" });
+    expect(account).toMatchObject({ id: "user-patient-demo", email: "ann.lee@halden.example", role: "patient", doctorId: null, mobile: "07700 900123", dob: "1980-03-14" });
     expect(verifyPassword(DEMO_PASSWORD, rows.find((row) => row.id === "user-patient-demo")!.passwordHash)).toBe(true);
     expect(rows.find((row) => row.id === "user-rudraksha")).toEqual(OWNER);
   });

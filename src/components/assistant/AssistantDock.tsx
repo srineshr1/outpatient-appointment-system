@@ -268,35 +268,56 @@ function dayLabel(date: string, today: string): string {
   return short;
 }
 
-/** Open times grouped by doctor and day. For patients each time opens its booking form. */
-export function SlotList({ slots, onPick }: { slots: readonly SlotLink[]; onPick?: () => void }) {
+/**
+ * Open times grouped by doctor and day. For patients a tap books that time right here in the chat
+ * (the confirmation card follows), and each group keeps a link to the full booking form.
+ */
+export function SlotList({
+  slots,
+  onPick,
+  onBook,
+}: {
+  slots: readonly SlotLink[];
+  onPick?: () => void;
+  /** Book this time in the chat. Without it, a tap opens the booking form. */
+  onBook?: (slot: SlotLink) => void;
+}) {
   const today = todayIso();
-  const groups: { key: string; doctor: string; date: string; slots: SlotLink[] }[] = [];
+  const groups: { key: string; doctorId: string; doctor: string; date: string; slots: SlotLink[] }[] = [];
   for (const slot of slots) {
     const key = `${slot.doctorId}|${slot.date}`;
     const group = groups.find((item) => item.key === key);
     if (group) group.slots.push(slot);
-    else groups.push({ key, doctor: slot.doctor, date: slot.date, slots: [slot] });
+    else groups.push({ key, doctorId: slot.doctorId, doctor: slot.doctor, date: slot.date, slots: [slot] });
   }
   const manyDoctors = new Set(slots.map((slot) => slot.doctorId)).size > 1;
   const bookable = slots.some((slot) => slot.href);
+  const chip =
+    "tabular inline-flex h-8 items-center rounded-full border border-accent px-3 text-callout font-medium text-accent hover:bg-accent hover:text-white focus-visible:bg-accent focus-visible:text-white";
   return (
     <div className="mt-2 space-y-3 rounded-2xl border border-hairline bg-canvas p-3">
       {groups.map((group) => {
         const label = `${manyDoctors ? `${group.doctor} · ` : ""}${dayLabel(group.date, today)}`;
+        const formHref = group.slots[0]?.href ?? null;
         return (
           <div key={group.key}>
-            <p className="text-caption font-semibold text-ink-2">{label}</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-caption font-semibold text-ink-2">{label}</p>
+              {onBook && formHref ? (
+                <Link href={formHref} onClick={onPick} className="text-caption text-accent underline-offset-2 hover:underline" aria-label={`Booking form, ${group.doctor}, ${dayLabel(group.date, today)}`}>
+                  Booking form
+                </Link>
+              ) : null}
+            </div>
             <ul aria-label={`Open times, ${group.doctor}, ${dayLabel(group.date, today)}`} className="mt-1.5 flex flex-wrap gap-1.5">
               {group.slots.map((slot) => (
                 <li key={slot.id}>
-                  {slot.href ? (
-                    <Link
-                      href={slot.href}
-                      onClick={onPick}
-                      aria-label={`Book ${slot.doctor}, ${dayLabel(slot.date, today)} at ${slot.time}`}
-                      className="tabular inline-flex h-8 items-center rounded-full border border-accent px-3 text-callout font-medium text-accent hover:bg-accent hover:text-white focus-visible:bg-accent focus-visible:text-white"
-                    >
+                  {slot.href && onBook ? (
+                    <button type="button" onClick={() => onBook(slot)} aria-label={`Book ${slot.doctor}, ${dayLabel(slot.date, today)} at ${slot.time}`} className={chip}>
+                      {slot.time}
+                    </button>
+                  ) : slot.href ? (
+                    <Link href={slot.href} onClick={onPick} aria-label={`Book ${slot.doctor}, ${dayLabel(slot.date, today)} at ${slot.time}`} className={chip}>
                       {slot.time}
                     </Link>
                   ) : (
@@ -308,9 +329,30 @@ export function SlotList({ slots, onPick }: { slots: readonly SlotLink[]; onPick
           </div>
         );
       })}
-      {bookable ? <p className="text-caption text-muted">Tap a time to open its booking form. Nothing is booked until you confirm there.</p> : null}
+      {bookable ? (
+        <p className="text-caption text-muted">
+          {onBook ? "Tap a time to book it here. Nothing is booked until you confirm." : "Tap a time to open its booking form. Nothing is booked until you confirm there."}
+        </p>
+      ) : null}
     </div>
   );
+}
+
+/**
+ * What the model should know about times shown under an earlier reply, so "11:20" or "book 11"
+ * means that doctor and that day. Sent with the history only; never shown.
+ */
+export function slotContext(slots: readonly SlotLink[] | undefined): string {
+  if (!slots?.length) return "";
+  const groups = new Map<string, { doctor: string; date: string; times: string[] }>();
+  for (const slot of slots) {
+    const key = `${slot.doctor}|${slot.date}`;
+    const group = groups.get(key) ?? { doctor: slot.doctor, date: slot.date, times: [] };
+    if (group.times.length < 12) group.times.push(slot.time);
+    groups.set(key, group);
+  }
+  const parts = [...groups.values()].map((group) => `${group.doctor} on ${group.date}: ${group.times.join(", ")}`);
+  return `\n\n[Open times shown under this reply: ${parts.join("; ")}]`.slice(0, 600);
 }
 
 interface SpeechRec {
@@ -970,7 +1012,8 @@ export function AssistantDock({ user }: { user: DockUser }) {
     });
   }
 
-  async function send(text: string) {
+  /** Send a message. With bookSlot, a tapped time is prepared for booking with no model call. */
+  async function send(text: string, bookSlot?: string) {
     const trimmed = text.trim();
     if (!trimmed) return;
     const locked = lockedRef.current;
@@ -998,7 +1041,11 @@ export function AssistantDock({ user }: { user: DockUser }) {
         headers: { "content-type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          messages: history.map(({ role, content }) => ({ role, content })),
+          messages: history.map((message) => ({
+            role: message.role,
+            content: message.role === "assistant" ? `${message.content}${slotContext(message.slots)}` : message.content,
+          })),
+          ...(bookSlot ? { bookSlot } : {}),
           pendingToken: pendingRef.current?.token ?? null,
           language: lockedRef.current?.tag ?? AUTO_LANGUAGE,
         }),
@@ -1422,7 +1469,13 @@ export function AssistantDock({ user }: { user: DockUser }) {
                     {message.payUrl ? (
                       <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
                     ) : null}
-                    {message.slots?.length ? <SlotList slots={message.slots} onPick={() => setOpen(false)} /> : null}
+                    {message.slots?.length ? (
+                      <SlotList
+                        slots={message.slots}
+                        onPick={() => setOpen(false)}
+                        onBook={user.role === "patient" ? (slot) => void send(`Book ${slot.time} with ${slot.doctor}, ${dayLabel(slot.date, todayIso())}`, slot.id) : undefined}
+                      />
+                    ) : null}
                   </div>,
                 );
                 return rows;

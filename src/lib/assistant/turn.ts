@@ -1,6 +1,6 @@
 import type { PublicUser } from "../clinic-types";
 import { todayIso } from "../clock";
-import { confirmPending, rejectPending, restoreCard } from "./act";
+import { confirmPending, proposeBook, rejectPending, restoreCard } from "./act";
 import type { PendingCard } from "./confirm-token";
 import { askClinic, replyLocale, resetProviderChainForTests, type TurnTiming } from "./grok";
 import { interpretReply } from "./intent";
@@ -198,4 +198,17 @@ export async function handleTurn(
     ...(asked.slots.length ? { slots: asked.slots } : {}),
     ...(asked.timing ? { timing: asked.timing } : {}),
   };
+}
+
+/**
+ * A time chip tapped in the chat: prepare that booking straight away, with no model in between.
+ * The usual card follows, so nothing is booked until the patient confirms.
+ */
+export async function handleSlotPick(user: PublicUser, slotId: string, locked: DetectedLanguage | null = null): Promise<TurnResult> {
+  const locale = locked?.locale ?? DEFAULT_LANGUAGE.locale;
+  if (user.role !== "patient") return { reply: "Only a patient can book a time.", pending: null, locale };
+  const proposal = await proposeBook(user, slotId.slice(0, 200), "new", false, "");
+  if (proposal.pending) return { reply: "Book this time? Check the details below and confirm.", pending: proposal.pending, locale };
+  const error = (proposal.forModel as { error?: unknown }).error;
+  return { reply: typeof error === "string" ? error : "That time couldn't be prepared. Please pick another.", pending: null, locale };
 }

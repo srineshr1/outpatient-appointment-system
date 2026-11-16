@@ -1,8 +1,10 @@
 /**
  * The two one-click demo accounts on the sign-in page. They are their own accounts on every
  * store, live practice included: a patient and a doctor with their own clinic book. Neither is
- * a real person, an owner's account or an admin, and neither has a phone number, so nothing is
- * texted. The account is made (or put back) the first time its button is used.
+ * a real person, an owner's account or an admin. The demo patient has the details booking needs:
+ * a date of birth and Ofcom's fictional UK drama number (07700 900123), which the SMS provider
+ * (Indian mobiles only) never texts, and an .example email nothing is delivered to. The account is
+ * made (or put back) the first time its button is used.
  */
 import type { ClinicStore, UserAccount } from "./clinic-types";
 import { DEMO_PASSWORD } from "./demo-accounts";
@@ -16,11 +18,13 @@ export interface DemoLogin {
   email: string;
   name: string;
   role: "patient" | "doctor";
+  mobile: string;
+  dob: string;
 }
 
 export const DEMO_LOGINS: Record<DemoWho, DemoLogin> = {
-  patient: { id: "user-patient-demo", email: "ann.lee@halden.example", name: "Ann Lee", role: "patient" },
-  doctor: { id: "user-demo-doctor", email: "demo.doctor@halden.example", name: "Dr Demo", role: "doctor" },
+  patient: { id: "user-patient-demo", email: "ann.lee@halden.example", name: "Ann Lee", role: "patient", mobile: "07700 900123", dob: "1980-03-14" },
+  doctor: { id: "user-demo-doctor", email: "demo.doctor@halden.example", name: "Dr Demo", role: "doctor", mobile: "", dob: "" },
 };
 
 /**
@@ -40,15 +44,24 @@ export async function ensureDemoLogin(store: ClinicStore, who: DemoWho, at = new
       name: demo.name,
       role: demo.role,
       doctorId,
-      mobile: "",
-      dob: "",
+      mobile: demo.mobile,
+      dob: demo.dob,
     });
     account = await store.getUserByEmail(demo.email);
     if (!account || account.id !== demo.id) return null;
-  } else if (account.role !== demo.role || account.doctorId !== doctorId || !account.passwordHash || !verifyPassword(DEMO_PASSWORD, account.passwordHash)) {
+  } else if (
+    account.role !== demo.role ||
+    account.doctorId !== doctorId ||
+    account.mobile !== demo.mobile ||
+    account.dob !== demo.dob ||
+    !account.passwordHash ||
+    !verifyPassword(DEMO_PASSWORD, account.passwordHash)
+  ) {
     const updated = await store.updateUser(account.id, {
       role: demo.role,
       doctorId,
+      mobile: demo.mobile,
+      dob: demo.dob,
       ...(account.passwordHash && verifyPassword(DEMO_PASSWORD, account.passwordHash) ? {} : { passwordHash: hashPassword(DEMO_PASSWORD) }),
     });
     if (!updated) return null;
