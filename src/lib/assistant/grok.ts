@@ -147,7 +147,7 @@ function systemPrompt(user: PublicUser, language: DetectedLanguage, locked = fal
           "Automatically detect the language of the user's latest message and reply in that same language and script. Do not ask which language they want. Do not translate into English unless they wrote in English. Hinglish stays Hinglish in Latin script, Hindi stays in Devanagari, Telugu stays in Telugu script, and so on for every language. If the latest message is a short acknowledgement with no language of its own (ok, haan, जी), stay in the language already used in the conversation.",
           `The user's latest message appears to be in ${language.name}. If the message itself clearly says otherwise, follow the message.`,
         ]),
-    "Be brief.",
+    "You may use simple markdown (**bold**, bullet lists). Keep replies short.",
   ].join(" ");
 }
 
