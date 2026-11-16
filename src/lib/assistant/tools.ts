@@ -10,6 +10,7 @@ import {
   moneyForPatient,
   nextFree,
   openTimes,
+  openTimesAllDoctors,
   patientAppointments,
   prescriptions,
   schedulingConflicts,
@@ -75,7 +76,7 @@ const patientTools: ToolSpec[] = [
   { type: "function", name: "list_appointments", description: "This patient's upcoming or previous appointments. No one else's.", parameters: { type: "object", properties: { which: { type: "string", enum: ["upcoming", "previous", "all"] } } } },
   { type: "function", name: "search_doctors", description: "Find bookable doctors by name, special interest or language.", parameters: { type: "object", properties: { query: { type: "string" } } } },
   { type: "function", name: "list_visit_reasons", description: "Reasons a visit can be booked for, with their ids.", parameters: { type: "object", properties: {} } },
-  { type: "function", name: "list_open_slots", description: "Open slots for one doctor, optionally on one date.", parameters: { type: "object", properties: { doctorId: { type: "string" }, date }, required: ["doctorId"] } },
+  { type: "function", name: "list_open_slots", description: "Open slots, optionally on one date. Omit doctorId to get every doctor's open times in one call (use this for 'what is free tomorrow'); give doctorId for one doctor.", parameters: { type: "object", properties: { doctorId: { type: "string", description: "Omit for all doctors." }, date } } },
   { type: "function", name: "suggest_slots", description: "Check a requested time and suggest the nearest open alternatives when it is taken.", parameters: { type: "object", properties: { doctorId: { type: "string" }, date, time }, required: ["doctorId", "date", "time"] } },
   { type: "function", name: "next_available", description: "The next open slot for one doctor.", parameters: { type: "object", properties: { doctorId: { type: "string" } }, required: ["doctorId"] } },
   { type: "function", name: "propose_book", description: "Prepare a booking from the patient's profile. Does not book until the user confirms. Re-checks the slot at confirmation. payOnline holds the time and opens the real payment page.", parameters: { type: "object", properties: { slotId, reasonId: { type: "string", description: "new, follow, meds or bp" }, payOnline: { type: "boolean" }, note: { type: "string" } }, required: ["slotId", "reasonId"] } },
@@ -158,7 +159,11 @@ async function dispatchTool(user: PublicUser, name: string, args: unknown): Prom
     if (name === "list_appointments") return { forModel: await patientAppointments(user, text(args, "which") || "upcoming") };
     if (name === "search_doctors") return { forModel: searchDoctors(user, text(args, "query")) };
     if (name === "list_visit_reasons") return { forModel: visitReasons() };
-    if (name === "list_open_slots") return { forModel: await openTimes(user, text(args, "doctorId"), text(args, "date") || undefined) };
+    if (name === "list_open_slots") {
+      const doctorId = text(args, "doctorId");
+      const date = text(args, "date") || undefined;
+      return { forModel: doctorId ? await openTimes(user, doctorId, date) : await openTimesAllDoctors(user, date) };
+    }
     if (name === "suggest_slots") return { forModel: await suggestTimes(user, text(args, "doctorId"), text(args, "date"), text(args, "time")) };
     if (name === "next_available") return { forModel: await nextFree(user, text(args, "doctorId")) };
     if (name === "propose_book") return proposeBook(user, text(args, "slotId"), text(args, "reasonId"), flag(args, "payOnline"), text(args, "note"));
