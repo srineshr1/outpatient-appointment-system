@@ -22,7 +22,7 @@ import { slotStatus } from "../schedule";
 import { baseSlotId } from "../sessions";
 import { getStore } from "../store";
 import { FIELD_ORDER, validatePatient } from "../validate";
-import { changeAppointmentStatus } from "../visits";
+import { changeAppointmentStatus, visitsFor } from "../visits";
 import { cardFromSealed, claimConfirmation, issueConfirmation, verifyConfirmation, type PendingAction, type PendingCard } from "./confirm-token";
 import { reasonLabel } from "./read";
 import { saveConfirmedSession } from "./session-act";
@@ -71,6 +71,20 @@ async function slotStillOpen(slotId: string) {
   return { slot };
 }
 
+/**
+ * A visit by its id, or by the reference the user reads off the screen ("HSP-166011"). A reference
+ * is only looked up on the user's own book; the role checks after this still apply.
+ */
+export async function findVisit(user: PublicUser, idOrReference: string) {
+  const key = idOrReference.trim();
+  if (!key) return null;
+  const store = await getStore();
+  const byId = await store.getAppointment(key);
+  if (byId) return byId;
+  if (!/^HSP-\d+$/i.test(key)) return null;
+  return (await visitsFor(user)).find((visit) => visit.reference.toUpperCase() === key.toUpperCase()) ?? null;
+}
+
 export async function proposeBook(user: PublicUser, slotId: string, reasonId: string, payOnline: boolean, note: string): Promise<{ forModel: unknown; pending?: PendingCard }> {
   if (user.role !== "patient") return { forModel: { error: "Doctors and staff can't book through the assistant. Sign in as a patient." } };
   if (!reasons.some((reason) => reason.id === reasonId)) {
@@ -113,8 +127,7 @@ export async function proposeBook(user: PublicUser, slotId: string, reasonId: st
 }
 
 export async function proposeCancel(user: PublicUser, visitId: string): Promise<{ forModel: unknown; pending?: PendingCard }> {
-  const store = await getStore();
-  const visit = await store.getAppointment(visitId);
+  const visit = await findVisit(user, visitId);
   if (!visit) return { forModel: { error: "That visit is not on the book." } };
   const allowed = user.role === "patient" ? user.id === visit.patientUserId : user.role === "doctor" && user.doctorId === visit.doctorId;
   if (!allowed) return { forModel: { error: "You can only cancel a visit on your own account." } };
@@ -129,8 +142,7 @@ export async function proposeCancel(user: PublicUser, visitId: string): Promise<
 }
 
 export async function proposeReschedule(user: PublicUser, visitId: string, slotId: string, reason: string): Promise<{ forModel: unknown; pending?: PendingCard }> {
-  const store = await getStore();
-  const visit = await store.getAppointment(visitId);
+  const visit = await findVisit(user, visitId);
   if (!visit) return { forModel: { error: "That visit is not on the book." } };
   if (!mayReschedule(user, visit)) return { forModel: { error: "You can only move a visit on your own account." } };
   if (!canMove(visit)) return { forModel: { error: "This visit can't be moved. It is cancelled, finished, or has already started." } };
@@ -149,8 +161,7 @@ export async function proposeReschedule(user: PublicUser, visitId: string, slotI
 }
 
 export async function suggestMove(user: PublicUser, visitId: string) {
-  const store = await getStore();
-  const visit = await store.getAppointment(visitId);
+  const visit = await findVisit(user, visitId);
   if (!visit) return { error: "That visit is not on the book." };
   if (!mayReschedule(user, visit)) return { error: "You can only look at times for your own visit." };
   if (!canMove(visit)) return { error: "This visit can't be moved." };
@@ -166,8 +177,7 @@ export async function suggestMove(user: PublicUser, visitId: string) {
 
 export async function proposePay(user: PublicUser, visitId: string): Promise<{ forModel: unknown; pending?: PendingCard }> {
   if (user.role !== "patient") return { forModel: { error: "Only the patient can pay for a visit." } };
-  const store = await getStore();
-  const visit = await store.getAppointment(visitId);
+  const visit = await findVisit(user, visitId);
   if (!visit || visit.patientUserId !== user.id) return { forModel: { error: "That visit is not on your account." } };
   if (visit.status === "booked") return { forModel: { error: "This visit is already confirmed. Pay any remaining fee at the desk." } };
   if (visit.status !== "pending_payment") return { forModel: { error: "This visit is not waiting for a payment." } };
