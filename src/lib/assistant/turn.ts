@@ -2,7 +2,7 @@ import type { PublicUser } from "../clinic-types";
 import { todayIso } from "../clock";
 import { confirmPending, rejectPending, restoreCard } from "./act";
 import type { PendingCard } from "./confirm-token";
-import { askClinic, replyLocale, resetProviderChainForTests } from "./grok";
+import { askClinic, replyLocale, resetProviderChainForTests, type TurnTiming } from "./grok";
 import { interpretReply } from "./intent";
 import { DEFAULT_LANGUAGE, detectConversation, type DetectedLanguage } from "./language";
 import type { SlotLink } from "./slot-links";
@@ -20,6 +20,8 @@ export interface TurnResult {
   slots?: SlotLink[];
   /** BCP 47 locale of the reply (e.g. "hi-IN"), so the dock listens and speaks in it. */
   locale: string;
+  /** Server-side timing of a model turn. The route sends it as a header, not in the body. */
+  timing?: TurnTiming;
 }
 
 const hits = new Map<string, number[]>();
@@ -189,5 +191,11 @@ export async function handleTurn(
 
   const asked = await askClinic(user, messages, locked);
   const pending = asked.pending ?? (pendingToken ? await restoreCard(user, pendingToken) : null);
-  return { reply: asked.reply, pending, locale: asked.locale, ...(asked.slots.length ? { slots: asked.slots } : {}) };
+  return {
+    reply: asked.reply,
+    pending,
+    locale: asked.locale,
+    ...(asked.slots.length ? { slots: asked.slots } : {}),
+    ...(asked.timing ? { timing: asked.timing } : {}),
+  };
 }

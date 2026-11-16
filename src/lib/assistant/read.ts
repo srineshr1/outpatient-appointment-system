@@ -313,6 +313,44 @@ export async function openTimes(user: PublicUser, doctorId: string | undefined, 
   };
 }
 
+/** Most doctors and times per doctor in one all-doctors availability answer. */
+const ALL_DOCTORS_CAP = 8;
+const PER_DOCTOR_CAP = 6;
+
+/**
+ * Open times for every listed doctor at once (optionally one date), from a single read of the
+ * book. Patients ask "what's free tomorrow?" without a doctor; this answers in one tool call
+ * instead of a doctor search plus one availability read per doctor.
+ */
+export async function openTimesAllDoctors(user: PublicUser, dateInput?: string) {
+  const patient = patientOnly(user);
+  if (!patient.ok) return patient;
+  const date = dateInput ? resolveDay(dateInput) : null;
+  if (date && typeof date !== "string") return date;
+  const open = openSlots(await getSlots(), [], now()).filter(
+    (slot) => isListed(slot.doctorId) && (!date || slot.date === date),
+  );
+  const byDoctor = new Map<string, Slot[]>();
+  for (const slot of open) {
+    const list = byDoctor.get(slot.doctorId) ?? [];
+    list.push(slot);
+    byDoctor.set(slot.doctorId, list);
+  }
+  const chosen = [...byDoctor.entries()].slice(0, ALL_DOCTORS_CAP);
+  return {
+    date: date ?? null,
+    doctorCount: byDoctor.size,
+    doctors: chosen.map(([doctorId, slots]) => ({
+      doctorId,
+      doctor: findDoctor(doctorId)?.name ?? "Doctor",
+      count: slots.length,
+      first: slots[0] ? `${slots[0].date} ${slots[0].time}` : null,
+    })),
+    slots: chosen.flatMap(([, slots]) => slots.slice(0, PER_DOCTOR_CAP).map(briefSlot)),
+    truncated: byDoctor.size > chosen.length || chosen.some(([, slots]) => slots.length > PER_DOCTOR_CAP),
+  };
+}
+
 export async function nextFree(user: PublicUser, doctorId?: string) {
   const target = await doctorTarget(user, doctorId);
   if ("error" in target) return target;

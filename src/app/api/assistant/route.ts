@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { TurnTiming } from "@/lib/assistant/grok";
 import { lockedLanguage } from "@/lib/assistant/language";
 import { beginModelTurn, endModelTurn, handleTurn, parseMessages, readAssistantJson } from "@/lib/assistant/turn";
 import { getCurrentUser } from "@/lib/session";
@@ -6,6 +7,18 @@ import { getCurrentUser } from "@/lib/session";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+/** Model and tool time for the browser's network panel. Provider ids only, no content. */
+function serverTiming(timing: TurnTiming): string {
+  const model = timing.modelMs.reduce((sum, ms) => sum + ms, 0);
+  const tools = timing.toolMs.reduce((sum, ms) => sum + ms, 0);
+  return [
+    `total;dur=${timing.totalMs}`,
+    `model;dur=${model};desc="${timing.modelMs.length} calls ${timing.provider || "none"}"`,
+    `tools;dur=${tools};desc="${timing.tools.length} calls"`,
+    ...(timing.failed.length ? [`failover;dur=${timing.failed.reduce((sum, item) => sum + item.ms, 0)};desc="${timing.failed.map((item) => `${item.id}:${item.status}`).join(" ")}"`] : []),
+  ].join(", ");
+}
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -31,8 +44,8 @@ export async function POST(request: Request) {
   // "auto" (or nothing) keeps automatic detection; a tag from the dock's menu locks the reply language.
   const locked = typeof record.language === "string" ? lockedLanguage(record.language) : null;
   try {
-    const result = await handleTurn(user, messages, pendingToken, locked);
-    return NextResponse.json(result);
+    const { timing, ...result } = await handleTurn(user, messages, pendingToken, locked);
+    return NextResponse.json(result, timing ? { headers: { "server-timing": serverTiming(timing) } } : undefined);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The assistant couldn't answer.";
     return NextResponse.json({ message }, { status: 502 });
