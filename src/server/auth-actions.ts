@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { authenticate, createDoctorSelfSignup, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
-import { DEMO_PASSWORD, demoAccounts } from "@/lib/demo-accounts";
+import { ensureDemoLogin } from "@/lib/demo-login";
 import { clearFailures, consumeResetToken, isEmail, issueResetToken, lockedFor, recordFailure } from "@/lib/login-codes";
 import { isDeliverableEmail, sendPasswordReset } from "@/lib/mailer";
 import { normalisePhone, PHONE_INVALID_MESSAGE } from "@/lib/phone";
@@ -70,14 +70,23 @@ export async function signInWithPassword(input: { email: string; password: strin
   return result;
 }
 
-/** One-click demo sign-in. The shared password stays on the server. */
+/**
+ * One-click demo sign-in. Each button has its own demo account (made on first use), so it never
+ * signs anyone in to the owner's or an admin's account. The shared password stays on the server.
+ */
 export async function signInAsDemo(input: { who: "patient" | "doctor"; next: string }): Promise<AuthResult> {
-  const account =
-    input.who === "doctor"
-      ? demoAccounts.find((item) => item.id === "user-rudraksha")
-      : demoAccounts.find((item) => item.id === "user-patient-demo");
-  if (!account) return { ok: false, error: "Demo sign-in is unavailable." };
-  return signInWithPassword({ email: account.email, password: DEMO_PASSWORD, next: input.next });
+  const who = input.who === "doctor" ? "doctor" : "patient";
+  const nextPath = safeNext(String(input.next ?? "/"));
+  const result = await guarded(async () => {
+    const account = await ensureDemoLogin(await getStore(), who);
+    if (!account) return { ok: false, error: "Demo sign-in is unavailable." };
+    if (await blockedSignIn(account, "Password")) return { ok: false, error: DISABLED_MESSAGE };
+    await startSession(account.id, account);
+    await signedIn(account, "Password");
+    return { ok: true, message: destinationFor(account.role, nextPath) };
+  });
+  if (result.ok) redirect(result.message);
+  return result;
 }
 
 /** A new account: name, email, password (twice) and whether they are a patient or a doctor. */
