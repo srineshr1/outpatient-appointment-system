@@ -130,3 +130,65 @@
     transform: none;
   }
 }
+
+
+/*
+ * Assistant replies are rendered as a tight markdown subset. Lists sit close
+ * together so a doctor roster reads like a short clinic note, in the dock's
+ * IBM Plex face and the light/dark tokens already on .clinic-dock.
+ */
+.clinic-md {
+  overflow-wrap: anywhere;
+}
+
+.clinic-md p {
+  margin: 0;
+}
+
+.clinic-md p + p,
+.clinic-md p + ul,
+.clinic-md p + ol,
+.clinic-md ul + p,
+.clinic-md ol + p,
+.clinic-md ul + ol,
+.clinic-md ol + ul {
+  margin-top: 0.55em;
+}
+
+.clinic-md ul,
+.clinic-md ol {
+  margin: 0.15em 0;
+  padding-inline-start: 1.15em;
+}
+
+.clinic-md li {
+  margin: 0.12em 0;
+  padding: 0;
+}
+
+.clinic-md strong {
+  font-weight: 600;
+}
+
+.clinic-md em {
+  font-style: italic;
+}
+
+.clinic-md a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.clinic-md a:hover {
+  color: var(--color-accent-hover);
+}
+
+.clinic-md code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--color-fill);
+  border: 1px solid var(--color-hairline);
+  border-radius: 0.3em;
+  padding: 0.05em 0.3em;
+}

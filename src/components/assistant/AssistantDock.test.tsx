@@ -1133,3 +1133,30 @@ describe("AssistantDock quick prompts", () => {
     expect(screen.queryByRole("button", { name: "Add a consulting session" })).toBeNull();
   });
 });
+
+
+describe("AssistantDock markdown replies", () => {
+  it("renders assistant replies as markdown and leaves user messages as plain text", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        reply: "* **Dr Anjali Mehta** (General Physician)\n* **Dr Doom** (Magic)",
+      }),
+    }));
+    openDock();
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "List doctors in **bold**" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    const anjali = await screen.findByText("Dr Anjali Mehta");
+    expect(anjali.tagName).toBe("STRONG");
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[1]?.textContent).toContain("Dr Doom");
+    expect(screen.queryByText(/\*\*Dr Anjali/)).toBeNull();
+
+    const userBubble = screen.getByText("List doctors in **bold**");
+    expect(userBubble.tagName).toBe("P");
+    expect(userBubble.querySelector("strong")).toBeNull();
+  });
+});

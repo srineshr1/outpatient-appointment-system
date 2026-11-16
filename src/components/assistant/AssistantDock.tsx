@@ -25,6 +25,7 @@ import GlideSelect from "./GlideSelect";
 import type { GlideSelectOption } from "./GlideSelect";
 import ThoughtLine from "./ThoughtLine";
 import HoldButton from "./HoldButton";
+import { MarkdownText } from "./MarkdownText";
 import VoicePill from "./VoicePill";
 import type { VoicePillSource, VoicePillStopReason } from "./VoicePill";
 import "./AssistantVoicePill.css";
@@ -1413,7 +1414,11 @@ export function AssistantDock({ user }: { user: DockUser }) {
                 }
                 rows.push(
                   <div key={`${message.role}-${index}`} className={message.role === "user" ? "ml-8 rounded-2xl bg-ink px-3.5 py-2.5 text-callout text-canvas" : "mr-6 text-callout text-ink"}>
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    {message.role === "assistant" ? (
+                      <MarkdownText text={message.content} />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    )}
                     {message.payUrl ? (
                       <a href={message.payUrl} className={`${buttonClass("primary")} mt-2`}>Pay now</a>
                     ) : null}
