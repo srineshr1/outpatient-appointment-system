@@ -158,3 +158,26 @@ describe("booking from chat", () => {
     expect(bodies[0]).toHaveProperty("tools");
   });
 });
+
+describe("visits by reference and doctors by name", () => {
+  it("cancels by the HSP reference the patient reads, only on their own book", async () => {
+    const patient = await account("user-patient-demo");
+    const { open } = await choTomorrow();
+    const picked = await handleSlotPick(patient, open[3]!.id);
+    const booked = await confirmPending(patient, picked.pending!.token);
+    const reference = booked.summary.match(/HSP-\d{6}/)![0];
+    const cancel = await runTool(patient, "propose_cancel", { visitId: reference });
+    expect(cancel.pending?.title).toBe("Cancel this visit?");
+    const other = await account("user-cho");
+    expect((await runTool(other, "propose_cancel", { visitId: reference.toLowerCase() })).pending).toBeDefined();
+    const stranger = await (await getStore()).getUserById("user-admin");
+    if (stranger) expect((await runTool({ ...stranger, role: "patient" }, "propose_cancel", { visitId: reference })).pending).toBeUndefined();
+  });
+
+  it("lists one doctor's times from a name, with no search first", async () => {
+    const patient = await account("user-patient-demo");
+    const result = await runTool(patient, "list_open_slots", { doctorId: "helen", date: "tomorrow" });
+    expect((result.forModel as { doctorId: string }).doctorId).toBe("cho");
+    expect(result.slots?.length).toBeGreaterThan(0);
+  });
+});

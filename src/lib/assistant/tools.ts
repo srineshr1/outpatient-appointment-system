@@ -19,7 +19,8 @@ import {
   visitReasons,
   workingHours,
 } from "./read";
-import { bookTime, moveToTime } from "./book-time";
+import { isListed } from "../data";
+import { bookTime, matchDoctors, moveToTime } from "./book-time";
 import type { PendingCard } from "./confirm-token";
 import { proposeAddSession, proposeUpdateSession, type SessionArgs } from "./session-act";
 import { SLOT_TOOLS, slotLinksFrom, type SlotLink } from "./slot-links";
@@ -45,7 +46,7 @@ interface ToolSpec {
 const date = { type: "string", description: "Clinic date YYYY-MM-DD. 'today' and 'tomorrow' are accepted." };
 const time = { type: "string", description: "Clinic time HH:MM, 24-hour." };
 const slotId = { type: "string", description: "Slot id returned by an availability tool." };
-const visitId = { type: "string", description: "Visit id returned by an appointment tool." };
+const visitId = { type: "string", description: "Visit id returned by an appointment tool, or its reference such as HSP-123456." };
 const sessionFields = {
   startTime: { type: "string", description: "Start, clinic time HH:MM 24-hour (2 pm is 14:00)." },
   endTime: { type: "string", description: "End, clinic time HH:MM 24-hour." },
@@ -77,7 +78,7 @@ const patientTools: ToolSpec[] = [
   { type: "function", name: "list_appointments", description: "This patient's upcoming or previous appointments. No one else's.", parameters: { type: "object", properties: { which: { type: "string", enum: ["upcoming", "previous", "all"] } } } },
   { type: "function", name: "search_doctors", description: "Find bookable doctors by name, special interest or language.", parameters: { type: "object", properties: { query: { type: "string" } } } },
   { type: "function", name: "list_visit_reasons", description: "Reasons a visit can be booked for, with their ids.", parameters: { type: "object", properties: {} } },
-  { type: "function", name: "list_open_slots", description: "Open slots, optionally on one date. Omit doctorId to get every doctor's open times in one call (use this for 'what is free tomorrow'); give doctorId for one doctor.", parameters: { type: "object", properties: { doctorId: { type: "string", description: "Omit for all doctors." }, date } } },
+  { type: "function", name: "list_open_slots", description: "Open slots, optionally on one date. Omit doctorId to get every doctor's open times in one call (use this for 'what is free tomorrow'); give doctorId for one doctor.", parameters: { type: "object", properties: { doctorId: { type: "string", description: "Doctor id, or the doctor's name as said (e.g. 'kavya'). Omit for all doctors." }, date } } },
   { type: "function", name: "suggest_slots", description: "Check a requested time and suggest the nearest open alternatives when it is taken.", parameters: { type: "object", properties: { doctorId: { type: "string" }, date, time }, required: ["doctorId", "date", "time"] } },
   { type: "function", name: "next_available", description: "The next open slot for one doctor.", parameters: { type: "object", properties: { doctorId: { type: "string" } }, required: ["doctorId"] } },
   { type: "function", name: "book_time", description: "Book a visit from what the patient says, in one call. Finds the doctor by name (a first name like 'kavya' is enough), the day and the open time, then prepares the confirmation card. Use it for every booking request, including short follow-ups like '11' or '11:20' after times were shown: take the doctor and day from the conversation. Do not search doctors or list times first.", parameters: { type: "object", properties: { doctor: { type: "string", description: "Doctor's name as said or as shown earlier in the chat, e.g. 'Kavya Reddy'. Omit only if no doctor is known yet." }, date: { ...date, description: "Clinic date YYYY-MM-DD, 'today' or 'tomorrow', from the message or the conversation. Omit if no day was mentioned." }, time: { type: "string", description: "The time as the user said it: '11', '11:20', '1120', '2 pm'. Convert words or other scripts to digits." }, reasonId: { type: "string", description: "new, follow, meds or bp. Omit unless the user said; 'new' is used." }, payOnline: { type: "boolean", description: "Only true if the user asked to pay online." }, note: { type: "string" } }, required: ["time"] } },
@@ -163,9 +164,13 @@ async function dispatchTool(user: PublicUser, name: string, args: unknown): Prom
     if (name === "search_doctors") return { forModel: searchDoctors(user, text(args, "query")) };
     if (name === "list_visit_reasons") return { forModel: visitReasons() };
     if (name === "list_open_slots") {
-      const doctorId = text(args, "doctorId");
+      const said = text(args, "doctorId");
       const date = text(args, "date") || undefined;
-      return { forModel: doctorId ? await openTimes(user, doctorId, date) : await openTimesAllDoctors(user, date) };
+      if (!said) return { forModel: await openTimesAllDoctors(user, date) };
+      // A name as said ("kavya") works too, so no doctor search is needed first.
+      const matches = isListed(said) ? [{ id: said, name: said }] : matchDoctors(said);
+      if (matches.length > 1) return { forModel: { needsAnswer: true, question: `Which doctor do you mean: ${matches.map((doctor) => doctor.name).join(" or ")}?` } };
+      return { forModel: await openTimes(user, matches[0]?.id ?? said, date) };
     }
     if (name === "suggest_slots") return { forModel: await suggestTimes(user, text(args, "doctorId"), text(args, "date"), text(args, "time")) };
     if (name === "next_available") return { forModel: await nextFree(user, text(args, "doctorId")) };
