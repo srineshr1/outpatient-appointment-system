@@ -63,6 +63,7 @@ const cooledUntil = new Map<string, number>();
 
 export function resetProviderChainForTests(): void {
   cooledUntil.clear();
+  geminiConfigRejected = false;
 }
 
 function geminiModel(): string {
@@ -262,19 +263,25 @@ function geminiCalls(steps: Array<Record<string, unknown>>) {
   return calls;
 }
 
+/** Set when Gemini rejects generation_config (a 400), so later turns send the plain request. */
+let geminiConfigRejected = false;
+
 async function completeGemini(input: unknown[], tools: ReturnType<typeof toolSpecs>, system: string, apiKey: string): Promise<GeminiBody> {
-  return (await postProvider(
-    GEMINI_ENDPOINT,
-    { "x-goog-api-key": apiKey },
-    {
-      model: geminiModel(),
-      store: false,
-      system_instruction: system,
-      input,
-      tools,
+  const base = { model: geminiModel(), store: false, system_instruction: system, input, tools };
+  const post = (payload: unknown) => postProvider(GEMINI_ENDPOINT, { "x-goog-api-key": apiKey }, payload) as Promise<GeminiBody>;
+  if (geminiConfigRejected) return post(base);
+  try {
+    return await post({
+      ...base,
       generation_config: { thinking_level: geminiThinkingLevel(geminiModel()), max_output_tokens: 1200 },
-    },
-  )) as GeminiBody;
+    });
+  } catch (error) {
+    // A model that doesn't take these settings still answers without them.
+    if (!(error instanceof ProviderError) || error.status !== 400) throw error;
+    geminiConfigRejected = true;
+    console.error("[assistant] Gemini rejected generation_config; sending without it");
+    return post(base);
+  }
 }
 
 interface GroqToolCall {

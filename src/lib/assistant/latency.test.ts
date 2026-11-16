@@ -165,3 +165,27 @@ describe("assistant latency", () => {
     expect(geminiThinkingLevel("gemini-4-hydrogen")).toBe("low");
   });
 });
+
+describe("gemini settings fallback", () => {
+  it("retries without generation_config when Gemini rejects it, and keeps it off afterwards", async () => {
+    process.env.GEMINI_API_KEY = "test-gemini";
+    const patient = await account("user-patient-demo");
+    const bodies: Record<string, unknown>[] = [];
+    const replies = [
+      { ok: false, status: 400, body: { error: { message: "Unknown field generation_config" } } },
+      { ok: true, status: 200, body: { output_text: "Hello." } },
+      { ok: true, status: 200, body: { output_text: "Hello again." } },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: { body: string }) => {
+        bodies.push(JSON.parse(init.body) as Record<string, unknown>);
+        const next = replies.shift()!;
+        return { ok: next.ok, status: next.status, text: async () => JSON.stringify(next.body) };
+      }),
+    );
+    expect((await askClinic(patient, [{ role: "user", content: "hi" }])).reply).toBe("Hello.");
+    expect((await askClinic(patient, [{ role: "user", content: "hi" }])).reply).toBe("Hello again.");
+    expect(bodies.map((body) => "generation_config" in body)).toEqual([true, false, false]);
+  });
+});
