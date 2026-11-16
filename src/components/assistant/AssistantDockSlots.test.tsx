@@ -42,11 +42,27 @@ describe("AssistantDock open times", () => {
     fireEvent.keyDown(box, { key: "Enter" });
 
     const today = await screen.findByRole("list", { name: "Open times, Dr Doom, Today, Thu 12 Nov" });
-    expect(today.querySelectorAll("a")).toHaveLength(2);
+    expect(today.querySelectorAll("button")).toHaveLength(2);
     expect(screen.getByRole("list", { name: "Open times, Dr Doom, Tomorrow, Fri 13 Nov" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Book Dr Doom, Today, Thu 12 Nov at 10:45" })).toHaveAttribute("href", "/book/details?slot=s-1045");
-    expect(screen.getByRole("link", { name: "Book Dr Doom, Tomorrow, Fri 13 Nov at 09:00" })).toHaveAttribute("href", "/book/details?slot=s-0900");
-    expect(screen.getByText(/Nothing is booked until you confirm there/)).toBeInTheDocument();
+    // The full form stays one tap away.
+    expect(screen.getByRole("link", { name: "Booking form, Dr Doom, Today, Thu 12 Nov" })).toHaveAttribute("href", "/book/details?slot=s-1045");
+    expect(screen.getByText(/Tap a time to book it here/)).toBeInTheDocument();
+
+    // Tapping a time books it in the chat: the server prepares the card with no model call.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        reply: "Book this time? Check the details below and confirm.",
+        pending: { token: "t1", title: "Book this visit?", summary: "Dr Doom, Fri 13 Nov at 09:00, A new concern.", confirmLabel: "Book", expiresAt: "2026-11-12T05:00:00.000Z" },
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Book Dr Doom, Tomorrow, Fri 13 Nov at 09:00" }));
+    expect(await screen.findByText(/Check the details below and confirm/)).toBeInTheDocument();
+    const body = JSON.parse((fetchMock.mock.calls[1]![1] as { body: string }).body) as { bookSlot: string; messages: { role: string; content: string }[] };
+    expect(body.bookSlot).toBe("s-0900");
+    expect(body.messages.at(-1)).toEqual({ role: "user", content: "Book 09:00 with Dr Doom, Tomorrow, Fri 13 Nov" });
+    // The earlier reply carries the times it showed, so a typed "11:00" has its doctor and day.
+    expect(body.messages.at(-2)!.content).toMatch(/\[Open times shown under this reply: Dr Doom on 2026-11-12: 10:45, 11:00; Dr Doom on 2026-11-13: 09:00\]/);
   });
 
   it("shows a doctor's own open times without booking links", async () => {

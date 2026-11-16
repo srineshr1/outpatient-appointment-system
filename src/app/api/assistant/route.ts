@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { TurnTiming } from "@/lib/assistant/grok";
 import { lockedLanguage } from "@/lib/assistant/language";
-import { beginModelTurn, endModelTurn, handleTurn, parseMessages, readAssistantJson } from "@/lib/assistant/turn";
+import { allowTurn, beginModelTurn, endModelTurn, handleSlotPick, handleTurn, parseMessages, readAssistantJson } from "@/lib/assistant/turn";
 import { getCurrentUser } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -26,14 +26,19 @@ export async function POST(request: Request) {
   if (user.role !== "patient" && user.role !== "doctor") {
     return NextResponse.json({ message: "The assistant is for patients and doctors." }, { status: 403 });
   }
+  const read = await readAssistantJson(request);
+  if (read.ok) {
+    const picked = read.value && typeof read.value === "object" ? (read.value as Record<string, unknown>).bookSlot : null;
+    // A tapped time chip: no model call, so it doesn't spend the model quota.
+    if (typeof picked === "string" && picked) {
+      if (!allowTurn(user.id)) return NextResponse.json({ message: "Too many requests. Wait a minute and try again." }, { status: 429 });
+      const language = (read.value as Record<string, unknown>).language;
+      return NextResponse.json(await handleSlotPick(user, picked, typeof language === "string" ? lockedLanguage(language) : null));
+    }
+  }
+  if (!read.ok) return NextResponse.json({ message: read.message }, { status: read.status });
   const quota = beginModelTurn(user.id);
   if (!quota.ok) return NextResponse.json({ message: quota.message }, { status: 429 });
-
-  const read = await readAssistantJson(request);
-  if (!read.ok) {
-    endModelTurn(user.id);
-    return NextResponse.json({ message: read.message }, { status: read.status });
-  }
   const record = read.value && typeof read.value === "object" ? (read.value as Record<string, unknown>) : {};
   const messages = parseMessages(record.messages);
   if (!messages || messages.at(-1)?.role !== "user") {

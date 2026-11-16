@@ -19,6 +19,7 @@ import {
   visitReasons,
   workingHours,
 } from "./read";
+import { bookTime, moveToTime } from "./book-time";
 import type { PendingCard } from "./confirm-token";
 import { proposeAddSession, proposeUpdateSession, type SessionArgs } from "./session-act";
 import { SLOT_TOOLS, slotLinksFrom, type SlotLink } from "./slot-links";
@@ -79,6 +80,8 @@ const patientTools: ToolSpec[] = [
   { type: "function", name: "list_open_slots", description: "Open slots, optionally on one date. Omit doctorId to get every doctor's open times in one call (use this for 'what is free tomorrow'); give doctorId for one doctor.", parameters: { type: "object", properties: { doctorId: { type: "string", description: "Omit for all doctors." }, date } } },
   { type: "function", name: "suggest_slots", description: "Check a requested time and suggest the nearest open alternatives when it is taken.", parameters: { type: "object", properties: { doctorId: { type: "string" }, date, time }, required: ["doctorId", "date", "time"] } },
   { type: "function", name: "next_available", description: "The next open slot for one doctor.", parameters: { type: "object", properties: { doctorId: { type: "string" } }, required: ["doctorId"] } },
+  { type: "function", name: "book_time", description: "Book a visit from what the patient says, in one call. Finds the doctor by name (a first name like 'kavya' is enough), the day and the open time, then prepares the confirmation card. Use it for every booking request, including short follow-ups like '11' or '11:20' after times were shown: take the doctor and day from the conversation. Do not search doctors or list times first.", parameters: { type: "object", properties: { doctor: { type: "string", description: "Doctor's name as said or as shown earlier in the chat, e.g. 'Kavya Reddy'. Omit only if no doctor is known yet." }, date: { ...date, description: "Clinic date YYYY-MM-DD, 'today' or 'tomorrow', from the message or the conversation. Omit if no day was mentioned." }, time: { type: "string", description: "The time as the user said it: '11', '11:20', '1120', '2 pm'. Convert words or other scripts to digits." }, reasonId: { type: "string", description: "new, follow, meds or bp. Omit unless the user said; 'new' is used." }, payOnline: { type: "boolean", description: "Only true if the user asked to pay online." }, note: { type: "string" } }, required: ["time"] } },
+  { type: "function", name: "move_to_time", description: "Move one of the patient's upcoming visits to another time with the same doctor, in one call. Prepares the confirmation card.", parameters: { type: "object", properties: { visit: { type: "string", description: "Visit reference (HSP-…) or the doctor's name. Omit if they have one upcoming visit." }, date: { ...date, description: "New date. Omit to keep the same day." }, time: { type: "string", description: "New time as said: '11', '11:20', '2 pm'." } }, required: ["time"] } },
   { type: "function", name: "propose_book", description: "Prepare a booking from the patient's profile. Does not book until the user confirms. Re-checks the slot at confirmation. payOnline holds the time and opens the real payment page.", parameters: { type: "object", properties: { slotId, reasonId: { type: "string", description: "new, follow, meds or bp" }, payOnline: { type: "boolean" }, note: { type: "string" } }, required: ["slotId", "reasonId"] } },
   { type: "function", name: "propose_reschedule", description: "Prepare moving one of the patient's visits to another slot with the same doctor. Does not move it until the user confirms.", parameters: { type: "object", properties: { visitId, slotId }, required: ["visitId", "slotId"] } },
   { type: "function", name: "propose_cancel", description: "Prepare cancelling one of the patient's visits. Does not cancel it until the user confirms.", parameters: { type: "object", properties: { visitId }, required: ["visitId"] } },
@@ -166,6 +169,10 @@ async function dispatchTool(user: PublicUser, name: string, args: unknown): Prom
     }
     if (name === "suggest_slots") return { forModel: await suggestTimes(user, text(args, "doctorId"), text(args, "date"), text(args, "time")) };
     if (name === "next_available") return { forModel: await nextFree(user, text(args, "doctorId")) };
+    if (name === "book_time") {
+      return bookTime(user, { doctor: text(args, "doctor"), date: text(args, "date"), time: text(args, "time"), reasonId: text(args, "reasonId"), payOnline: flag(args, "payOnline"), note: text(args, "note") });
+    }
+    if (name === "move_to_time") return moveToTime(user, { visit: text(args, "visit"), date: text(args, "date"), time: text(args, "time") });
     if (name === "propose_book") return proposeBook(user, text(args, "slotId"), text(args, "reasonId"), flag(args, "payOnline"), text(args, "note"));
     if (name === "propose_reschedule") return proposeReschedule(user, text(args, "visitId"), text(args, "slotId"), "");
     if (name === "propose_cancel") return proposeCancel(user, text(args, "visitId"));
