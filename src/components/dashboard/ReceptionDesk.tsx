@@ -11,7 +11,8 @@ import { reasons } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
 import { queueVisit, updateVisit } from "@/server/booking-actions";
 import type { DoctorFilterOption } from "./ClinicBookView";
-import { clockLabel, QueueBoard } from "./QueueBoard";
+import { queueClock as clockLabel } from "@/lib/queue";
+import { QueueBoard } from "./QueueBoard";
 
 type DeskTab = "today" | "upcoming" | "earlier";
 

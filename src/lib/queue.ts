@@ -1,4 +1,13 @@
 import type { AppointmentRecord } from "./clinic-types";
+import { PRACTICE_TZ } from "./clock";
+
+/**
+ * HH:MM in the practice's time zone, for check-in and consultation times. Lives here (not in a client
+ * component) so server pages such as the patient's queue can call it too.
+ */
+export function queueClock(at: string): string {
+  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: PRACTICE_TZ }).format(new Date(at));
+}
 
 /**
  * Where a booked visit is on the day. "seeing": the doctor has called the patient in. "arrived": checked

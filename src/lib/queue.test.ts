@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AppointmentRecord } from "./clinic-types";
-import { clinicQueues, compareQueue, queuePlace, sameClinicQueue } from "./queue";
+import { readFileSync } from "node:fs";
+import { clinicQueues, compareQueue, queueClock, queuePlace, sameClinicQueue } from "./queue";
 
 function visit(overrides: Partial<AppointmentRecord> & Pick<AppointmentRecord, "id" | "time" | "status">): AppointmentRecord {
   return {
@@ -115,5 +116,17 @@ describe("clinicQueues", () => {
     expect(morning!.upNext.map((item) => item.id)).toEqual(["arrived", "late"]);
     expect(morning).toMatchObject({ arrived: 1, completed: 1, noShows: 1, start: "08:20" });
     expect(afternoon!.upNext.map((item) => item.id)).toEqual(["pm"]);
+  });
+});
+
+describe("queueClock", () => {
+  it("shows check-in times as HH:MM in the practice's time zone", () => {
+    expect(queueClock("2026-11-17T14:50:00.000Z")).toBe("20:20");
+  });
+
+  it("is not taken from a client component by server pages (calling one from the server crashes the page)", () => {
+    for (const file of ["src/app/appointments/[id]/queue/page.tsx", "src/components/clinic/VisitList.tsx"]) {
+      expect(readFileSync(file, "utf8")).not.toMatch(/from "@\/components\/dashboard\/QueueBoard"/);
+    }
   });
 });

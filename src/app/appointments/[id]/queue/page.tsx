@@ -7,8 +7,7 @@ import { buttonClass } from "@/components/ui/button-styles";
 import { now, todayIso } from "@/lib/clock";
 import { findDoctor, practice, reasons } from "@/lib/data";
 import { formatShortDate, relativeDay } from "@/lib/format";
-import { clockLabel } from "@/components/dashboard/QueueBoard";
-import { compareQueue, queuePath, queuePlace, queueStage, sameClinicQueue } from "@/lib/queue";
+import { compareQueue, queueClock as clockLabel, queuePath, queuePlace, queueStage, sameClinicQueue } from "@/lib/queue";
 import { getCurrentUser } from "@/lib/session";
 import { patientPlace, tokenLabel } from "@/lib/sessions";
 import { getStore } from "@/lib/store";
@@ -112,7 +111,7 @@ export default async function QueuePage({
           </span>
         </p>
       ) : null}
-      {visit.status === "booked" ? (
+      {place.stage === "seeing" ? null : visit.status === "booked" ? (
         <p className="mt-1 text-center text-body text-ink-2">
           {place.waiting === 1
             ? "You are the only person still booked in this clinic."
