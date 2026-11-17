@@ -4,9 +4,8 @@ import { Card } from "@/components/ui/Card";
 import { buttonClass } from "@/components/ui/button-styles";
 import { PendingButton } from "@/components/ui/PendingButton";
 import type { AppointmentRecord } from "@/lib/clinic-types";
-import { PRACTICE_TZ } from "@/lib/clock";
 import { reasons } from "@/lib/data";
-import { clinicQueues, type ClinicQueue } from "@/lib/queue";
+import { clinicQueues, queueClock as clockLabel, type ClinicQueue } from "@/lib/queue";
 import { tokenLabel } from "@/lib/sessions";
 import { queueVisit, updateVisit } from "@/server/booking-actions";
 
@@ -19,10 +18,6 @@ export interface QueueBoardProps {
   showDoctor: boolean;
 }
 
-/** HH:MM in the practice's time zone, for check-in and consultation times. */
-export function clockLabel(at: string): string {
-  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: PRACTICE_TZ }).format(new Date(at));
-}
 
 /** The token patients see: the wave token, or the slot's place in a fixed-slot session (#75). */
 export function visitToken(visit: AppointmentRecord): number | null {
