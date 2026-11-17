@@ -103,6 +103,26 @@ describe("password lockout and reset links", () => {
     expect(await consumeResetToken("late.test@example.com", late.token, new Date(at.getTime() + 31 * 60_000))).toBe(false);
   });
 
+  it("rate-limits email lookups per email and per IP, then allows them again after the window", async () => {
+    const { consumeEmailLookup, LOOKUP_EMAIL_MAX, LOOKUP_IP_MAX, LOOKUP_WINDOW_MS, recordKind, lookupEmailKey } = await import("./login-codes");
+    const at = new Date("2026-11-17T10:00:00Z");
+    for (let i = 0; i < LOOKUP_EMAIL_MAX; i += 1) {
+      expect(await consumeEmailLookup("New.User@Example.com", "1.2.3.4", at)).toEqual({ ok: true });
+    }
+    expect(await consumeEmailLookup("new.user@example.com", "1.2.3.4", at)).toEqual({ ok: false });
+    // A different email from the same IP is still allowed while the IP is under its cap.
+    expect(await consumeEmailLookup("other@example.com", "1.2.3.4", at)).toEqual({ ok: true });
+    expect(await consumeEmailLookup("new.user@example.com", "1.2.3.4", new Date(at.getTime() + LOOKUP_WINDOW_MS + 1_000))).toEqual({ ok: true });
+    expect(recordKind(lookupEmailKey("new.user@example.com"))).toEqual({ kind: "lookup", email: "new.user@example.com" });
+
+    const later = new Date("2026-11-17T11:00:00Z");
+    for (let i = 0; i < LOOKUP_IP_MAX; i += 1) {
+      expect(await consumeEmailLookup(`probe${i}@example.com`, "9.9.9.9", later)).toEqual({ ok: true });
+    }
+    expect(await consumeEmailLookup("another@example.com", "9.9.9.9", later)).toEqual({ ok: false });
+    expect(await consumeEmailLookup("another@example.com", "8.8.8.8", later)).toEqual({ ok: true });
+  });
+
   it("never signs in an account that has no password", async () => {
     const { authenticate, createPatient } = await import("./accounts");
     await createPatient("google.only@example.com", "Google Only");

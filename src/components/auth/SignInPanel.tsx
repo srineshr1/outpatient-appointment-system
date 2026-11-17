@@ -11,15 +11,13 @@ import { GlideSelect } from "@/components/reactbits/GlideSelect";
 import { FlickeringGrid } from "@/registry/magicui/flickering-grid";
 import { AuroraBackground } from "@/components/ui/AuroraBackground";
 import { Button } from "@/components/ui/Button";
-import { buttonClass } from "@/components/ui/button-styles";
 import { Spinner as ButtonSpinner } from "@/components/ui/Spinner";
-import { ArrowRight } from "lucide-react";
 import type { Doctor } from "@/lib/data";
 import { practice } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
-import { requestPasswordReset, signInWithPassword, signUpWithPassword, type SignInMode } from "@/server/auth-actions";
+import { lookupEmailAccount, requestPasswordReset, signInWithPassword, signUpWithPassword, type SignInMode } from "@/server/auth-actions";
 
-type View = "signin" | "signup" | "forgot";
+type View = "signin" | "forgot";
 type SignupRole = "patient" | "doctor";
 
 const MIN_PASSWORD = 8;
@@ -30,14 +28,14 @@ interface Props {
   doctors: Doctor[];
   /** Shown when Google sign-in bounced back with a problem. */
   notice?: string | null;
-  /** Open on the sign-up form rather than sign-in. */
-  initialView?: View;
+  /** Kept so /register? and ?mode=signup still land here; the form always starts with the email. */
+  initialView?: "signin" | "signup" | "forgot";
 }
 
-export function SignInPanel({ nextPath, mode, doctors, notice = null, initialView = "signin" }: Props) {
+export function SignInPanel({ nextPath, mode, doctors, notice = null }: Props) {
   const staff = mode === "staff";
-  const [view, setView] = useState<View>(staff && initialView === "signup" ? "signin" : initialView);
-  const [authStep, setAuthStep] = useState<"email" | "password">("email");
+  const [view, setView] = useState<View>("signin");
+  const [authStep, setAuthStep] = useState<"email" | "password" | "signup">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -63,8 +61,14 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
       setError("Enter your email address to continue.");
       return;
     }
-    setError(null);
-    setAuthStep("password");
+    run("Checking…", async () => {
+      const result = await lookupEmailAccount({ email });
+      if (!result.ok) return result;
+      setPassword("");
+      setConfirm("");
+      setAuthStep(result.exists ? "password" : "signup");
+      return { ok: true };
+    });
   }
 
   function run(label: string, work: () => Promise<{ ok: boolean; error?: string; message?: string } | undefined>) {
@@ -157,85 +161,6 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
         </LinkButton>
       </form>
     );
-  } else if (view === "signup") {
-    body = (
-      <form onSubmit={submitSignUp} noValidate>
-        <h2 className="px-2 text-title3 font-semibold text-ink">Create your account</h2>
-        <fieldset className="mt-3">
-          <legend className="px-2 text-callout font-medium text-ink-2 dark:text-zinc-200">I’m signing up as</legend>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {(["patient", "doctor"] as const).map((option) => (
-              <label
-                key={option}
-                className={`cursor-pointer rounded-card border p-3 text-callout transition-colors has-focus-visible:border-accent ${
-                  role === option
-                    ? "border-accent/60 dark:border-cyan-400/60 bg-accent/10 dark:bg-cyan-400/10 shadow-[0_0_16px_rgba(34,211,238,0.12)]"
-                    : "border-ink/12 bg-surface-2 hover:border-ink/25"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="role"
-                  value={option}
-                  checked={role === option}
-                  onChange={() => setRole(option)}
-                  className="sr-only"
-                />
-                <span className="block font-semibold text-ink">{option === "patient" ? "A patient" : "A doctor"}</span>
-                <span className="mt-0.5 block text-ink-2">{option === "patient" ? "Book visits with our doctors." : "Set up sessions and take bookings."}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <TextField id="name" label="Full name" autoComplete="name" value={name} onChange={setName} pending={pending} error={error} maxLength={100} autoFocus />
-        <TextField id="email" label="Email" type="email" autoComplete="email" value={email} onChange={setEmail} pending={pending} error={error} />
-        <TextField
-          id="mobile"
-          label="Mobile (optional)"
-          type="tel"
-          autoComplete="tel"
-          value={mobile}
-          onChange={setMobile}
-          pending={pending}
-          error={error}
-          hint="For booking texts and reminders, e.g. +91 98765 43210."
-          maxLength={20}
-        />
-        <TextField
-          id="password"
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={setPassword}
-          pending={pending}
-          error={error}
-          hint={`At least ${MIN_PASSWORD} characters.`}
-          maxLength={200}
-        />
-        <TextField
-          id="confirm"
-          label="Confirm password"
-          type="password"
-          autoComplete="new-password"
-          value={confirm}
-          onChange={setConfirm}
-          pending={pending}
-          error={error}
-          maxLength={200}
-        />
-        <ErrorText id="form-error" message={error} />
-        <SubmitButton pending={pending} busyLabel={busyLabel}>
-          {role === "doctor" ? "Create doctor account" : "Create account"}
-        </SubmitButton>
-        <p className="mt-3 text-center text-callout text-ink-2">
-          Already have an account?{" "}
-          <button type="button" onClick={() => go("signin")} className="font-medium text-accent dark:text-cyan-300 hover:underline underline-offset-4">
-            Sign in
-          </button>
-        </p>
-      </form>
-    );
   } else {
     body = (
       <div>
@@ -304,9 +229,18 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
             <Button
               type="submit"
-              className="h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm"
+              disabled={pending}
+              aria-busy={pending || undefined}
+              className="h-11 w-full rounded-md bg-white font-semibold text-zinc-950 hover:bg-zinc-200 transition-colors shadow-sm disabled:opacity-50"
             >
-              Continue
+              {pending ? (
+                <span className="flex items-center justify-center gap-2">
+                  <ButtonSpinner />
+                  <span>{busyLabel || "Checking…"}</span>
+                </span>
+              ) : (
+                "Continue"
+              )}
             </Button>
 
             {/* Hidden from visual UI per request; accessible for assistive tech and tests */}
@@ -314,10 +248,79 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
               <button type="button" onClick={() => go("forgot")}>
                 Forgot password?
               </button>
-              <button type="button" onClick={() => go("signup")}>
-                Create an account
+            </div>
+          </form>
+        ) : authStep === "signup" ? (
+          <form onSubmit={submitSignUp} noValidate className="space-y-3.5">
+            <div className="flex items-center justify-between rounded-md border border-ink/12 bg-surface-2/60 px-3.5 py-2 text-callout">
+              <div className="flex items-center gap-2 truncate">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-caption font-semibold text-accent dark:text-cyan-300">
+                  {email.charAt(0).toUpperCase()}
+                </div>
+                <span className="truncate font-medium text-ink">{email}</span>
+                <span className="shrink-0 text-caption text-ink-2 capitalize">({role})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthStep("email");
+                  setError(null);
+                  setPassword("");
+                  setConfirm("");
+                }}
+                className="ml-2 shrink-0 text-caption font-medium text-accent hover:underline dark:text-cyan-300"
+              >
+                Change
               </button>
             </div>
+            <div className="px-1">
+              <h2 className="text-title3 font-semibold text-ink">New here? Set a password to create your account</h2>
+              <p className="mt-1 text-callout text-ink-2">
+                {role === "doctor"
+                  ? "We’ll create a doctor account for this email."
+                  : "We’ll create a patient account for this email."}
+              </p>
+            </div>
+            <TextField id="name" label="Full name" autoComplete="name" value={name} onChange={setName} pending={pending} error={error} maxLength={100} autoFocus />
+            <TextField
+              id="mobile"
+              label="Mobile (optional)"
+              type="tel"
+              autoComplete="tel"
+              value={mobile}
+              onChange={setMobile}
+              pending={pending}
+              error={error}
+              hint="For booking texts and reminders, e.g. +91 98765 43210."
+              maxLength={20}
+            />
+            <TextField
+              id="password"
+              label="Password"
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={setPassword}
+              pending={pending}
+              error={error}
+              hint={`At least ${MIN_PASSWORD} characters.`}
+              maxLength={200}
+            />
+            <TextField
+              id="confirm"
+              label="Confirm password"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={setConfirm}
+              pending={pending}
+              error={error}
+              maxLength={200}
+            />
+            <ErrorText id="form-error" message={error} />
+            <SubmitButton pending={pending} busyLabel={busyLabel}>
+              {role === "doctor" ? "Create doctor account" : "Create account"}
+            </SubmitButton>
           </form>
         ) : (
           <form onSubmit={submitSignIn} noValidate className="space-y-3.5">
@@ -434,7 +437,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
 
         {/* Right: Clean, unboxed login (no card) */}
         <div className="w-full max-w-sm mx-auto md:max-w-md">
-          {view === "forgot" || (view === "signin" && authStep === "password") ? null : (
+          {view === "forgot" || authStep !== "email" ? null : (
             <>
               <Button
                 asChild
@@ -447,7 +450,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
                 >
                   <GoogleMark />
                   <span className="font-medium text-zinc-900">
-                    {view === "signup" ? "Sign up with Google" : "Continue with Google"}
+                    Continue with Google
                   </span>
                 </a>
               </Button>
@@ -460,7 +463,7 @@ export function SignInPanel({ nextPath, mode, doctors, notice = null, initialVie
           )}
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={view}
+              key={`${view}-${authStep}`}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
