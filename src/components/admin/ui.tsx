@@ -50,6 +50,7 @@ const STATUS: Record<AppointmentStatus, { label: string; tone: Tone }> = {
   pending_payment: { label: "Awaiting payment", tone: "warn" },
   expired: { label: "Hold expired", tone: "neutral" },
   displaced: { label: "Displaced", tone: "warn" },
+  no_show: { label: "No-show", tone: "neutral" },
 };
 
 export function StatusBadge({ status }: { status: AppointmentStatus }) {

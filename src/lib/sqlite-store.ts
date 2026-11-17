@@ -11,6 +11,8 @@ import {
   type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
+  type VisitMark,
+  type VisitMarkResult,
   APPOINTMENT_STATUSES,
   type AuditEvent,
   type ChargeRecord,
@@ -85,6 +87,8 @@ interface AppointmentRow {
   rating_score?: number | null;
   rating_note?: string | null;
   rated_at?: string | null;
+  checked_in_at?: string | null;
+  consult_started_at?: string | null;
 }
 
 interface OfferRow {
@@ -272,6 +276,8 @@ function toAppointment(row: AppointmentRow): AppointmentRecord {
     ...(row.rating_score != null
       ? { ratingScore: row.rating_score, ratingNote: row.rating_note ?? null, ratedAt: row.rated_at ?? null }
       : {}),
+    ...(row.checked_in_at ? { checkedInAt: row.checked_in_at } : {}),
+    ...(row.consult_started_at ? { consultStartedAt: row.consult_started_at } : {}),
   };
 }
 
@@ -672,6 +678,8 @@ export class SqliteClinicStore implements ClinicStore {
     this.addColumn("appointments", "rating_score", "INTEGER");
     this.addColumn("appointments", "rating_note", "TEXT");
     this.addColumn("appointments", "rated_at", "TEXT");
+    this.addColumn("appointments", "checked_in_at", "TEXT");
+    this.addColumn("appointments", "consult_started_at", "TEXT");
     this.addColumn("sessions", "id", "TEXT");
     this.addColumn("sessions", "created_at", "TEXT");
     this.addColumn("sessions", "device", "TEXT NOT NULL DEFAULT ''");
@@ -903,6 +911,17 @@ export class SqliteClinicStore implements ClinicStore {
     if (!row) return "missing";
     if (row.rating_score != null) return "rated";
     return "closed";
+  }
+
+  async markVisit(id: string, mark: VisitMark, at: string): Promise<VisitMarkResult> {
+    const column = mark === "checked_in" ? "checked_in_at" : "consult_started_at";
+    const result = this.db
+      .prepare(`UPDATE appointments SET ${column} = ? WHERE id = ? AND status = 'booked' AND ${column} IS NULL`)
+      .run(at, id);
+    if (Number(result.changes) > 0) return "ok";
+    const row = this.db.prepare(`SELECT ${column} AS stamp FROM appointments WHERE id = ?`).get(id) as { stamp: string | null } | undefined;
+    if (!row) return "missing";
+    return row.stamp != null ? "already" : "stale";
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {

@@ -84,7 +84,7 @@ export function PatientPortal({
 
   // Upcoming vs past appointments count
   const upcomingVisits = visits.filter(
-    (v) => v.date >= today && v.status !== "cancelled" && v.status !== "expired",
+    (v) => v.date >= today && v.status !== "cancelled" && v.status !== "expired" && v.status !== "no_show",
   );
   const nextVisit = upcomingVisits[0] ?? null;
   const queueVisit =

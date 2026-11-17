@@ -25,6 +25,9 @@ const notices: Record<string, string> = {
   unavailable: "That visit can’t be changed.",
   missing: "That visit is no longer on the book.",
   moved: "Visit moved. The other side has been told by email.",
+  checkedIn: "That patient is already checked in. Nothing was changed.",
+  seeing: "That patient is already with the doctor.",
+  notToday: "Patients can be checked in and called in only on the day of their visit.",
 };
 
 async function safeInbox(userId: string): Promise<InboxItem[]> {

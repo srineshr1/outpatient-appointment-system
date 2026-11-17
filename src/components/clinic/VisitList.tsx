@@ -4,6 +4,7 @@ import { reasons, findDoctor } from "@/lib/data";
 import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
 import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
 import { RateVisit } from "@/components/patient/RateVisit";
+import { clockLabel } from "@/components/dashboard/QueueBoard";
 import { queuePath } from "@/lib/queue";
 import { patientPlace, slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
@@ -23,7 +24,11 @@ function doctorName(id: string): string {
   return findDoctor(id)?.name ?? "Your doctor";
 }
 
-function statusLabel(status: AppointmentRecord["status"]): string {
+function statusLabel(visit: AppointmentRecord): string {
+  const status = visit.status;
+  if (status === "booked" && visit.consultStartedAt) return "With the doctor now";
+  if (status === "booked" && visit.checkedInAt) return `Checked in at ${clockLabel(visit.checkedInAt)}`;
+  if (status === "no_show") return "Missed (no-show)";
   if (status === "completed") return "Completed";
   if (status === "cancelled") return "Cancelled";
   if (status === "pending_payment") return "Awaiting payment";
@@ -35,7 +40,7 @@ function statusLabel(status: AppointmentRecord["status"]): string {
 function statusPillClass(status: AppointmentRecord["status"]): string {
   if (status === "completed") return "border-success/25 bg-success-soft text-success";
   if (status === "pending_payment" || status === "displaced") return "border-warn/25 bg-warn-soft text-warn";
-  if (status === "cancelled" || status === "expired") return "border-hairline bg-fill text-muted";
+  if (status === "cancelled" || status === "expired" || status === "no_show") return "border-hairline bg-fill text-muted";
   return "border-accent/25 bg-accent-soft text-accent";
 }
 
@@ -92,7 +97,7 @@ export function groupVisits(visits: readonly AppointmentRecord[], today: string)
   );
   for (const visit of ordered) {
     if (visit.status === "pending_payment") awaiting.push(visit);
-    else if (visit.status === "cancelled" || visit.status === "expired" || visit.status === "displaced") cancelled.push(visit);
+    else if (visit.status === "cancelled" || visit.status === "expired" || visit.status === "displaced" || visit.status === "no_show") cancelled.push(visit);
     else if (visit.date === today) todayVisits.push(visit);
     else if (visit.date > today) upcoming.push(visit);
     else earlier.push(visit);
@@ -178,7 +183,7 @@ export function VisitList({
                           </span>
                         ) : null}
                         <p className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption font-semibold ${statusPillClass(visit.status)}`}>
-                          {statusLabel(visit.status)}
+                          {statusLabel(visit)}
                         </p>
                       </div>
                     </div>

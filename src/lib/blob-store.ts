@@ -4,6 +4,8 @@ import {
   type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
+  type VisitMark,
+  type VisitMarkResult,
   type AuditEvent,
   type ChargeRecord,
   type ClinicStore,
@@ -403,6 +405,17 @@ export class BlobClinicStore implements ClinicStore {
     if (result.changed) return "ok";
     if (result.value.ratingScore != null) return "rated";
     return "closed";
+  }
+
+  async markVisit(id: string, mark: VisitMark, at: string): Promise<VisitMarkResult> {
+    const key = mark === "checked_in" ? "checkedInAt" : "consultStartedAt";
+    const result = await updateTagged<AppointmentRecord>(appointmentPath(id), (existing) => {
+      if (existing.status !== "booked" || existing[key] != null) return null;
+      return { ...existing, [key]: at };
+    });
+    if (!result) return "missing";
+    if (result.changed) return "ok";
+    return result.value[key] != null ? "already" : "stale";
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {

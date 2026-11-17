@@ -120,7 +120,7 @@ export interface VisitFilters {
   to: string;
 }
 
-const STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired"];
+const STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired", "no_show"];
 const MONEY: readonly (PaymentState | "owed")[] = [
   "owed",
   "unpaid",

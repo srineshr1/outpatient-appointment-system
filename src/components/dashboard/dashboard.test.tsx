@@ -10,7 +10,7 @@ import { DoctorProfileWorkspace } from "./DoctorProfileWorkspace";
 import { SessionStudio } from "./SessionStudio";
 import { SessionsViewer } from "./SessionsViewer";
 
-vi.mock("@/server/booking-actions", () => ({ updateVisit: vi.fn() }));
+vi.mock("@/server/booking-actions", () => ({ updateVisit: vi.fn(), queueVisit: vi.fn() }));
 vi.mock("@/server/inbox-actions", () => ({
   markAllReadAction: vi.fn(),
   openInboxItemAction: vi.fn(),

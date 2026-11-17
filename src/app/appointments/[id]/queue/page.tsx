@@ -7,7 +7,8 @@ import { buttonClass } from "@/components/ui/button-styles";
 import { now, todayIso } from "@/lib/clock";
 import { findDoctor, practice, reasons } from "@/lib/data";
 import { formatShortDate, relativeDay } from "@/lib/format";
-import { queuePath, queuePlace } from "@/lib/queue";
+import { clockLabel } from "@/components/dashboard/QueueBoard";
+import { compareQueue, queuePath, queuePlace, queueStage, sameClinicQueue } from "@/lib/queue";
 import { getCurrentUser } from "@/lib/session";
 import { patientPlace, tokenLabel } from "@/lib/sessions";
 import { getStore } from "@/lib/store";
@@ -57,10 +58,23 @@ export default async function QueuePage({
   const room = doctor?.room ?? null;
   const day = visit.date === today ? "Today" : relativeDay(visit.date, today);
 
+  // Who is with the doctor now, by token only: other patients' names are never shown here.
+  const seeingNow = roster
+    .filter((item) => item.id !== visit.id && queueStage(item) === "seeing" && sameClinicQueue(item, visit))
+    .sort(compareQueue)
+    .map((item) => {
+      const placeOfItem = patientPlace(item, item.sessionId && item.sessionId === visit.sessionId ? session : null);
+      return placeOfItem.token ?? item.token ?? null;
+    });
+
   const headline =
-    visit.status === "completed"
+    place.stage === "seeing"
+      ? "You're with the doctor now"
+      : visit.status === "completed"
       ? "You've been seen"
-      : visit.status === "cancelled" || visit.status === "expired"
+      : visit.status === "no_show"
+        ? "This visit was marked as missed"
+        : visit.status === "cancelled" || visit.status === "expired"
         ? "This visit is no longer booked"
         : visit.status === "displaced"
           ? "This visit needs a new time"
@@ -70,15 +84,34 @@ export default async function QueuePage({
               ? "1 person ahead of you"
               : `${place.ahead} people ahead of you`;
 
-  const number = visit.status === "booked" ? String(place.ahead) : "—";
+  const number = place.stage && place.stage !== "seeing" ? String(place.ahead) : "—";
+  const stageBadge =
+    place.stage === "seeing"
+      ? { text: "Being seen", tone: "border-success/30 bg-success-soft text-success" }
+      : place.stage === "arrived" && visit.checkedInAt
+        ? { text: `Checked in at ${clockLabel(visit.checkedInAt)}`, tone: "border-accent/25 bg-accent-soft text-accent" }
+        : place.stage === "expected"
+          ? { text: "Not checked in yet", tone: "border-warn/25 bg-warn-soft text-warn" }
+          : null;
 
   return (
     <div className="mx-auto max-w-lg px-5 pt-8 pb-16 md:px-8 md:pt-10">
       <p className="text-caption font-semibold tracking-wider text-muted uppercase">Your queue</p>
       <h1 className="mt-2 text-title2 font-bold tracking-tight text-ink">{headline}</h1>
+      {stageBadge ? (
+        <p className={`mt-3 inline-flex rounded-full border px-3 py-1 text-callout font-semibold ${stageBadge.tone}`}>{stageBadge.text}</p>
+      ) : null}
       <p className="mt-6 text-center text-title1 font-bold text-ink tabular" aria-label={headline}>
         {number}
       </p>
+      {visit.status === "booked" && seeingNow.length > 0 && place.stage !== "seeing" ? (
+        <p className="mt-4 text-center text-callout text-ink-2">
+          Now seeing:{" "}
+          <span className="font-semibold text-ink tabular">
+            {seeingNow.map((token) => (token ? tokenLabel(token) : "a patient")).join(", ")}
+          </span>
+        </p>
+      ) : null}
       {visit.status === "booked" ? (
         <p className="mt-1 text-center text-body text-ink-2">
           {place.waiting === 1
@@ -131,7 +164,11 @@ export default async function QueuePage({
         <p className="mt-5 text-callout text-ink-2">
           {visit.date > today
             ? `Your visit is ${formatShortDate(visit.date)}. Open this page on the day to see who is still ahead of you. Wait to be called in token order, lowest first.`
-            : "Wait nearby. Patients are called in token order, lowest first. The number changes when someone is seen, so refresh if you have been waiting."}
+            : place.stage === "seeing"
+              ? "The doctor has called you in."
+              : place.stage === "expected"
+              ? "Check in at the desk when you arrive. Patients who have checked in are called first, in token order, so your place can change until you do."
+              : "Wait nearby. Patients are called in token order, lowest first. The number changes when someone is seen or does not turn up, so refresh if you have been waiting."}
         </p>
       )}
       <p className="mt-2 text-callout text-muted">

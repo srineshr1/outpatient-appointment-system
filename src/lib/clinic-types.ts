@@ -13,15 +13,18 @@ export function isRole(value: unknown): value is Role {
  * booking. "expired": the hold ran out unpaid. Neither one is an appointment the patient has yet.
  * "displaced": the doctor removed the hours this visit was in and confirmed it. The row keeps its
  * original time; the patient is offered other times (see rebooking.ts). It holds no place.
+ * "no_show": the patient did not arrive on the day. Staff close it so the queue moves on. It holds no place.
+ * Checking in and starting the consultation do not change the status: a checked-in visit is still "booked"
+ * (see checkedInAt and consultStartedAt), so it keeps counting towards capacity and every listing.
  */
-export type AppointmentStatus = "booked" | "completed" | "cancelled" | "pending_payment" | "expired" | "displaced";
+export type AppointmentStatus = "booked" | "completed" | "cancelled" | "pending_payment" | "expired" | "displaced" | "no_show";
 
 /** A visit that is not going ahead at its time: cancelled, a payment hold that ran out, or displaced. */
 export function isClosedStatus(status: AppointmentStatus): boolean {
-  return status === "cancelled" || status === "expired" || status === "displaced";
+  return status === "cancelled" || status === "expired" || status === "displaced" || status === "no_show";
 }
 
-export const APPOINTMENT_STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired", "displaced"];
+export const APPOINTMENT_STATUSES: readonly AppointmentStatus[] = ["booked", "completed", "cancelled", "pending_payment", "expired", "displaced", "no_show"];
 
 export interface PublicUser {
   id: string;
@@ -129,7 +132,17 @@ export interface AppointmentRecord {
   ratingNote?: string | null;
   /** When the patient sent the rating (ISO). */
   ratedAt?: string | null;
+  /** When the desk or the doctor checked the patient in on the day (ISO). Set once. */
+  checkedInAt?: string | null;
+  /** When the doctor called the patient in and the consultation started (ISO). Set once. */
+  consultStartedAt?: string | null;
 }
+
+/** The two moments staff record on the day of a visit. */
+export type VisitMark = "checked_in" | "consult_started";
+
+/** "already": that moment is already recorded. "stale": the visit is no longer booked. */
+export type VisitMarkResult = "ok" | "already" | "stale" | "missing";
 
 /** What changes when a booked visit moves. The reference, patient, doctor and fee stay as they are. */
 export interface Placement {
@@ -390,6 +403,11 @@ export interface ClinicStore {
    * "closed" when the visit is not completed; "rated" when a score is already stored; "missing" when there is no such visit.
    */
   saveRating(id: string, score: number, note: string | null, at: string): Promise<RatingResult>;
+  /**
+   * Record that a booked patient checked in, or that their consultation started. Each moment is written
+   * once: "already" when it is set, "stale" when the visit is no longer booked.
+   */
+  markVisit(id: string, mark: VisitMark, at: string): Promise<VisitMarkResult>;
   putLoginCode(record: LoginCodeRecord): Promise<void>;
   getLoginCode(email: string): Promise<LoginCodeRecord | null>;
   deleteLoginCode(email: string): Promise<void>;

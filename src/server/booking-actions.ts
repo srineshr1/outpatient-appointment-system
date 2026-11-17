@@ -18,7 +18,7 @@ import { confirmBooking, SlotUnavailableError } from "@/lib/repository";
 import { cleanRatingNote } from "@/lib/rating";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { validatePatient, FIELD_ORDER, type PatientForm } from "@/lib/validate";
-import { changeAppointmentStatus } from "@/lib/visits";
+import { changeAppointmentStatus, runQueueStep, type QueueStep } from "@/lib/visits";
 import { notifyRescheduled, rescheduleVisit } from "@/lib/reschedule";
 
 export type BookAppointmentResult =
@@ -157,6 +157,36 @@ export async function updateVisit(formData: FormData): Promise<void> {
   await refreshBook();
   if (outcome === "ok") redirect(returnTo);
   redirect(withNotice(returnTo, outcome === "missing" ? "missing" : "unavailable"));
+}
+
+const QUEUE_STEPS: readonly QueueStep[] = ["check_in", "start_consult", "no_show"];
+
+/** Check in, call in, or mark a no-show. Reception, admins, and the visit's own doctor only. */
+export async function queueVisit(formData: FormData): Promise<void> {
+  const returnTo = safeNext(String(formData.get("return") ?? "/dashboard"));
+  const user = await getCurrentUser();
+  if (!user) redirect(`/sign-in?next=${encodeURIComponent(returnTo)}`);
+
+  const id = String(formData.get("id") ?? "");
+  const step = formData.get("step");
+  if (typeof step !== "string" || !(QUEUE_STEPS as readonly string[]).includes(step)) redirect(withNotice(returnTo, "unavailable"));
+
+  const outcome = await runQueueStep(user, id, step as QueueStep);
+  await refreshBook();
+  if (outcome === "ok") redirect(returnTo);
+  const notice =
+    outcome === "already"
+      ? step === "check_in"
+        ? "checkedIn"
+        : step === "start_consult"
+          ? "seeing"
+          : "unavailable"
+      : outcome === "not_today"
+        ? "notToday"
+        : outcome === "missing"
+          ? "missing"
+          : "unavailable";
+  redirect(withNotice(returnTo, notice));
 }
 
 /** The patient who was seen rates that doctor once. Staff and other patients cannot. */

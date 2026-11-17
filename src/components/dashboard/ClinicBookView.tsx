@@ -16,6 +16,7 @@ import { Step, Stepper, type StepItem } from "@/components/reactbits/Stepper";
 import { buildWeek, minutesLabel, weekMonday, weekTitle } from "@/components/doctors/schedule-model";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, Notice } from "@/components/ui/Card";
+import { QueueBoard } from "./QueueBoard";
 import type {
   AppointmentRecord,
   ConsultSession,
@@ -96,7 +97,7 @@ export function groupVisits(visits: readonly AppointmentRecord[], today: string)
     if (visit.status === "pending_payment") awaiting.push(visit);
     // A displaced visit (hours removed, new time pending) is not an active visit: it sits with the
     // cancelled ones until the patient picks a new time, and is counted in "displaced" separately.
-    else if (visit.status === "cancelled" || visit.status === "expired" || visit.status === "displaced") cancelled.push(visit);
+    else if (visit.status === "cancelled" || visit.status === "expired" || visit.status === "displaced" || visit.status === "no_show") cancelled.push(visit);
     else if (visit.date === today) todayVisits.push(visit);
     else if (visit.date > today) upcoming.push(visit);
     else earlier.push(visit);
@@ -119,6 +120,9 @@ export function ClinicBookView({
   noticeSlot,
   displacedSlot,
   verificationPending = false,
+  wholeBook,
+  doctorNames,
+  returnTo,
 }: ClinicBookViewProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const groups = useMemo(() => groupVisits(visits, today), [visits, today]);
@@ -230,6 +234,10 @@ export function ClinicBookView({
           Your account is waiting for the practice to verify it. You can set up your profile and sessions now. Patients can find and book you once an admin verifies you.
         </Notice>
       ) : null}
+
+      {noticeSlot}
+
+      <QueueBoard visits={visits} today={today} doctorNames={doctorNames} returnTo={returnTo} showDoctor={wholeBook} />
 
       {/* 2. Sketch 1 Main Grid: Left = Calendar (click item -> Edit sessions), Right = Notifications */}
       {isOwnDoctor ? (
@@ -513,7 +521,6 @@ export function ClinicBookView({
       ) : null}
 
       {/* 5. Notice & Displaced Patients */}
-      {noticeSlot}
       {displacedSlot}
 
     </div>

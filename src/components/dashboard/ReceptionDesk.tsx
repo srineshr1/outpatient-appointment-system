@@ -9,8 +9,9 @@ import { PendingButton } from "@/components/ui/PendingButton";
 import type { AppointmentRecord } from "@/lib/clinic-types";
 import { reasons } from "@/lib/data";
 import { formatWhen } from "@/lib/format";
-import { updateVisit } from "@/server/booking-actions";
+import { queueVisit, updateVisit } from "@/server/booking-actions";
 import type { DoctorFilterOption } from "./ClinicBookView";
+import { clockLabel, QueueBoard } from "./QueueBoard";
 
 type DeskTab = "today" | "upcoming" | "earlier";
 
@@ -31,7 +32,11 @@ function reasonLabel(id: string): string {
   return reasons.find((reason) => reason.id === id)?.label ?? "Appointment";
 }
 
-function statusLabel(status: AppointmentRecord["status"]): string {
+function statusLabel(visit: AppointmentRecord): string {
+  const status = visit.status;
+  if (status === "booked" && visit.consultStartedAt) return "With the doctor";
+  if (status === "booked" && visit.checkedInAt) return `Checked in ${clockLabel(visit.checkedInAt)}`;
+  if (status === "no_show") return "No-show";
   if (status === "completed") return "Completed";
   if (status === "cancelled") return "Cancelled";
   if (status === "pending_payment") return "Awaiting payment";
@@ -42,7 +47,7 @@ function statusLabel(status: AppointmentRecord["status"]): string {
 
 function statusClass(status: AppointmentRecord["status"]): string {
   if (status === "completed") return "bg-success-soft text-success border-success/25";
-  if (status === "cancelled" || status === "expired") return "bg-fill text-muted border-hairline";
+  if (status === "cancelled" || status === "expired" || status === "no_show") return "bg-fill text-muted border-hairline";
   if (status === "pending_payment" || status === "displaced") return "bg-warn-soft text-warn border-warn/25";
   return "bg-accent-soft text-accent border-accent/25";
 }
@@ -73,7 +78,7 @@ export function ReceptionDesk({
     const earlier: AppointmentRecord[] = [];
     for (const visit of [...visits].sort(byTime)) {
       if (visit.date === today) todayVisits.push(visit);
-      else if (visit.date > today && visit.status !== "cancelled" && visit.status !== "expired") upcoming.push(visit);
+      else if (visit.date > today && visit.status !== "cancelled" && visit.status !== "expired" && visit.status !== "no_show") upcoming.push(visit);
       else if (visit.date < today) earlier.push(visit);
     }
     return { todayVisits, upcoming, earlier };
@@ -110,6 +115,8 @@ export function ReceptionDesk({
 
       {noticeSlot}
       {displacedSlot}
+
+      <QueueBoard visits={visits} today={today} doctorNames={doctorNames} returnTo={returnTo} showDoctor />
 
       {doctorOptions.length > 0 ? (
         <nav aria-label="Filter by doctor" className="mt-6 flex flex-wrap gap-2">
@@ -184,7 +191,7 @@ export function ReceptionDesk({
           </p>
         </Card>
       ) : (
-        <ul className="mt-6 grid gap-3">
+        <ul aria-label="Patients" className="mt-6 grid gap-3">
           {filtered.map((visit) => {
             const doctor = doctorNames[visit.doctorId] ?? "Doctor";
             const open = visit.status === "booked" || visit.status === "pending_payment";
@@ -212,12 +219,40 @@ export function ReceptionDesk({
                       </p>
                     </div>
                     <p className={`inline-flex rounded-full border px-2.5 py-0.5 text-caption font-semibold ${statusClass(visit.status)}`}>
-                      {statusLabel(visit.status)}
+                      {statusLabel(visit)}
                     </p>
                   </div>
 
                   {open ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {visit.status === "booked" && visit.date === today && !visit.checkedInAt ? (
+                        <form action={queueVisit}>
+                          <input type="hidden" name="id" value={visit.id} />
+                          <input type="hidden" name="step" value="check_in" />
+                          <input type="hidden" name="return" value={returnTo} />
+                          <PendingButton
+                            pendingLabel="Checking in…"
+                            className={buttonClass("primary", "sm")}
+                            aria-label={`Check in ${visit.patientName}`}
+                          >
+                            Check in
+                          </PendingButton>
+                        </form>
+                      ) : null}
+                      {visit.status === "booked" && visit.date <= today && !visit.checkedInAt ? (
+                        <form action={queueVisit}>
+                          <input type="hidden" name="id" value={visit.id} />
+                          <input type="hidden" name="step" value="no_show" />
+                          <input type="hidden" name="return" value={returnTo} />
+                          <PendingButton
+                            pendingLabel="Updating…"
+                            className={buttonClass("secondary", "sm")}
+                            aria-label={`Mark ${visit.patientName} as a no-show`}
+                          >
+                            No-show
+                          </PendingButton>
+                        </form>
+                      ) : null}
                       {visit.status === "booked" ? (
                         <form action={updateVisit}>
                           <input type="hidden" name="id" value={visit.id} />
@@ -225,7 +260,7 @@ export function ReceptionDesk({
                           <input type="hidden" name="return" value={returnTo} />
                           <PendingButton
                             pendingLabel="Updating…"
-                            className={buttonClass("primary", "sm")}
+                            className={buttonClass(visit.checkedInAt ? "primary" : "secondary", "sm")}
                             aria-label={`Mark ${visit.patientName} completed`}
                           >
                             Mark completed
