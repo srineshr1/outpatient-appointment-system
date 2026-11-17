@@ -471,7 +471,12 @@ export function remainingPlaces(slot: Pick<Slot, "capacity" | "booked">): number
   return Math.max(0, (slot.capacity ?? 1) - (slot.booked ?? 0));
 }
 
-/** The lowest token of a wave that no booking holds, or null when the wave is full. */
+/**
+ * The token the next booking in a wave gets, or null when the wave is full. Tokens follow booking
+ * order: the next one is one past the highest token held, so a later booking never jumps ahead of an
+ * earlier one, and a cancellation never renumbers anybody. Only when the top token is already the
+ * wave's last place does a cancelled gap get reused, so a freed place can still be booked.
+ */
 export function freeToken(waveId: string, capacity: number, heldIds: readonly string[]): number | null {
   const used = new Set<number>();
   for (const held of heldIds) {
@@ -479,8 +484,15 @@ export function freeToken(waveId: string, capacity: number, heldIds: readonly st
     const token = tokenOfHeld(held);
     if (token !== null) used.add(token);
   }
+  const highest = used.size > 0 ? Math.max(...used) : 0;
+  if (highest < capacity) return highest + 1;
   for (let token = 1; token <= capacity; token += 1) if (!used.has(token)) return token;
   return null;
+}
+
+/** "Token #3": how a wave booking's place in the queue is shown everywhere. */
+export function tokenLabel(token: number): string {
+  return `Token #${token}`;
 }
 
 /** "Mon–Fri", "Tue, Thu" or "Mon–Wed, Fri". */

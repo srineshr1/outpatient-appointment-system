@@ -47,7 +47,7 @@ const CLINIC = practice.name;
 
 /** Short plain text, kept to one 160-character SMS where possible. */
 export function renderSms(kind: NotificationKind, data: NoticeData): string {
-  const when = data.token ? `${data.when}, token ${data.token}` : data.when;
+  const when = data.token ? `${data.when}, Token #${data.token}` : data.when;
   switch (kind) {
     case "booking_confirmed":
       return `${CLINIC}: booked with ${data.doctorName} on ${when}. Ref ${data.reference}.${data.amountMinor ? ` Paid ${formatMoney(data.amountMinor)}.` : ""}`;

@@ -40,7 +40,7 @@ import { reasons } from "@/lib/data";
 import type { DoctorStatus } from "@/lib/doctor-status";
 import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
 import type { InboxItem } from "@/lib/ops/types";
-import { slotTimeLabel } from "@/lib/sessions";
+import { slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
 import { markAllReadAction, openInboxItemAction } from "@/server/inbox-actions";
 
@@ -109,7 +109,7 @@ function whenLabel(visit: AppointmentRecord): string {
 }
 
 function spot(date: string, time: string, token: number | null): string {
-  return `${formatShortDate(date)}, ${time}${token ? ` (token ${token})` : ""}`;
+  return `${formatShortDate(date)}, ${time}${token ? ` (${tokenLabel(token)})` : ""}`;
 }
 
 function roleLabel(role: string): string {
@@ -149,8 +149,9 @@ export function groupVisits(visits: readonly AppointmentRecord[], today: string)
   const earlier: AppointmentRecord[] = [];
   const cancelled: AppointmentRecord[] = [];
   const awaiting: AppointmentRecord[] = [];
+  // Same wave: token order, so the queue reads in the order patients are seen.
   const ordered = [...visits].sort((a, b) =>
-    a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date),
+    a.date === b.date ? a.time.localeCompare(b.time) || (a.token ?? 0) - (b.token ?? 0) : a.date.localeCompare(b.date),
   );
   for (const visit of ordered) {
     if (visit.status === "pending_payment") awaiting.push(visit);
@@ -856,7 +857,7 @@ export function ClinicBookView({
                       <div className="flex flex-wrap items-center gap-2">
                         {visit.token ? (
                           <span className="tabular inline-flex items-center rounded-full border border-hairline bg-surface-2 px-2.5 py-0.5 text-caption font-semibold text-ink">
-                            Token {visit.token} of {visit.waveCapacity ?? "?"}
+                            {tokenLabel(visit.token)} of {visit.waveCapacity ?? "?"}
                           </span>
                         ) : null}
                         <p
