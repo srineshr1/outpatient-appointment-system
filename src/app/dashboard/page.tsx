@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ClinicBookView } from "@/components/dashboard/ClinicBookView";
+import { ReceptionDesk } from "@/components/dashboard/ReceptionDesk";
 import { DisplacedPatients } from "@/components/profile/DisplacedPatients";
 import { Notice } from "@/components/ui/Card";
 import { paymentLabels } from "@/lib/billing";
@@ -24,6 +25,9 @@ const notices: Record<string, string> = {
   unavailable: "That visit can’t be changed.",
   missing: "That visit is no longer on the book.",
   moved: "Visit moved. The other side has been told by email.",
+  checkedIn: "That patient is already checked in. Nothing was changed.",
+  seeing: "That patient is already with the doctor.",
+  notToday: "Patients can be checked in and called in only on the day of their visit.",
 };
 
 async function safeInbox(userId: string): Promise<InboxItem[]> {
@@ -101,6 +105,23 @@ export default async function DashboardPage({
 
   const displacedSlot =
     pendingDisplaced.length > 0 ? <DisplacedPatients entries={pendingDisplaced} /> : null;
+
+  if (user.role === "reception") {
+    return (
+      <ReceptionDesk
+        userName={user.name}
+        visits={visits}
+        today={today}
+        doctorNames={doctorNames}
+        doctorOptions={doctorOptions}
+        filterDoctorId={filter}
+        payments={payments}
+        returnTo={returnTo}
+        noticeSlot={noticeSlot}
+        displacedSlot={displacedSlot}
+      />
+    );
+  }
 
   return (
     <ClinicBookView

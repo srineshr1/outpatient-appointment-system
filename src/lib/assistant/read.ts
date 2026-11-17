@@ -57,6 +57,7 @@ export function publicVisit(visit: AppointmentRecord, audience: "doctor" | "pati
       doctorId: visit.doctorId,
       token: visit.token ?? null,
       patientName: visit.patientName,
+      ...dayMarks(visit),
     };
   }
   const decorated = visit as AppointmentRecord & { sessionWindow?: string | null; queueToken?: number | null };
@@ -73,11 +74,20 @@ export function publicVisit(visit: AppointmentRecord, audience: "doctor" | "pati
     doctor: doctor?.name ?? "Doctor",
     doctorId: visit.doctorId,
     token,
+    ...dayMarks(visit),
+  };
+}
+
+/** Check-in and consultation times, only once they are recorded. The status stays "booked" meanwhile. */
+function dayMarks(visit: AppointmentRecord): { checkedInAt?: string; consultStartedAt?: string } {
+  return {
+    ...(visit.checkedInAt ? { checkedInAt: visit.checkedInAt } : {}),
+    ...(visit.consultStartedAt ? { consultStartedAt: visit.consultStartedAt } : {}),
   };
 }
 
 function statusCounts(visits: readonly AppointmentRecord[]): Record<AppointmentStatus, number> & { total: number } {
-  const counts: Record<AppointmentStatus, number> = { booked: 0, completed: 0, cancelled: 0, pending_payment: 0, expired: 0, displaced: 0 };
+  const counts: Record<AppointmentStatus, number> = { booked: 0, completed: 0, cancelled: 0, pending_payment: 0, expired: 0, displaced: 0, no_show: 0 };
   for (const visit of visits) counts[visit.status] += 1;
   return { ...counts, total: visits.length };
 }
@@ -176,8 +186,9 @@ export async function doctorStats(user: PublicUser, fromInput?: string, toInput?
     awaitingPayment: counts.pending_payment,
     expiredHolds: counts.expired,
     displaced: counts.displaced,
+    noShows: counts.no_show,
     total: counts.total,
-    note: "Confirmed means a booked visit. Awaiting payment is a time held while the patient pays online. Displaced means the doctor removed those hours and the patient was offered other times.",
+    note: "Confirmed means a booked visit (including patients checked in or with the doctor now). Awaiting payment is a time held while the patient pays online. Displaced means the doctor removed those hours and the patient was offered other times. No-shows are patients who did not arrive on the day.",
   };
 }
 

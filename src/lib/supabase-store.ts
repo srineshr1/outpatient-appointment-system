@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { cleanRatingNote, type RatingResult } from "./rating";
 import {
   isPaymentMethod,
   isRole,
@@ -6,6 +7,8 @@ import {
   type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
+  type VisitMark,
+  type VisitMarkResult,
   APPOINTMENT_STATUSES,
   type AuditEvent,
   type ChargeRecord,
@@ -86,6 +89,11 @@ interface AppointmentRow {
   end_time: string | null;
   displaced_at?: string | null;
   displaced_reason?: string | null;
+  rating_score?: number | null;
+  rating_note?: string | null;
+  rated_at?: string | null;
+  checked_in_at?: string | null;
+  consult_started_at?: string | null;
 }
 
 interface OfferRow {
@@ -331,6 +339,11 @@ function toAppointment(row: AppointmentRow): AppointmentRecord {
     waveCapacity: row.wave_capacity ?? null,
     endTime: row.end_time ?? null,
     ...(row.displaced_at ? { displacedAt: row.displaced_at, displacedReason: row.displaced_reason ?? "" } : {}),
+    ...(row.rating_score != null
+      ? { ratingScore: row.rating_score, ratingNote: row.rating_note ?? null, ratedAt: row.rated_at ?? null }
+      : {}),
+    ...(row.checked_in_at ? { checkedInAt: row.checked_in_at } : {}),
+    ...(row.consult_started_at ? { consultStartedAt: row.consult_started_at } : {}),
   };
 }
 
@@ -744,6 +757,41 @@ export class SupabaseClinicStore implements ClinicStore {
     if (error?.code === UNIQUE_VIOLATION) return "taken";
     fail(error);
     return (data?.length ?? 0) > 0 ? "ok" : "stale";
+  }
+
+  async saveRating(id: string, score: number, note: string | null, at: string): Promise<RatingResult> {
+    const ratingNote = cleanRatingNote(note);
+    const { data, error } = await this.db
+      .from("clinic_appointments")
+      .update({ rating_score: score, rating_note: ratingNote, rated_at: at })
+      .eq("id", id)
+      .eq("status", "completed")
+      .is("rating_score", null)
+      .select("id");
+    fail(error);
+    if ((data?.length ?? 0) > 0) return "ok";
+    const current = await this.getAppointment(id);
+    if (!current) return "missing";
+    if (current.ratingScore != null) return "rated";
+    return "closed";
+  }
+
+  async markVisit(id: string, mark: VisitMark, at: string): Promise<VisitMarkResult> {
+    const column = mark === "checked_in" ? "checked_in_at" : "consult_started_at";
+    // Only a booked visit whose moment is still empty: two people pressing at once record it once.
+    const { data, error } = await this.db
+      .from("clinic_appointments")
+      .update({ [column]: at })
+      .eq("id", id)
+      .eq("status", "booked")
+      .is(column, null)
+      .select("id");
+    fail(error);
+    if ((data?.length ?? 0) > 0) return "ok";
+    const current = await this.getAppointment(id);
+    if (!current) return "missing";
+    if ((mark === "checked_in" ? current.checkedInAt : current.consultStartedAt) != null) return "already";
+    return "stale";
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {

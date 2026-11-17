@@ -90,8 +90,8 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         heading: "Your appointment is booked",
         intro: `your appointment with ${data.doctorName} is confirmed.`,
         rows: [...visitRows, ...(data.amountMinor ? [["Paid", money(data.amountMinor)] as [string, string]] : [])],
-        footnote: "Please arrive about ten minutes early. You can move or cancel the visit from your appointments.",
-        cta: { label: "View appointments", url: link("/appointments") },
+        footnote: "Please arrive about ten minutes early. On the day, open your queue to see how many people are ahead of you.",
+        cta: { label: "See your queue", url: link(data.queuePath ?? "/appointments") },
       });
     case "payment_confirmed":
       return layout({
@@ -320,8 +320,8 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         heading: "Appointment reminder",
         intro: `this is a reminder of your appointment with ${data.doctorName}, ${data.when}.`,
         rows: visitRows,
-        footnote: "If you can no longer come, please cancel or move the visit so someone else can have the time.",
-        cta: { label: "Manage appointment", url: link("/appointments") },
+        footnote: "If you can no longer come, please cancel or move the visit so someone else can have the time. On the day, the queue page shows how many people are ahead of you.",
+        cta: { label: "See your queue", url: link(data.queuePath ?? "/appointments") },
       });
   }
 }

@@ -69,6 +69,9 @@ export function navLinks(user: LinkUser | null): NavLink[] {
       { href: "/dashboard/sessions/manage", label: "Edit sessions" },
     ];
   }
+  if (user.role === "reception") {
+    return [{ href: "/dashboard", label: "Desk" }];
+  }
   return [{ href: "/dashboard", label: "Clinic book" }];
 }
 

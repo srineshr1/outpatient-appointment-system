@@ -10,7 +10,7 @@ import { DoctorProfileWorkspace } from "./DoctorProfileWorkspace";
 import { SessionStudio } from "./SessionStudio";
 import { SessionsViewer } from "./SessionsViewer";
 
-vi.mock("@/server/booking-actions", () => ({ updateVisit: vi.fn() }));
+vi.mock("@/server/booking-actions", () => ({ updateVisit: vi.fn(), queueVisit: vi.fn() }));
 vi.mock("@/server/inbox-actions", () => ({
   markAllReadAction: vi.fn(),
   openInboxItemAction: vi.fn(),
@@ -87,7 +87,7 @@ describe("Doctor Dashboard Redesign", () => {
     expect(within(desktopDock).getByRole("link", { name: /Clinic book/ })).not.toHaveAttribute("aria-current");
   });
 
-  it("ClinicBookView renders greeting, clickable Calendar -> edit page, Notifications panel, and live queue", () => {
+  it("ClinicBookView renders greeting, clickable Calendar -> edit page, and Notifications panel", () => {
     renderWithProviders(
       <ClinicBookView
         userName="Asha Rao"
@@ -140,16 +140,17 @@ describe("Doctor Dashboard Redesign", () => {
       "href",
       "/dashboard/sessions/manage?session=s-morning&date=2026-10-26",
     );
-    expect(screen.getByText("Priya Nair")).toBeInTheDocument();
-    expect(screen.getByText("WB-101")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View sessions/ })).toHaveAttribute("href", "/dashboard/sessions");
     expect(screen.getByRole("link", { name: /Edit sessions/ })).toHaveAttribute("href", "/dashboard/sessions/manage");
-    expect(screen.getByRole("button", { name: /Mark complete/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Patient queue" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Today's Queue")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mark complete/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^Add \/ Edit/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
   });
 
-  it("SessionsViewer renders read-only schedule controls and Session Directory switcher", async () => {
+  it("SessionsViewer shows the patient count for the session on now", () => {
+    // 10:00 IST, inside Morning clinic (09:00–11:00) on Monday 26 Oct 2026.
     renderWithProviders(
       <SessionsViewer
         doctorName="Dr Asha Rao"
@@ -170,26 +171,105 @@ describe("Doctor Dashboard Redesign", () => {
             status: "booked",
             reference: "WB-101",
           },
+          {
+            id: "v-cancelled",
+            sessionId: "s-morning",
+            slotId: "doc-1-2026-10-26-09:30",
+            date: "2026-10-26",
+            time: "09:30",
+            endTime: null,
+            token: null,
+            reason: "Check-up",
+            patientName: "Cancelled Patient",
+            status: "cancelled",
+            reference: "WB-102",
+          },
+          {
+            id: "v-done",
+            sessionId: "s-morning",
+            slotId: "doc-1-2026-10-26-10:00",
+            date: "2026-10-26",
+            time: "10:00",
+            endTime: null,
+            token: null,
+            reason: "Check-up",
+            patientName: "Done Patient",
+            status: "completed",
+            reference: "WB-103",
+          },
+          {
+            id: "v-hold",
+            sessionId: "s-morning",
+            slotId: "doc-1-2026-10-28-09:00",
+            date: "2026-10-28",
+            time: "09:00",
+            endTime: null,
+            token: null,
+            reason: "Check-up",
+            patientName: "Hold Patient",
+            status: "pending_payment",
+            reference: "WB-104",
+          },
         ]}
         trims={[]}
         room="Room 6"
         visible
       />,
+      Date.UTC(2026, 9, 26, 4, 30),
     );
 
-    expect(screen.getByRole("link", { name: /Edit sessions/i })).toHaveAttribute("href", "/dashboard/sessions/manage");
+    expect(screen.getByText("Now")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Morning clinic" })).toBeInTheDocument();
+    expect(screen.getByText("09:00–11:00")).toBeInTheDocument();
+    expect(screen.getByLabelText("2 patients")).toHaveTextContent("2");
+    expect(screen.getByLabelText("1 booked")).toHaveTextContent("1");
+    expect(screen.getByLabelText("1 waiting today")).toHaveTextContent("1");
+    expect(screen.getByLabelText("1 completed today")).toHaveTextContent("1");
+    expect(screen.getByLabelText("1 awaiting payment")).toHaveTextContent("1");
+    expect(screen.queryByRole("radio", { name: /Session Directory/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Session and patient inspector/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Priya Nair")).not.toBeInTheDocument();
     expect(screen.queryByText("Visible to patients")).not.toBeInTheDocument();
+  });
 
-    // Inspector is rendered below with booked visits and session stats
-    expect(screen.getByRole("region", { name: /Session and patient inspector/ })).toBeInTheDocument();
-    expect(screen.getByText("Priya Nair")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("radio", { name: /Session Directory/ }));
-    expect(screen.getByText("Morning clinic")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Edit in Studio/ })).toHaveAttribute(
-      "href",
-      "/dashboard/sessions/manage?session=s-morning",
+  it("SessionsViewer shows the next session when nothing is on", () => {
+    // 08:00 IST, before Morning clinic starts.
+    renderWithProviders(
+      <SessionsViewer
+        doctorName="Dr Asha Rao"
+        today="2026-10-26"
+        nowMinutes={8 * 60}
+        sessions={[SESSION_STREAM]}
+        visits={[
+          {
+            id: "v-1",
+            sessionId: "s-morning",
+            slotId: VISIT_TODAY.slotId,
+            date: "2026-10-26",
+            time: "09:00",
+            endTime: null,
+            token: null,
+            reason: "Check-up",
+            patientName: "Priya Nair",
+            status: "booked",
+            reference: "WB-101",
+          },
+        ]}
+        trims={[]}
+        room="Room 6"
+        visible
+      />,
+      Date.UTC(2026, 9, 26, 2, 30),
     );
+
+    expect(screen.getByText("Next")).toBeInTheDocument();
+    expect(screen.queryByText("Now")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Morning clinic" })).toBeInTheDocument();
+    expect(screen.getByLabelText("1 patient")).toHaveTextContent("1");
+    expect(screen.getByLabelText("1 booked")).toHaveTextContent("1");
+    expect(screen.getByLabelText("1 waiting today")).toHaveTextContent("1");
+    expect(screen.getByLabelText("0 completed today")).toHaveTextContent("0");
+    expect(screen.getByLabelText("0 awaiting payment")).toHaveTextContent("0");
   });
 
   it("SessionStudio renders Add / Edit header and toggles Date range calendar when Recurring is clicked", async () => {

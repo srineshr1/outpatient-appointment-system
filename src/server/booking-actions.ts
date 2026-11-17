@@ -15,9 +15,10 @@ import { beginCheckout, type CheckoutSession } from "@/lib/payments/service";
 import { getStore } from "@/lib/store";
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
 import { confirmBooking, SlotUnavailableError } from "@/lib/repository";
+import { cleanRatingNote } from "@/lib/rating";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { validatePatient, FIELD_ORDER, type PatientForm } from "@/lib/validate";
-import { changeAppointmentStatus } from "@/lib/visits";
+import { changeAppointmentStatus, runQueueStep, type QueueStep } from "@/lib/visits";
 import { notifyRescheduled, rescheduleVisit } from "@/lib/reschedule";
 
 export type BookAppointmentResult =
@@ -155,6 +156,65 @@ export async function updateVisit(formData: FormData): Promise<void> {
   const outcome = await changeAppointmentStatus(user, id, status);
   await refreshBook();
   if (outcome === "ok") redirect(returnTo);
+  redirect(withNotice(returnTo, outcome === "missing" ? "missing" : "unavailable"));
+}
+
+const QUEUE_STEPS: readonly QueueStep[] = ["check_in", "start_consult", "no_show"];
+
+/** Check in, call in, or mark a no-show. Reception, admins, and the visit's own doctor only. */
+export async function queueVisit(formData: FormData): Promise<void> {
+  const returnTo = safeNext(String(formData.get("return") ?? "/dashboard"));
+  const user = await getCurrentUser();
+  if (!user) redirect(`/sign-in?next=${encodeURIComponent(returnTo)}`);
+
+  const id = String(formData.get("id") ?? "");
+  const step = formData.get("step");
+  if (typeof step !== "string" || !(QUEUE_STEPS as readonly string[]).includes(step)) redirect(withNotice(returnTo, "unavailable"));
+
+  const outcome = await runQueueStep(user, id, step as QueueStep);
+  await refreshBook();
+  if (outcome === "ok") redirect(returnTo);
+  const notice =
+    outcome === "already"
+      ? step === "check_in"
+        ? "checkedIn"
+        : step === "start_consult"
+          ? "seeing"
+          : "unavailable"
+      : outcome === "not_today"
+        ? "notToday"
+        : outcome === "missing"
+          ? "missing"
+          : "unavailable";
+  redirect(withNotice(returnTo, notice));
+}
+
+/** The patient who was seen rates that doctor once. Staff and other patients cannot. */
+export async function rateVisit(formData: FormData): Promise<void> {
+  const returnTo = safeNext(String(formData.get("return") ?? "/appointments"));
+  const user = await getCurrentUser();
+  if (!user) redirect(`/sign-in?next=${encodeURIComponent(returnTo)}`);
+  if (user.role !== "patient") redirect(withNotice(returnTo, "unavailable"));
+
+  const scoreRaw = formData.get("score");
+  const score = typeof scoreRaw === "string" && /^[1-5]$/.test(scoreRaw) ? Number(scoreRaw) : null;
+  if (score === null) redirect(withNotice(returnTo, "rating"));
+
+  const id = String(formData.get("id") ?? "");
+  const store = await getStore();
+  const visit = await store.getAppointment(id);
+  if (!visit) redirect(withNotice(returnTo, "missing"));
+  if (visit.patientUserId !== user.id) redirect(withNotice(returnTo, "unavailable"));
+
+  const noteRaw = formData.get("note");
+  const outcome = await store.saveRating(
+    id,
+    score,
+    cleanRatingNote(typeof noteRaw === "string" ? noteRaw : ""),
+    now().toISOString(),
+  );
+  await refreshBook();
+  if (outcome === "ok" || outcome === "rated") redirect(returnTo);
   redirect(withNotice(returnTo, outcome === "missing" ? "missing" : "unavailable"));
 }
 

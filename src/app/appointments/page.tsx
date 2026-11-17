@@ -21,6 +21,7 @@ const notices: Record<string, string> = {
   unavailable: "That visit can’t be changed.",
   missing: "That visit is no longer on the book.",
   moved: "Visit moved. The other side has been told by email.",
+  rating: "Choose a score from 1 to 5.",
 };
 
 export default async function AppointmentsPage({

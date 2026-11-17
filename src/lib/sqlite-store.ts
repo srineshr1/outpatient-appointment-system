@@ -1,4 +1,5 @@
 import { now, todayIso } from "./clock";
+import { cleanRatingNote, type RatingResult } from "./rating";
 import { isUpcomingVisit, occupiesTime, placementConflicts, placementIsCurrent, sessionStructureChanged, stillFits, type Reservation } from "./elastic-scheduling";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -10,6 +11,8 @@ import {
   type AppointmentFilter,
   type AppointmentRecord,
   type AppointmentStatus,
+  type VisitMark,
+  type VisitMarkResult,
   APPOINTMENT_STATUSES,
   type AuditEvent,
   type ChargeRecord,
@@ -81,6 +84,11 @@ interface AppointmentRow {
   end_time?: string | null;
   displaced_at?: string | null;
   displaced_reason?: string | null;
+  rating_score?: number | null;
+  rating_note?: string | null;
+  rated_at?: string | null;
+  checked_in_at?: string | null;
+  consult_started_at?: string | null;
 }
 
 interface OfferRow {
@@ -265,6 +273,11 @@ function toAppointment(row: AppointmentRow): AppointmentRecord {
     waveCapacity: row.wave_capacity ?? null,
     endTime: row.end_time ?? null,
     ...(row.displaced_at ? { displacedAt: row.displaced_at, displacedReason: row.displaced_reason ?? "" } : {}),
+    ...(row.rating_score != null
+      ? { ratingScore: row.rating_score, ratingNote: row.rating_note ?? null, ratedAt: row.rated_at ?? null }
+      : {}),
+    ...(row.checked_in_at ? { checkedInAt: row.checked_in_at } : {}),
+    ...(row.consult_started_at ? { consultStartedAt: row.consult_started_at } : {}),
   };
 }
 
@@ -662,6 +675,11 @@ export class SqliteClinicStore implements ClinicStore {
     this.addColumn("appointments", "end_time", "TEXT");
     this.addColumn("appointments", "displaced_at", "TEXT");
     this.addColumn("appointments", "displaced_reason", "TEXT");
+    this.addColumn("appointments", "rating_score", "INTEGER");
+    this.addColumn("appointments", "rating_note", "TEXT");
+    this.addColumn("appointments", "rated_at", "TEXT");
+    this.addColumn("appointments", "checked_in_at", "TEXT");
+    this.addColumn("appointments", "consult_started_at", "TEXT");
     this.addColumn("sessions", "id", "TEXT");
     this.addColumn("sessions", "created_at", "TEXT");
     this.addColumn("sessions", "device", "TEXT NOT NULL DEFAULT ''");
@@ -876,6 +894,34 @@ export class SqliteClinicStore implements ClinicStore {
       if (error instanceof Error && /UNIQUE constraint/i.test(error.message)) return "taken";
       throw error;
     }
+  }
+
+  async saveRating(id: string, score: number, note: string | null, at: string): Promise<RatingResult> {
+    const ratingNote = cleanRatingNote(note);
+    const result = this.db
+      .prepare(
+        `UPDATE appointments SET rating_score = ?, rating_note = ?, rated_at = ?
+         WHERE id = ? AND status = 'completed' AND rating_score IS NULL`,
+      )
+      .run(score, ratingNote, at, id);
+    if (Number(result.changes) > 0) return "ok";
+    const row = this.db.prepare("SELECT status, rating_score FROM appointments WHERE id = ?").get(id) as
+      | { status: string; rating_score: number | null }
+      | undefined;
+    if (!row) return "missing";
+    if (row.rating_score != null) return "rated";
+    return "closed";
+  }
+
+  async markVisit(id: string, mark: VisitMark, at: string): Promise<VisitMarkResult> {
+    const column = mark === "checked_in" ? "checked_in_at" : "consult_started_at";
+    const result = this.db
+      .prepare(`UPDATE appointments SET ${column} = ? WHERE id = ? AND status = 'booked' AND ${column} IS NULL`)
+      .run(at, id);
+    if (Number(result.changes) > 0) return "ok";
+    const row = this.db.prepare(`SELECT ${column} AS stamp FROM appointments WHERE id = ?`).get(id) as { stamp: string | null } | undefined;
+    if (!row) return "missing";
+    return row.stamp != null ? "already" : "stale";
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {

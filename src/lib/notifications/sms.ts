@@ -11,6 +11,7 @@
  * The API key is read from the environment on each send and never logged.
  */
 import { practice } from "../data";
+import { siteUrl } from "./templates";
 import { formatMoney } from "../fees";
 import type { NoticeData, NotificationKind, SendResult } from "./types";
 
@@ -61,8 +62,11 @@ export function renderSms(kind: NotificationKind, data: NoticeData): string {
       return `${CLINIC}: your visit ${data.reference} with ${data.doctorName} is now ${when}. Same reference; no new payment needed.`;
     case "rebooking_closed":
       return `${CLINIC}: your visit ${data.reference} with ${data.doctorName} on ${data.previousWhen ?? data.when} is cancelled.${data.refundMinor ? ` Full refund ${formatMoney(data.refundMinor)}.` : ""}`;
-    case "reminder":
-      return `${CLINIC} reminder: ${data.doctorName} on ${when}. Ref ${data.reference}. Please arrive 10 min early.`;
+    case "reminder": {
+      const text = `${CLINIC} reminder: ${data.doctorName} on ${when}. Ref ${data.reference}. Please arrive 10 min early.`;
+      const withQueue = data.queuePath ? `${text} Queue: ${siteUrl()}${data.queuePath}` : text;
+      return withQueue.length <= 160 ? withQueue : text;
+    }
     default:
       return `${CLINIC}: update on ${data.reference}.`;
   }

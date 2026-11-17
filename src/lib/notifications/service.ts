@@ -12,6 +12,7 @@ import { salutation } from "../names";
 import { getOps } from "../ops";
 import type { NotificationRecord, OpsStore } from "../ops/types";
 import { slotStart } from "../schedule";
+import { queuePath } from "../queue";
 import { patientPlace } from "../sessions";
 import { rebookLinks } from "../rebook-links";
 import { getStore } from "../store";
@@ -66,6 +67,7 @@ export function noticeData(
     when: audience === "patient" ? patientWhenLabel(visit, session) : doctorWhenLabel(visit),
     token: audience === "patient" ? (place?.token ?? null) : (visit.token ?? null),
     startsAt: slotStart(visit).toISOString(),
+    queuePath: queuePath(visit.id),
     ...extra,
   };
 }

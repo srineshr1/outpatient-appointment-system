@@ -6,6 +6,7 @@ import { forgetBlockedSlots } from "./blocked-slots";
 import { cancelReminders, dispatchSoon, notifyDoctorCancelled, queueNotice } from "./notifications/service";
 import { refundForCancellation, type CancellationRefund } from "./payments/service";
 import { getStore } from "./store";
+import { now, todayIso } from "./clock";
 
 export type VisitChange = "ok" | "missing" | "forbidden" | "closed";
 
@@ -102,6 +103,67 @@ export async function changeAppointmentStatus(
     await notifyDoctorCancelled(visit, actor, cancelledBy, reason.trim().slice(0, 200));
     await dispatchSoon();
   }
+  return "ok";
+}
+
+/** What staff do as the day runs: check a patient in, call them in, or close a visit nobody came to. */
+export type QueueStep = "check_in" | "start_consult" | "no_show";
+
+/** "already": that step was done before (a second check-in changes nothing). "not_today": only on the day. */
+export type QueueStepResult = "ok" | "already" | "missing" | "forbidden" | "closed" | "not_today";
+
+/** Reception and admins work every clinic; a doctor works only their own. Patients never do. */
+export function canRunQueue(actor: Pick<PublicUser, "role" | "doctorId">, visit: Pick<AppointmentRecord, "doctorId">): boolean {
+  if (seesWholeBook(actor)) return true;
+  return actor.role === "doctor" && Boolean(actor.doctorId) && actor.doctorId === visit.doctorId;
+}
+
+const STEP_ACTIONS: Record<QueueStep, string> = {
+  check_in: "appointment.checked_in",
+  start_consult: "appointment.consult_started",
+  no_show: "appointment.no_show",
+};
+
+export async function runQueueStep(actor: PublicUser, id: string, step: QueueStep): Promise<QueueStepResult> {
+  const store = await getStore();
+  const visit = await store.getAppointment(id);
+  if (!visit) return "missing";
+  if (!canRunQueue(actor, visit)) return "forbidden";
+  if (step === "check_in" && visit.checkedInAt) return "already";
+  if (step === "start_consult" && visit.consultStartedAt) return "already";
+  if (step === "no_show" && visit.status === "no_show") return "already";
+  if (visit.status !== "booked") return "closed";
+  const at = now();
+  const today = todayIso(at);
+  // Check-in and calling in happen on the day. A no-show can also close a visit left open from an earlier day.
+  if (step === "no_show" ? visit.date > today : visit.date !== today) return "not_today";
+
+  const stamp = at.toISOString();
+  if (step === "check_in") {
+    const outcome = await store.markVisit(id, "checked_in", stamp);
+    if (outcome !== "ok") return outcome === "already" ? "already" : outcome === "missing" ? "missing" : "closed";
+  } else if (step === "start_consult") {
+    // Calling in someone the desk did not check in also records them as arrived.
+    if (!visit.checkedInAt) {
+      const arrived = await store.markVisit(id, "checked_in", stamp);
+      if (arrived !== "ok" && arrived !== "already") return arrived === "missing" ? "missing" : "closed";
+    }
+    const outcome = await store.markVisit(id, "consult_started", stamp);
+    if (outcome !== "ok") return outcome === "already" ? "already" : outcome === "missing" ? "missing" : "closed";
+  } else {
+    // Someone who checked in is here: finish or cancel their visit instead.
+    if (visit.checkedInAt) return "closed";
+    if ((await store.transitionStatus(id, "booked", "no_show")) !== "ok") return "closed";
+    forgetBlockedSlots();
+    await cancelReminders(visit.id);
+  }
+  await recordEvent({
+    actor: actorOf(actor),
+    action: STEP_ACTIONS[step],
+    subjectType: "appointment",
+    subjectId: visit.id,
+    summary: visitSummary(visit),
+  });
   return "ok";
 }
 
