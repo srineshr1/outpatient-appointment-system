@@ -6,7 +6,8 @@ import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
 import { PageHeading } from "@/components/shell/PageHeading";
 import { todayIso, now } from "@/lib/clock";
 import { findDoctor, type Slot } from "@/lib/data";
-import { formatWhen } from "@/lib/format";
+import { relativeDay } from "@/lib/format";
+import { tokenLabel } from "@/lib/sessions";
 import { getDoctors, getSlots, getUpcoming } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
 import { visitsFor } from "@/lib/visits";
@@ -57,7 +58,7 @@ export default async function BookPage() {
                 <p className="min-w-0 flex-1 text-callout text-ink-2">
                   <span className="block font-bold text-ink">Your next visit</span>
                   <span className="tabular">
-                    {nextDoctor.short} · {formatWhen(nextVisit, today)} · {nextVisit.reference}
+                    {nextDoctor.short} · {relativeDay(nextVisit.date, today)}{nextVisit.sessionWindow ? `, ${nextVisit.sessionWindow}` : ""}{nextVisit.queueToken ? ` · ${tokenLabel(nextVisit.queueToken)}` : ""} · {nextVisit.reference}
                   </span>
                 </p>
                 <Link href="/appointments" className="btn-chunky btn-chunky-primary w-full sm:w-auto">

@@ -4,7 +4,7 @@
  * is a courtesy and the change it describes has already happened.
  */
 import { after } from "next/server";
-import type { AppointmentRecord } from "../clinic-types";
+import type { AppointmentRecord, ConsultSession } from "../clinic-types";
 import { practiceWallClock, now } from "../clock";
 import { findDoctor, reasons } from "../data";
 import { formatShortDate } from "../format";
@@ -12,6 +12,7 @@ import { salutation } from "../names";
 import { getOps } from "../ops";
 import type { NotificationRecord, OpsStore } from "../ops/types";
 import { slotStart } from "../schedule";
+import { patientPlace } from "../sessions";
 import { rebookLinks } from "../rebook-links";
 import { getStore } from "../store";
 import { channelFor } from "./channels";
@@ -23,21 +24,47 @@ import type { ChannelName, NoticeData, NotificationKind } from "./types";
 
 export const REMINDER_KIND: NotificationKind = "reminder";
 
-function whenLabel(visit: Pick<AppointmentRecord, "date" | "time"> & Partial<Pick<AppointmentRecord, "endTime" | "token">>): string {
+function doctorWhenLabel(visit: Pick<AppointmentRecord, "date" | "time"> & Partial<Pick<AppointmentRecord, "endTime" | "token">>): string {
   // A wave visit has no minute of its own: name the wave's window, and the token says who goes first.
   if (visit.token && visit.endTime) return `${formatShortDate(visit.date)}, ${visit.time}–${visit.endTime} wave`;
   return `${formatShortDate(visit.date)}, ${visit.time}`;
 }
 
+function patientWhenLabel(
+  visit: Pick<AppointmentRecord, "date" | "time"> & Partial<Pick<AppointmentRecord, "endTime" | "token">>,
+  session?: ConsultSession | null,
+): string {
+  const place = patientPlace(visit, session);
+  if (place.window) return `${formatShortDate(visit.date)}, ${place.window}`;
+  return formatShortDate(visit.date);
+}
+
+async function sessionOf(visit: Pick<AppointmentRecord, "sessionId">): Promise<ConsultSession | null> {
+  if (!visit.sessionId) return null;
+  try {
+    return await (await getStore()).getConsultSession(visit.sessionId);
+  } catch {
+    return null;
+  }
+}
+
 /** The data a template needs for a visit. */
-export function noticeData(visit: AppointmentRecord, firstName: string, extra: Partial<NoticeData> = {}): NoticeData {
+export function noticeData(
+  visit: AppointmentRecord,
+  firstName: string,
+  extra: Partial<NoticeData> = {},
+  options: { session?: ConsultSession | null; audience?: "patient" | "doctor" } = {},
+): NoticeData {
+  const audience = options.audience ?? "patient";
+  const session = options.session ?? null;
+  const place = audience === "patient" ? patientPlace(visit, session) : null;
   return {
     firstName,
     patientName: visit.patientName,
     reference: visit.reference,
     doctorName: findDoctor(visit.doctorId)?.name ?? "your doctor",
-    when: whenLabel(visit),
-    token: visit.token ?? null,
+    when: audience === "patient" ? patientWhenLabel(visit, session) : doctorWhenLabel(visit),
+    token: audience === "patient" ? (place?.token ?? null) : (visit.token ?? null),
     startsAt: slotStart(visit).toISOString(),
     ...extra,
   };
@@ -68,9 +95,14 @@ async function contactFor(visit: AppointmentRecord): Promise<Contact | null> {
 // --- In-app inbox ----------------------------------------------------------------------------
 
 /** What lands in the bell, and the words for it. Only visit changes for now. */
-function inboxText(kind: NotificationKind, visit: AppointmentRecord, extra: Partial<NoticeData> = {}): { title: string; body: string } | null {
+function inboxText(
+  kind: NotificationKind,
+  visit: AppointmentRecord,
+  extra: Partial<NoticeData> = {},
+  options: { session?: ConsultSession | null; audience?: "patient" | "doctor" } = {},
+): { title: string; body: string } | null {
   const doctor = findDoctor(visit.doctorId)?.name ?? "your doctor";
-  const when = whenLabel(visit);
+  const when = (options.audience ?? "patient") === "doctor" ? doctorWhenLabel(visit) : patientWhenLabel(visit, options.session);
   switch (kind) {
     case "booking_confirmed":
       return { title: "Appointment confirmed", body: `${doctor}, ${when}. Reference ${visit.reference}.` };
@@ -99,8 +131,16 @@ function inboxText(kind: NotificationKind, visit: AppointmentRecord, extra: Part
 }
 
 /** Add a visit change to someone's inbox. The dedupe key keeps a retry from adding it twice. Never throws. */
-async function addToInbox(userId: string, kind: NotificationKind, visit: AppointmentRecord, dedupe: string, href: string, extra?: Partial<NoticeData>): Promise<void> {
-  const text = inboxText(kind, visit, extra);
+async function addToInbox(
+  userId: string,
+  kind: NotificationKind,
+  visit: AppointmentRecord,
+  dedupe: string,
+  href: string,
+  extra?: Partial<NoticeData>,
+  options: { session?: ConsultSession | null; audience?: "patient" | "doctor" } = {},
+): Promise<void> {
+  const text = inboxText(kind, visit, extra, options);
   if (!text) return;
   try {
     await (await getOps()).createInboxItem({ id: `${dedupe}:${userId}`, userId, kind, ...text, href, appointmentId: visit.id });
@@ -126,7 +166,8 @@ async function smsWanted(kind: NotificationKind, options: NoticeOptions): Promis
 
 /** Queue a notice to the visit's patient on every active channel. Returns whether anything was queued. */
 export async function queueNotice(kind: NotificationKind, visit: AppointmentRecord, options: NoticeOptions): Promise<boolean> {
-  if (visit.patientUserId) await addToInbox(visit.patientUserId, kind, visit, options.dedupe, "/appointments", options.extra);
+  const session = await sessionOf(visit);
+  if (visit.patientUserId) await addToInbox(visit.patientUserId, kind, visit, options.dedupe, "/appointments", options.extra, { session, audience: "patient" });
   try {
     const contact = await contactFor(visit);
     if (!contact) return false;
@@ -144,7 +185,7 @@ export async function queueNotice(kind: NotificationKind, visit: AppointmentReco
         channel,
         recipient,
         appointmentId: visit.id,
-        payload: noticeData(visit, contact.firstName, options.extra) as unknown as Record<string, unknown>,
+        payload: noticeData(visit, contact.firstName, options.extra, { session, audience: "patient" }) as unknown as Record<string, unknown>,
         scheduledFor: (options.scheduledFor ?? now()).toISOString(),
       });
       if (result === "queued") queued = true;
@@ -193,14 +234,14 @@ export async function queueDoctorNotice(kind: NotificationKind, visit: Appointme
     for (const doctor of await doctorContacts(visit.doctorId)) {
       if (options.actorUserId && options.actorUserId === doctor.userId) continue;
       // The bell gets every visit change, even when the doctor has switched that email off.
-      await addToInbox(doctor.userId, kind, visit, options.dedupe, "/dashboard", options.extra);
+      await addToInbox(doctor.userId, kind, visit, options.dedupe, "/dashboard", options.extra, { audience: "doctor" });
       const pref = prefForKind(kind);
       if (pref && !(await getDoctorPrefs(doctor.userId))[pref]) continue;
       const data = noticeData(visit, salutation(doctor.name), {
         reasonLabel: reasonLabel(visit.reasonId),
         patientMobile: visit.patientMobile || undefined,
         ...options.extra,
-      });
+      }, { audience: "doctor" });
       const result = await ops.enqueueNotification({
         dedupeKey: `${options.dedupe}:${doctor.userId}:email`,
         kind,

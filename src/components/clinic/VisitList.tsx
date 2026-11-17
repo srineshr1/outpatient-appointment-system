@@ -3,7 +3,7 @@ import Link from "next/link";
 import { reasons, findDoctor } from "@/lib/data";
 import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
 import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
-import { slotTimeLabel, tokenLabel } from "@/lib/sessions";
+import { patientPlace, slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
 import { ButtonLink } from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-styles";
@@ -37,12 +37,37 @@ function statusPillClass(status: AppointmentRecord["status"]): string {
   return "border-accent/25 bg-accent-soft text-accent";
 }
 
-function whenLabel(visit: AppointmentRecord): string {
+type PlacedVisit = AppointmentRecord & { sessionWindow?: string | null; queueToken?: number | null };
+
+function placeOf(visit: AppointmentRecord) {
+  const extra = visit as PlacedVisit;
+  if (extra.sessionWindow !== undefined || extra.queueToken !== undefined) {
+    return { window: extra.sessionWindow ?? patientPlace(visit).window, token: extra.queueToken ?? visit.token ?? null };
+  }
+  return patientPlace(visit);
+}
+
+function whenLabel(visit: AppointmentRecord, forPatient: boolean): string {
+  if (forPatient) return placeOf(visit).window ?? "";
   return visit.endTime && visit.token ? `${slotTimeLabel({ time: visit.time, endTime: visit.endTime, mode: "wave" })} wave` : visit.time;
 }
 
-function spot(date: string, time: string, token: number | null): string {
+function visitWhen(visit: AppointmentRecord, today: string, forPatient: boolean): string {
+  const clock = whenLabel(visit, forPatient);
+  const line = formatWhen({ date: visit.date, time: clock || "x" }, today);
+  return clock ? line : line.replace(/, x$/, "");
+}
+
+function spot(date: string, time: string, token: number | null, forPatient = false): string {
+  if (forPatient) {
+    const day = formatShortDate(date);
+    return token ? `${day}, ${tokenLabel(token)}` : day;
+  }
   return `${formatShortDate(date)}, ${time}${token ? ` (${tokenLabel(token)})` : ""}`;
+}
+
+function queueTokenOf(visit: AppointmentRecord): number | null {
+  return placeOf(visit).token;
 }
 
 function roleLabel(role: string): string {
@@ -156,7 +181,7 @@ export function VisitList({
                       </div>
                     </div>
                     <p className="mt-1 text-body text-ink-2">
-                      <span className="tabular">{formatWhen({ date: visit.date, time: whenLabel(visit) }, today)}</span>
+                      <span className="tabular">{visitWhen(visit, today, mode === "patient")}</span>
                       {mode === "clinic" ? ` · ${doctorName(visit.doctorId)}` : null}
                       {` · ${reasonLabel(visit.reasonId)}`}
                     </p>
@@ -181,13 +206,15 @@ export function VisitList({
                         </>
                       ) : null}
                     </p>
-                    {visit.token ? (
+                    {queueTokenOf(visit) ? (
                       <p className="mt-1.5 flex flex-wrap items-center gap-2 text-callout text-ink-2">
                         <span className="tabular inline-flex items-center rounded-lg border border-accent/25 dark:border-cyan-400/25 bg-accent/10 dark:bg-cyan-400/10 px-2 py-0.5 font-bold text-accent dark:text-cyan-300">
-                          {tokenLabel(visit.token)}
+                          {tokenLabel(queueTokenOf(visit)!)}
                         </span>
                         <span>
-                          of {visit.waveCapacity ?? "?"} in this wave. Seen in token order.
+                          {visit.token && visit.waveCapacity
+                            ? `of ${visit.waveCapacity} in this wave. Seen in token order.`
+                            : "Patients are seen in token order, lowest first."}
                         </span>
                       </p>
                     ) : null}
@@ -196,8 +223,8 @@ export function VisitList({
                         {(moves[visit.id] ?? []).map((move) => (
                           <li key={move.id}>
                             Moved by {move.byName} ({roleLabel(move.byRole)}) from{" "}
-                            <span className="tabular text-ink-2">{spot(move.fromDate, move.fromTime, move.fromToken)}</span> to{" "}
-                            <span className="tabular text-ink-2">{spot(move.toDate, move.toTime, move.toToken)}</span> on{" "}
+                            <span className="tabular text-ink-2">{spot(move.fromDate, move.fromTime, move.fromToken, mode === "patient")}</span> to{" "}
+                            <span className="tabular text-ink-2">{spot(move.toDate, move.toTime, move.toToken, mode === "patient")}</span> on{" "}
                             <span className="tabular">{movedOn(move.at)}</span>
                             {move.reason ? `. “${move.reason}”` : "."}
                           </li>
@@ -219,7 +246,7 @@ export function VisitList({
                           <PendingButton
                             pendingLabel="Releasing…"
                             className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
-                            aria-label={`Give up the held place, ${formatWhen(visit, today)}`}
+                            aria-label={`Give up the held place, ${visitWhen(visit, today, mode === "patient")}`}
                           >
                             Give up this place
                           </PendingButton>
@@ -236,7 +263,7 @@ export function VisitList({
                             <PendingButton
                               pendingLabel="Marking complete…"
                               className={buttonClass("secondary", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
-                              aria-label={`Mark complete, ${visit.patientName}, ${formatWhen(visit, today)}`}
+                              aria-label={`Mark complete, ${visit.patientName}, ${visitWhen(visit, today, false)}`}
                             >
                               Mark complete
                             </PendingButton>
@@ -246,7 +273,7 @@ export function VisitList({
                           <Link
                             href={`/reschedule/${visit.id}?return=${encodeURIComponent(returnTo)}`}
                             className={buttonClass("secondary", "md")}
-                            aria-label={`Reschedule ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
+                            aria-label={`Reschedule ${mode === "clinic" ? visit.patientName : "this visit"}, ${visitWhen(visit, today, mode === "patient")}`}
                           >
                             Reschedule
                           </Link>
@@ -258,7 +285,7 @@ export function VisitList({
                           <PendingButton
                             pendingLabel="Cancelling…"
                             className={buttonClass("plain", "md", "group-has-[[aria-busy=true]]:pointer-events-none")}
-                            aria-label={`Cancel ${mode === "clinic" ? visit.patientName : "this visit"}, ${formatWhen(visit, today)}`}
+                            aria-label={`Cancel ${mode === "clinic" ? visit.patientName : "this visit"}, ${visitWhen(visit, today, mode === "patient")}`}
                           >
                             Cancel visit
                           </PendingButton>

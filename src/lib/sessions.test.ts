@@ -25,6 +25,11 @@ import {
   timesLookSet,
   tokenOfHeld,
   waveSlotId,
+  streamToken,
+  sessionWindowLabel,
+  patientPlace,
+  tokenLabel,
+  slotSessionPlace,
 } from "./sessions";
 
 const at = "2026-10-01T00:00:00.000Z";
@@ -416,5 +421,51 @@ describe("absorbing a free edge", () => {
     const later = "2026-11-02";
     expect(trimsCovering(neighbour.id, later, trims, roster)).toHaveLength(1);
     expect(slotsForSession(neighbour, "doc", later, later, new Set(), trims, roster).some((slot) => slot.time === "10:00")).toBe(false);
+  });
+});
+
+describe("stream tokens and patient place labels", () => {
+  const afternoon = session({ label: "Afternoon", startTime: "13:00", endTime: "17:00", slotMinutes: 20, mode: "stream" });
+
+  it("numbers stream slots from the start of the session, lowest first", () => {
+    expect(streamToken(afternoon, "13:00")).toBe(1);
+    expect(streamToken(afternoon, "15:00")).toBe(7);
+    expect(streamToken(afternoon, "16:40")).toBe(12);
+    expect(streamToken(afternoon, "17:00")).toBeNull();
+    expect(streamToken({ ...afternoon, mode: "wave" }, "13:00")).toBeNull();
+  });
+
+  it("names the session window without a slot minute", () => {
+    expect(sessionWindowLabel(afternoon)).toBe("Afternoon session 13:00–17:00");
+    expect(sessionWindowLabel({ ...afternoon, label: "Afternoon session" })).toBe("Afternoon session 13:00–17:00");
+    expect(sessionWindowLabel({ ...afternoon, label: "" })).toBe("13:00–17:00 session");
+  });
+
+  it("gives a stream visit the session window and a slot-order token", () => {
+    expect(patientPlace({ time: "15:00", endTime: "15:20" }, afternoon)).toEqual({
+      window: "Afternoon session 13:00–17:00",
+      token: 7,
+    });
+  });
+
+  it("keeps a wave's own window and stored token", () => {
+    const wave = session({ label: "Morning", startTime: "10:00", endTime: "11:00", mode: "wave", slotMinutes: null, waveMinutes: null, waveCapacity: 5 });
+    expect(patientPlace({ time: "10:00", endTime: "11:00", token: 3 }, wave)).toEqual({
+      window: "10:00–11:00 wave",
+      token: 3,
+    });
+    expect(tokenLabel(3)).toBe("Token #3");
+  });
+
+  it("attaches the session window and stream token to generated slots", () => {
+    const slots = slotsForSession(afternoon, "doc", "2026-11-20", "2026-11-20");
+    const three = slots.find((slot) => slot.time === "15:00");
+    expect(three).toBeTruthy();
+    expect(slotSessionPlace(three!)).toMatchObject({
+      sessionLabel: "Afternoon",
+      sessionStart: "13:00",
+      sessionEnd: "17:00",
+      queueToken: 7,
+    });
   });
 });

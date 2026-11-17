@@ -11,7 +11,7 @@ import { paymentHistory, refundStatusLabel } from "../payments/summary";
 import { paymentLine, summarise } from "../payments";
 import { getSlots } from "../repository";
 import { nextOpening, openSlots, slotStart } from "../schedule";
-import { daysLabel, fromMinutes, hoursOnDate, isIsoDate, overriddenDates, sessionBlocks, sessionShownOn, toMinutes } from "../sessions";
+import { daysLabel, fromMinutes, hoursOnDate, isIsoDate, overriddenDates, patientPlace, sessionBlocks, sessionShownOn, toMinutes } from "../sessions";
 import { getStore } from "../store";
 import { visitsFor } from "../visits";
 
@@ -42,20 +42,37 @@ export function reasonLabel(id: string): string {
 }
 
 /** What the model is allowed to see about a visit. */
-export function publicVisit(visit: AppointmentRecord, audience: "doctor" | "patient") {
+export function publicVisit(visit: AppointmentRecord, audience: "doctor" | "patient", session?: ConsultSession | null) {
   const doctor = findDoctor(visit.doctorId);
+  if (audience === "doctor") {
+    return {
+      id: visit.id,
+      reference: visit.reference,
+      date: visit.date,
+      time: visit.time,
+      endTime: visit.endTime ?? null,
+      status: visit.status,
+      reason: reasonLabel(visit.reasonId),
+      doctor: doctor?.name ?? "Doctor",
+      doctorId: visit.doctorId,
+      token: visit.token ?? null,
+      patientName: visit.patientName,
+    };
+  }
+  const decorated = visit as AppointmentRecord & { sessionWindow?: string | null; queueToken?: number | null };
+  const place = patientPlace(visit, session);
+  const window = decorated.sessionWindow ?? place.window;
+  const token = decorated.queueToken ?? place.token;
   return {
     id: visit.id,
     reference: visit.reference,
     date: visit.date,
-    time: visit.time,
-    endTime: visit.endTime ?? null,
+    when: window ? `${visit.date}, ${window}` : visit.date,
     status: visit.status,
     reason: reasonLabel(visit.reasonId),
     doctor: doctor?.name ?? "Doctor",
     doctorId: visit.doctorId,
-    token: visit.token ?? null,
-    ...(audience === "doctor" ? { patientName: visit.patientName } : {}),
+    token,
   };
 }
 

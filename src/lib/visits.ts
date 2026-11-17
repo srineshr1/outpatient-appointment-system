@@ -1,6 +1,7 @@
 import { actorOf, recordEvent, visitSummary } from "./audit";
 import { settleCancelledVisit } from "./billing";
-import type { AppointmentRecord, AppointmentStatus, PublicUser, RescheduleRecord } from "./clinic-types";
+import type { AppointmentRecord, AppointmentStatus, ConsultSession, PublicUser, RescheduleRecord } from "./clinic-types";
+import { patientPlace } from "./sessions";
 import { forgetBlockedSlots } from "./blocked-slots";
 import { cancelReminders, dispatchSoon, notifyDoctorCancelled, queueNotice } from "./notifications/service";
 import { refundForCancellation, type CancellationRefund } from "./payments/service";
@@ -17,15 +18,28 @@ export function seesWholeBook(user: Pick<PublicUser, "role">): boolean {
   return user.role === "reception" || user.role === "admin";
 }
 
-export async function visitsFor(user: PublicUser): Promise<AppointmentRecord[]> {
+export type PlacedVisit = AppointmentRecord & { sessionWindow: string | null; queueToken: number | null };
+
+function decorateVisit(visit: AppointmentRecord, sessions: readonly ConsultSession[]): PlacedVisit {
+  const session = visit.sessionId ? (sessions.find((item) => item.id === visit.sessionId) ?? null) : null;
+  const place = patientPlace(visit, session);
+  return { ...visit, sessionWindow: place.window, queueToken: place.token };
+}
+
+async function withPlaces(visits: AppointmentRecord[], store: Awaited<ReturnType<typeof getStore>>): Promise<PlacedVisit[]> {
+  const sessions = await store.listConsultSessions().catch(() => [] as ConsultSession[]);
+  return visits.map((visit) => decorateVisit(visit, sessions));
+}
+
+export async function visitsFor(user: PublicUser): Promise<PlacedVisit[]> {
   const store = await getStore();
   // Ask the store for just this person's book rather than reading every visit and filtering here.
-  if (seesWholeBook(user)) return sortVisits(await store.listAppointments());
+  if (seesWholeBook(user)) return withPlaces(sortVisits(await store.listAppointments()), store);
   if (user.role === "doctor") {
     if (!user.doctorId) return [];
-    return sortVisits(await store.listAppointments({ doctorId: user.doctorId }));
+    return withPlaces(sortVisits(await store.listAppointments({ doctorId: user.doctorId })), store);
   }
-  return sortVisits(await store.listAppointments({ patientUserId: user.id }));
+  return withPlaces(sortVisits(await store.listAppointments({ patientUserId: user.id })), store);
 }
 
 export async function changeAppointmentStatus(

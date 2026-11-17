@@ -19,7 +19,7 @@ import { beginCheckout, PaymentError } from "../payments/service";
 import { confirmBooking, getSlot, SlotUnavailableError } from "../repository";
 import { RESCHEDULE_MESSAGES, canMove, mayReschedule, notifyRescheduled, openTimesFor, rescheduleVisit } from "../reschedule";
 import { slotStatus } from "../schedule";
-import { baseSlotId } from "../sessions";
+import { baseSlotId, patientPlace, sessionWindowLabel, slotSessionPlace, tokenLabel } from "../sessions";
 import { getStore } from "../store";
 import { FIELD_ORDER, validatePatient } from "../validate";
 import { changeAppointmentStatus, visitsFor } from "../visits";
@@ -37,6 +37,41 @@ const CLOSED = "Nothing was changed.";
 
 function when(date: string, time: string): string {
   return `${formatFull(date)} at ${time}`;
+}
+
+function patientLine(
+  date: string,
+  visit: { time: string; endTime?: string | null; token?: number | null; mode?: string },
+  session: Parameters<typeof patientPlace>[1] | "from-slot" | null = null,
+): string {
+  if (session === "from-slot") {
+    const place = slotSessionPlace(visit as never);
+    const window =
+      visit.mode === "wave" && visit.endTime
+        ? `${visit.time}–${visit.endTime} wave`
+        : place.sessionStart && place.sessionEnd
+          ? sessionWindowLabel({ label: place.sessionLabel ?? "", startTime: place.sessionStart, endTime: place.sessionEnd })
+          : null;
+    const token = visit.token ?? (visit.mode === "wave" ? null : place.queueToken ?? null);
+    const parts = [formatFull(date)];
+    if (window) parts.push(window);
+    if (token) parts.push(tokenLabel(token));
+    return parts.join(", ");
+  }
+  const place = patientPlace(visit, session);
+  const parts = [formatFull(date)];
+  if (place.window) parts.push(place.window);
+  if (place.token) parts.push(tokenLabel(place.token));
+  return parts.join(", ");
+}
+
+async function sessionFor(visit: { sessionId?: string | null; doctorId?: string }) {
+  if (!visit.sessionId) return null;
+  try {
+    return await (await getStore()).getConsultSession(visit.sessionId);
+  } catch {
+    return null;
+  }
 }
 
 async function seal(
@@ -113,9 +148,10 @@ export async function proposeBook(user: PublicUser, slotId: string, reasonId: st
   }
   const doctor = findDoctor(slot.doctorId)?.name ?? "the doctor";
   const payLine = fee <= 0 ? "There is no fee." : online ? `Pay ${formatMoney(fee)} online. The time is held until payment finishes.` : `Pay ${formatMoney(fee)} at the desk.`;
-  const place = slot.mode === "wave" && slot.endTime
-    ? `${formatFull(slot.date)}, ${slot.time}–${slot.endTime} wave (you get a token number when you book; seen in token order)`
-    : when(slot.date, slot.time);
+  const place =
+    slot.mode === "wave" && slot.endTime
+      ? `${formatFull(slot.date)}, ${slot.time}–${slot.endTime} wave (you get a token number when you book; seen in token order)`
+      : `${patientLine(slot.date, slot, "from-slot")} (patients are seen in token order, lowest first)`;
   const summary = `${doctor}, ${place}, ${reasonLabel(reasonId)}. ${payLine}`;
   const pending = await seal(user, { type: "book", slotId: slot.id, reasonId, payOnline: online, note: note.slice(0, 200) }, { title: "Book this visit?", summary, confirmLabel: "Book" });
   if ("error" in pending) return { forModel: { error: pending.error } };
@@ -138,7 +174,8 @@ export async function proposeCancel(user: PublicUser, visitId: string): Promise<
     return { forModel: { error: "That visit is already finished, cancelled, or the payment hold has expired." } };
   }
   const who = user.role === "doctor" ? visit.patientName : "your";
-  const summary = `Cancel ${who} visit ${visit.reference} on ${when(visit.date, visit.time)} with ${findDoctor(visit.doctorId)?.name ?? "the doctor"}. A paid visit is refunded under the practice rules.`;
+  const whenLine = user.role === "patient" ? patientLine(visit.date, visit, await sessionFor(visit)) : when(visit.date, visit.time);
+  const summary = `Cancel ${who} visit ${visit.reference} on ${whenLine} with ${findDoctor(visit.doctorId)?.name ?? "the doctor"}. A paid visit is refunded under the practice rules.`;
   const pending = await seal(user, { type: "cancel", visitId: visit.id }, { title: "Cancel this visit?", summary, confirmLabel: "Cancel visit" });
   if ("error" in pending) return { forModel: { error: pending.error } };
   return { pending, forModel: { needsConfirmation: true, summary, instruction: "Ask the user to confirm. Do not say it is cancelled." } };
@@ -153,7 +190,9 @@ export async function proposeReschedule(user: PublicUser, visitId: string, slotI
   if ("error" in open) return { forModel: { error: open.error } };
   if (open.slot.doctorId !== visit.doctorId) return { forModel: { error: "Pick one of this doctor's times." } };
   if (open.slot.id === baseSlotId(visit.slotId)) return { forModel: { error: "That is the time the visit already has." } };
-  const summary = `Move ${visit.reference} from ${when(visit.date, visit.time)} to ${when(open.slot.date, open.slot.time)}. The doctor stays ${findDoctor(visit.doctorId)?.name ?? "the same"}.`;
+  const fromLine = user.role === "patient" ? patientLine(visit.date, visit, await sessionFor(visit)) : when(visit.date, visit.time);
+  const toLine = user.role === "patient" ? patientLine(open.slot.date, open.slot, "from-slot") : when(open.slot.date, open.slot.time);
+  const summary = `Move ${visit.reference} from ${fromLine} to ${toLine}. The doctor stays ${findDoctor(visit.doctorId)?.name ?? "the same"}.`;
   const pending = await seal(
     user,
     { type: "reschedule", visitId: visit.id, slotId: open.slot.id, reason: reason.slice(0, 200) },
@@ -273,7 +312,7 @@ async function book(user: PublicUser, action: Extract<PendingAction, { type: "bo
         return {
           ok: true,
           payUrl: `/pay/${result.visit.id}`,
-          summary: `Held ${result.reference} with ${findDoctor(slot.doctorId)?.name ?? "the doctor"} on ${when(result.visit.date, result.visit.time)}. Pay ${formatMoney(checkout.amountMinor)} before ${hold} IST. If payment doesn't finish, the time is released.`,
+          summary: `Held ${result.reference} with ${findDoctor(slot.doctorId)?.name ?? "the doctor"} on ${patientLine(result.visit.date, { ...result.visit, ...slot }, "from-slot")}. Pay ${formatMoney(checkout.amountMinor)} before ${hold} IST. If payment doesn't finish, the time is released.`,
         };
       } catch (error) {
         await (await getStore()).transitionStatus(result.visit.id, "pending_payment", "expired").catch(() => undefined);
@@ -289,7 +328,7 @@ async function book(user: PublicUser, action: Extract<PendingAction, { type: "bo
     const pay = fee > 0 ? ` Pay ${formatMoney(fee)} at the desk.` : " There is no fee.";
     return {
       ok: true,
-      summary: `Booked ${result.reference} with ${findDoctor(slot.doctorId)?.name ?? "the doctor"} on ${result.visit.token && result.visit.endTime ? `${formatFull(result.visit.date)}, ${result.visit.time}–${result.visit.endTime} wave` : when(result.visit.date, result.visit.time)}.${result.visit.token ? ` Your token is #${result.visit.token}; patients are seen in token order.` : ""}${pay}`,
+      summary: `Booked ${result.reference} with ${findDoctor(slot.doctorId)?.name ?? "the doctor"} on ${result.visit.token && result.visit.endTime ? `${formatFull(result.visit.date)}, ${result.visit.time}–${result.visit.endTime} wave, ${tokenLabel(result.visit.token)}` : patientLine(result.visit.date, { ...result.visit, ...slot }, "from-slot")}. Patients are seen in token order.${pay}`,
     };
   } catch (error) {
     if (error instanceof SlotUnavailableError) {
@@ -322,7 +361,11 @@ async function move(user: PublicUser, visitId: string, slotId: string, reason: s
   await refreshBook();
   if (!outcome.ok) return { ok: false, summary: `${RESCHEDULE_MESSAGES[outcome.reason]} ${CLOSED}` };
   await notifyRescheduled(user, outcome.visit, outcome.history);
-  return { ok: true, summary: `Moved ${outcome.visit.reference} to ${when(outcome.visit.date, outcome.visit.time)}.` };
+  const movedTo =
+    user.role === "patient"
+      ? patientLine(outcome.visit.date, outcome.visit, await sessionFor(outcome.visit))
+      : when(outcome.visit.date, outcome.visit.time);
+  return { ok: true, summary: `Moved ${outcome.visit.reference} to ${movedTo}.` };
 }
 
 async function pay(user: PublicUser, visitId: string): Promise<ActionOutcome> {
