@@ -16,6 +16,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    agentUpgrade: "security",
+  },
   turbopack: { root: fileURLToPath(new URL(".", import.meta.url)) },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
