@@ -19,12 +19,23 @@ const doctor = {
 } as unknown as Doctor;
 
 const wave: Slot = { id: "w-s1-2026-11-21-1000", doctorId: "doc", date: "2026-11-21", time: "10:00", endTime: "11:00", mode: "wave", capacity: 5, booked: 2 };
-const stream: Slot = { id: "doc-2026-11-21-1500", doctorId: "doc", date: "2026-11-21", time: "15:00", endTime: "15:20", mode: "stream" };
+const stream = {
+  id: "doc-2026-11-21-1500",
+  doctorId: "doc",
+  date: "2026-11-21",
+  time: "15:00",
+  endTime: "15:20",
+  mode: "stream",
+  sessionLabel: "Afternoon",
+  sessionStart: "13:00",
+  sessionEnd: "17:00",
+  queueToken: 7,
+} as Slot;
 
 describe("AppointmentSummary", () => {
   it("shows a wave's window and the token, never a slot minute", () => {
     render(<AppointmentSummary doctor={doctor} slot={wave} token={3} />);
-    expect(screen.getByTestId("wave-token").textContent).toBe("Token #3");
+    expect(screen.getByTestId("queue-token").textContent).toBe("Token #3");
     expect(screen.getByText(/Wave 10:00–11:00/)).toBeTruthy();
     expect(screen.queryByText(/minutes/)).toBeNull();
   });
@@ -35,9 +46,12 @@ describe("AppointmentSummary", () => {
     expect(screen.getByText(/3 of 5 places left/)).toBeTruthy();
   });
 
-  it("keeps a stream visit's own time", () => {
+  it("shows a stream visit's session window and slot-order token, never the clock time", () => {
     render(<AppointmentSummary doctor={doctor} slot={stream} reason={{ id: "new", label: "A new concern", minutes: 15 } as never} />);
-    expect(screen.getByText("15:00–15:15")).toBeTruthy();
-    expect(screen.queryByTestId("wave-token")).toBeNull();
+    expect(screen.getByTestId("queue-token").textContent).toBe("Token #7");
+    expect(screen.getByText(/Afternoon session 13:00–17:00/)).toBeTruthy();
+    expect(screen.queryByText("15:00–15:15")).toBeNull();
+    expect(screen.queryByText("15:00–15:20")).toBeNull();
+    expect(screen.queryByText(/15 minutes/)).toBeNull();
   });
 });

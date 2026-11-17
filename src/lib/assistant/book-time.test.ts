@@ -78,7 +78,9 @@ describe("booking from chat", () => {
     const slot = open[1]!;
     const result = await runTool(patient, "book_time", { doctor: "helen", date: "tomorrow", time: slot.time.replace(":", "") });
     expect(result.pending).toBeDefined();
-    expect(result.pending!.summary).toContain(slot.time);
+    expect(result.pending!.summary).toContain("Token #");
+    expect(result.pending!.summary).toMatch(/session \d{2}:\d{2}–\d{2}:\d{2}/);
+    expect(result.pending!.summary).not.toContain(`at ${slot.time}`);
     expect(result.pending!.title).toBe("Book this visit?");
     expect(result.forModel).toMatchObject({ needsConfirmation: true });
     expect(slot.date).toBe(tomorrow);
@@ -133,7 +135,9 @@ describe("booking from chat", () => {
       { role: "assistant", content: "Dr Helen Cho has times tomorrow.\n\n[Open times shown under this reply: Dr Helen Cho on 2026-10-27: 09:00]" },
       { role: "user", content: slot.time },
     ]);
-    expect(answer.pending?.summary).toContain(slot.time);
+    expect(answer.pending?.summary).toContain("Token #");
+    expect(answer.pending?.summary).toMatch(/session \d{2}:\d{2}–\d{2}:\d{2}/);
+    expect(answer.pending?.summary).not.toContain(`at ${slot.time}`);
   });
 
   it("answers with a question when the model keeps calling tools, and the last step has no tools", async () => {

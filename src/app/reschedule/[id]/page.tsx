@@ -7,10 +7,10 @@ import { Notice } from "@/components/ui/Card";
 import { PendingButton } from "@/components/ui/PendingButton";
 import { addDays, todayIso, now } from "@/lib/clock";
 import { findDoctor } from "@/lib/data";
-import { formatWhen, weekdayLong } from "@/lib/format";
+import { formatShortDate, formatWhen, weekdayLong } from "@/lib/format";
 import { canMove, mayReschedule, openTimesFor, placementLabel, RESCHEDULE_MESSAGES, type RescheduleFailure } from "@/lib/reschedule";
 import { loadDoctors } from "@/lib/doctors";
-import { placesLabel, slotTimeLabel } from "@/lib/sessions";
+import { patientPlace, placesLabel, slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
 import { rescheduleAction } from "@/server/booking-actions";
@@ -32,12 +32,18 @@ export default async function ReschedulePage({
   const user = await getCurrentUser();
   if (!user) redirect(`/sign-in?next=${encodeURIComponent(here)}`);
 
-  const visit = await (await getStore()).getAppointment(id);
+  const store = await getStore();
+  const visit = await store.getAppointment(id);
   if (!visit || !mayReschedule(user, visit)) notFound();
   await loadDoctors();
   const doctor = findDoctor(visit.doctorId);
   const today = todayIso(now());
   const asPatient = user.role === "patient";
+  const session = visit.sessionId ? await store.getConsultSession(visit.sessionId) : null;
+  const place = patientPlace(visit, session);
+  const current = asPatient
+    ? `${formatShortDate(visit.date)}${place.window ? `, ${place.window}` : ""}${place.token ? `, ${tokenLabel(place.token)}` : ""}`
+    : `${formatWhen(visit, today)}${visit.token ? `, ${tokenLabel(visit.token)}` : ""}`;
 
   const weeksParam = typeof query.weeks === "string" ? Number(query.weeks) : WEEKS_STEP;
   const weeks = Number.isInteger(weeksParam) && weeksParam >= WEEKS_STEP && weeksParam <= 12 ? weeksParam : WEEKS_STEP;
@@ -58,8 +64,8 @@ export default async function ReschedulePage({
       <p className="mt-2 max-w-prose text-body text-ink-2">
         {asPatient ? "Your" : `${visit.patientName}’s`} visit with {doctor?.name ?? "the doctor"} stays the same reference,{" "}
         <span className="tabular text-ink">{visit.reference}</span>. Currently{" "}
-        <span className="tabular text-ink">{formatWhen(visit, today)}</span>
-        {visit.token ? `, token ${visit.token}` : ""}. {asPatient ? "The doctor" : "The patient"} gets an email about the move.
+        <span className="tabular text-ink">{current}</span>
+        . {asPatient ? "The doctor" : "The patient"} gets an email about the move.
       </p>
       {notice ? (
         <Notice tone="danger" role="alert" className="mt-6">

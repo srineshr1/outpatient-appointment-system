@@ -408,7 +408,10 @@ export function slotsForSession(
         booked: 0,
         sessionId: session.id,
         room: session.room,
-      });
+        sessionLabel: session.label,
+        sessionStart: session.startTime,
+        sessionEnd: session.endTime,
+      } as Slot);
       continue;
     }
     for (const block of blocks) {
@@ -425,8 +428,12 @@ export function slotsForSession(
           booked: 0,
           sessionId: session.id,
           room: session.room,
-        });
+          sessionLabel: session.label,
+          sessionStart: session.startTime,
+          sessionEnd: session.endTime,
+        } as Slot);
       } else {
+        const token = streamToken(session, block.time);
         slots.push({
           id: slotId(doctorId, date, block.time),
           doctorId,
@@ -436,7 +443,11 @@ export function slotsForSession(
           mode: "stream",
           sessionId: session.id,
           room: session.room,
-        });
+          sessionLabel: session.label,
+          sessionStart: session.startTime,
+          sessionEnd: session.endTime,
+          ...(token ? { queueToken: token } : {}),
+        } as Slot);
       }
     }
   }
@@ -490,9 +501,71 @@ export function freeToken(waveId: string, capacity: number, heldIds: readonly st
   return null;
 }
 
-/** "Token #3": how a wave booking's place in the queue is shown everywhere. */
+/** "Token #3": how a booking's place in the queue is shown everywhere. */
 export function tokenLabel(token: number): string {
   return `Token #${token}`;
+}
+
+/** Display fields attached to a generated slot so the booking UI can show the session window and token. */
+export interface SlotSessionPlace {
+  sessionLabel?: string;
+  sessionStart?: string;
+  sessionEnd?: string;
+  /** Stream: 1-based place in the session, earliest slot first. Wave: unset until booked. */
+  queueToken?: number;
+}
+
+export function slotSessionPlace(slot: Slot): SlotSessionPlace {
+  return slot as Slot & SlotSessionPlace;
+}
+
+/**
+ * 1-based queue place of a fixed slot in its session, from the earliest slot to the latest.
+ * Stable: a cancellation or a later booking never renumbers anybody. Null when the time is not a
+ * slot in that session.
+ */
+export function streamToken(
+  session: Pick<ConsultSession, "mode" | "startTime" | "endTime" | "slotMinutes" | "waveMinutes">,
+  time: string,
+): number | null {
+  if (session.mode !== "stream") return null;
+  const index = sessionBlocks(session).findIndex((block) => block.time === time);
+  return index >= 0 ? index + 1 : null;
+}
+
+/** "Afternoon session 13:00–17:00", or "13:00–17:00 session" when the session has no name. */
+export function sessionWindowLabel(session: Pick<ConsultSession, "label" | "startTime" | "endTime">): string {
+  const window = `${session.startTime}–${session.endTime}`;
+  const name = session.label.trim();
+  if (!name) return `${window} session`;
+  const titled = /session/i.test(name) ? name : `${name} session`;
+  return `${titled} ${window}`;
+}
+
+export interface PatientPlace {
+  /** "Afternoon session 13:00–17:00" or "10:00–11:00 wave". Null only when we cannot name a window. */
+  window: string | null;
+  token: number | null;
+}
+
+/**
+ * What a patient is told about a visit: the session or wave window, and their token. Never a
+ * fixed-slot clock time. Wave tokens are the ones stored on the visit; stream tokens follow slot
+ * order in the session, lowest first.
+ */
+export function patientPlace(
+  visit: { time: string; endTime?: string | null; token?: number | null },
+  session?: Pick<ConsultSession, "label" | "startTime" | "endTime" | "mode" | "slotMinutes" | "waveMinutes"> | null,
+): PatientPlace {
+  if (session?.mode === "stream") {
+    return { window: sessionWindowLabel(session), token: visit.token ?? streamToken(session, visit.time) };
+  }
+  const token = visit.token ?? null;
+  if (visit.endTime && (token !== null || session?.mode === "wave")) {
+    return { window: `${visit.time}–${visit.endTime} wave`, token };
+  }
+  if (session) return { window: sessionWindowLabel(session), token };
+  return { window: null, token };
 }
 
 /** "Mon–Fri", "Tue, Thu" or "Mon–Wed, Fri". */

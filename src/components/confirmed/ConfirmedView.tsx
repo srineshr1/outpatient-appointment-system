@@ -1,6 +1,6 @@
 "use client";
 
-import { slotTimeLabel, tokenLabel } from "@/lib/sessions";
+import { sessionWindowLabel, slotSessionPlace, slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,7 +13,7 @@ import { PageHeading } from "@/components/shell/PageHeading";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ShinyText } from "@/components/ui/ShinyText";
-import { practice, reasons, type Doctor } from "@/lib/data";
+import { practice, reasons, type Doctor, type Slot } from "@/lib/data";
 import { dayOfMonth } from "@/lib/clock";
 import { formatMoney } from "@/lib/fees";
 import { ageLabel, formatPhone, monthLong, weekdayLong } from "@/lib/format";
@@ -22,6 +22,21 @@ import { downloadIcs } from "@/lib/ics";
 function waveMinutes(from: string, to: string): number {
   const at = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
   return Math.max(10, at(to) - at(from));
+}
+
+function sessionWindow(slot: Slot) {
+  if (slot.mode === "wave") return slot.endTime ? `${slotTimeLabel(slot)} wave` : null;
+  const place = slotSessionPlace(slot);
+  if (place.sessionStart && place.sessionEnd) {
+    return sessionWindowLabel({ label: place.sessionLabel ?? "", startTime: place.sessionStart, endTime: place.sessionEnd });
+  }
+  return null;
+}
+
+function shownToken(slot: Slot, booked?: number | null) {
+  if (booked) return booked;
+  if (slot.mode === "wave") return null;
+  return slotSessionPlace(slot).queueToken ?? null;
 }
 
 function SuccessMark() {
@@ -69,6 +84,9 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
 
   const { patient, slot, reference } = booking;
   const chi = patient?.chi.replace(/\s/g, "") ?? "";
+  const windowLabel = sessionWindow(slot);
+  const token = shownToken(slot, booking.token);
+  const place = slotSessionPlace(slot);
 
   function startOver() {
     dispatch({ type: "startOver" });
@@ -94,28 +112,26 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
             {slot.date === window.today
               ? "today"
               : `on ${weekdayLong(slot.date)} ${dayOfMonth(slot.date)} ${monthLong(slot.date)}`}{" "}
-            {slot.mode === "wave" ? (
+            {windowLabel ? (
               <>
-                in the <span className="tabular text-ink">{slotTimeLabel(slot)}</span> wave
+                in the <span className="tabular text-ink">{windowLabel}</span>
               </>
             ) : (
-              <>
-                at <span className="tabular text-ink">{slotTimeLabel(slot)}</span>
-              </>
+              <>that day</>
             )}{" "}
             with {doctor.short}.
           </p>
-          {slot.mode === "wave" && booking.token ? (
+          {token ? (
             <div className="mt-5">
               <p className="text-callout text-muted">Your token</p>
               <p
                 data-testid="confirmed-token"
                 className="tabular mt-2 inline-block rounded-2xl border border-emerald-400/35 bg-emerald-400/10 px-5 py-2 text-title1 font-bold text-emerald-700 dark:text-emerald-300"
               >
-                {tokenLabel(booking.token)}
+                {tokenLabel(token)}
               </p>
               <p className="mt-2 text-callout text-ink-2">
-                Arrive any time in your wave. Patients are seen in token order, lowest first.
+                Arrive any time in your {slot.mode === "wave" ? "wave" : "session"}. Patients are seen in token order, lowest first.
               </p>
             </div>
           ) : null}
@@ -138,8 +154,13 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
                     doctorName: doctor.name,
                     room: doctor.room,
                     date: slot.date,
-                    time: slot.time,
-                    minutes: slot.mode === "wave" && slot.endTime ? waveMinutes(slot.time, slot.endTime) : reason.minutes,
+                    time: place.sessionStart ?? slot.time,
+                    minutes:
+                      slot.mode === "wave" && slot.endTime
+                        ? waveMinutes(slot.time, slot.endTime)
+                        : place.sessionStart && place.sessionEnd
+                          ? waveMinutes(place.sessionStart, place.sessionEnd)
+                          : reason.minutes,
                     reasonLabel: reason.label,
                   },
                   now,
@@ -181,7 +202,10 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
               </Item>
             ) : null}
             <Item term="Bring">
-              {chi ? `Your CHI number (${chi}).` : "Your CHI number, if you have it."} Please arrive five minutes early.
+              {chi ? `Your CHI number (${chi}).` : "Your CHI number, if you have it."}{" "}
+              {token
+                ? "Arrive any time in your window; patients are seen in token order."
+                : "Please arrive five minutes early."}
             </Item>
             <Item term="Can’t make it?">
               Cancel the visit from{" "}

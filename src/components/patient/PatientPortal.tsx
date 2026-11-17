@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { AppointmentRecord, PublicUser, RebookingOffer, RescheduleRecord } from "@/lib/clinic-types";
 import type { MedicalReport, PatientSummaryData, PrescriptionItem } from "@/lib/patient-reports";
-import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
+import { formatPhone, formatShortDate } from "@/lib/format";
+import { patientPlace, tokenLabel } from "@/lib/sessions";
 import { findDoctor, practice, reasons } from "@/lib/data";
 import { PRACTICE_TZ } from "@/lib/clock";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
@@ -41,6 +42,25 @@ interface Props {
 }
 
 type TabKey = "appointments" | "reports" | "prescriptions" | "vitals";
+
+type PlacedVisit = AppointmentRecord & { sessionWindow?: string | null; queueToken?: number | null };
+
+function placeOf(visit: AppointmentRecord) {
+  const extra = visit as PlacedVisit;
+  if (extra.sessionWindow !== undefined || extra.queueToken !== undefined) {
+    return { window: extra.sessionWindow ?? patientPlace(visit).window, token: extra.queueToken ?? visit.token ?? null };
+  }
+  return patientPlace(visit);
+}
+
+function patientWhenLine(visit: AppointmentRecord): string {
+  const place = placeOf(visit);
+  const day = formatShortDate(visit.date);
+  if (place.token && place.window) return `${day}, ${place.window} · ${tokenLabel(place.token)}`;
+  if (place.token) return `${day} · ${tokenLabel(place.token)}`;
+  if (place.window) return `${day}, ${place.window}`;
+  return day;
+}
 
 export function PatientPortal({
   user,
@@ -159,7 +179,7 @@ export function PatientPortal({
             </div>
             <p className="text-2xl font-bold text-ink">{upcomingVisits.length}</p>
             <p className="text-xs text-ink-2 mt-0.5 truncate">
-              {nextVisit ? `Next: ${formatShortDate(nextVisit.date)}, ${nextVisit.time}` : "No upcoming visits"}
+              {nextVisit ? `Next: ${placeOf(nextVisit).token ? `${formatShortDate(nextVisit.date)} · ${tokenLabel(placeOf(nextVisit).token!)}` : patientWhenLine(nextVisit)}` : "No upcoming visits"}
             </p>
           </button>
 
@@ -229,7 +249,7 @@ export function PatientPortal({
         <Notice key={visit.id} tone="info" className="mt-6 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <span>
-              Your doctor modified clinic hours. Your visit on <strong>{formatShortDate(visit.date)}, {visit.time}</strong> ({visit.reference}) requires a new time slot.
+              Your doctor modified clinic hours. Your visit on <strong>{patientWhenLine(visit)}</strong> ({visit.reference}) requires a new time slot.
             </span>
             <Link
               href={href}

@@ -74,9 +74,9 @@ export async function openTimesFor(visit: AppointmentRecord): Promise<Awaited<Re
   return (await getSlots(visit.doctorId)).filter((slot) => slot.id !== here && slotStatus(slot, [], instant) === "open");
 }
 
-/** "Thu 29 Oct, 09:40" or "Thu 29 Oct, 14:00 · token 3". */
+/** "Thu 29 Oct, 09:40" or "Thu 29 Oct, 14:00 · Token #3". Staff-facing: keeps the clock time. */
 export function placementLabel(place: { date: string; time: string; token?: number | null }): string {
-  return `${formatShortDate(place.date)}, ${place.time}${place.token ? ` · token ${place.token}` : ""}`;
+  return `${formatShortDate(place.date)}, ${place.time}${place.token ? ` · Token #${place.token}` : ""}`;
 }
 
 export async function rescheduleVisit(
@@ -165,7 +165,7 @@ export async function rescheduleVisit(
 export async function notifyRescheduled(actor: PublicUser, visit: AppointmentRecord, history: RescheduleRecord): Promise<void> {
   try {
     const extra = {
-      previousWhen: placementLabel({ date: history.fromDate, time: history.fromTime }),
+      previousWhen: placementLabel({ date: history.fromDate, time: history.fromTime, token: history.fromToken }),
       actorName: actor.name,
       ...(history.reason ? { reason: history.reason } : {}),
     };
