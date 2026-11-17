@@ -3,6 +3,8 @@ import Link from "next/link";
 import { reasons, findDoctor } from "@/lib/data";
 import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
 import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
+import { RateVisit } from "@/components/patient/RateVisit";
+import { queuePath } from "@/lib/queue";
 import { patientPlace, slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
 import { ButtonLink } from "@/components/ui/Button";
@@ -255,6 +257,11 @@ export function VisitList({
                     ) : null}
                     {visit.status === "booked" ? (
                       <div className="group mt-4 flex flex-wrap gap-2">
+                        {mode === "patient" ? (
+                          <Link href={queuePath(visit.id)} className={buttonClass("primary", "md")}>
+                            See your queue
+                          </Link>
+                        ) : null}
                         {mode === "clinic" ? (
                           <form action={updateVisit}>
                             <input type="hidden" name="id" value={visit.id} />
@@ -291,6 +298,9 @@ export function VisitList({
                           </PendingButton>
                         </form>
                       </div>
+                    ) : null}
+                    {mode === "patient" && visit.status === "completed" ? (
+                      <RateVisit visit={visit} doctorName={doctorName(visit.doctorId)} returnTo={returnTo} />
                     ) : null}
                   </div>
                 );

@@ -47,6 +47,8 @@ export interface NoticeData {
   offsetMinutes?: number;
   /** Where the patient can act on it, e.g. /pay/<id> or /appointments. */
   path?: string;
+  /** Phone page that shows how many people are ahead in this clinic. */
+  queuePath?: string;
   /** Payment id, for receipt links. */
   paymentId?: string;
   /** Why the visit is booked, e.g. "A follow-up". */

@@ -1,33 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
-  Alert,
   Bell,
   Calendar,
-  Check,
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
-  Clock,
-  Close,
-  Phone,
   Plus,
-  Search,
   Sliders,
 } from "@/components/icons";
 import { AnimatedList, AnimatedListItem } from "@/components/reactbits/AnimatedList";
-import { CountUp } from "@/components/reactbits/CountUp";
 import { doctorTitle } from "@/lib/names";
-import { BentoCard, MagicBento } from "@/components/reactbits/MagicBento";
-import { RubberSegment } from "@/components/reactbits/RubberSegment";
 import { Step, Stepper, type StepItem } from "@/components/reactbits/Stepper";
 import { buildWeek, minutesLabel, weekMonday, weekTitle } from "@/components/doctors/schedule-model";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { buttonClass } from "@/components/ui/button-styles";
 import { Card, Notice } from "@/components/ui/Card";
-import { PendingButton } from "@/components/ui/PendingButton";
 import type {
   AppointmentRecord,
   ConsultSession,
@@ -38,10 +26,7 @@ import type {
 import { PRACTICE_TZ } from "@/lib/clock";
 import { reasons } from "@/lib/data";
 import type { DoctorStatus } from "@/lib/doctor-status";
-import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
 import type { InboxItem } from "@/lib/ops/types";
-import { slotTimeLabel, tokenLabel } from "@/lib/sessions";
-import { updateVisit } from "@/server/booking-actions";
 import { markAllReadAction, openInboxItemAction } from "@/server/inbox-actions";
 
 export interface DoctorFilterOption {
@@ -76,54 +61,8 @@ export interface ClinicBookViewProps {
   verificationPending?: boolean;
 }
 
-type QueueTab = "today" | "upcoming" | "awaiting" | "earlier" | "cancelled" | "all";
-
 function reasonLabel(id: string): string {
   return reasons.find((reason) => reason.id === id)?.label ?? "Appointment";
-}
-
-function statusLabel(status: AppointmentRecord["status"]): string {
-  if (status === "completed") return "Completed";
-  if (status === "cancelled") return "Cancelled";
-  if (status === "pending_payment") return "Awaiting payment";
-  if (status === "expired") return "Hold expired";
-  if (status === "displaced") return "Hours removed, new time pending";
-  return "Booked";
-}
-
-function statusPillClass(status: AppointmentRecord["status"]): string {
-  if (status === "completed") return "bg-success-soft text-success border-success/25";
-  if (status === "cancelled" || status === "expired") {
-    return "bg-fill text-muted border-hairline";
-  }
-  if (status === "pending_payment" || status === "displaced") {
-    return "bg-warn-soft text-warn border-warn/25";
-  }
-  return "bg-accent-soft text-accent border-accent/25";
-}
-
-function whenLabel(visit: AppointmentRecord): string {
-  return visit.endTime && visit.token
-    ? slotTimeLabel({ time: visit.time, endTime: visit.endTime, mode: "wave" })
-    : visit.time;
-}
-
-function spot(date: string, time: string, token: number | null): string {
-  return `${formatShortDate(date)}, ${time}${token ? ` (${tokenLabel(token)})` : ""}`;
-}
-
-function roleLabel(role: string): string {
-  return role === "patient" ? "patient" : role === "doctor" ? "doctor" : "clinic desk";
-}
-
-function movedOn(at: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: PRACTICE_TZ,
-  }).format(new Date(at));
 }
 
 function inboxWhen(at: string): string {
@@ -168,91 +107,30 @@ export function groupVisits(visits: readonly AppointmentRecord[], today: string)
 export function ClinicBookView({
   userName,
   userRole,
-  room: _room,
   expiresAt,
   expiresLabel,
   setup,
   sessions = [],
   trims = [],
   inboxItems = [],
-  wholeBook,
-  filterDoctorId,
-  doctorOptions,
-  doctorNames,
   visits,
   today,
-  returnTo,
-  payments,
-  moves,
   pendingDisplacedCount,
   noticeSlot,
   displacedSlot,
   verificationPending = false,
 }: ClinicBookViewProps) {
-  const searchId = useId();
-  const [search, setSearch] = useState("");
   const [weekOffset, setWeekOffset] = useState(0);
   const groups = useMemo(() => groupVisits(visits, today), [visits, today]);
 
-  const [activeTab, setActiveTab] = useState<QueueTab>(() =>
-    groups.todayVisits.length > 0 ? "today" : "all",
-  );
-
   const kpis = useMemo(() => {
     const todayQueue = groups.todayVisits.filter((visit) => visit.status === "booked").length;
-    const completedToday = groups.todayVisits.filter((visit) => visit.status === "completed").length;
     const upcomingBooked = groups.upcoming.filter((visit) => visit.status === "booked").length;
-    const awaitingCount = groups.awaiting.length;
     return {
       todayQueue,
-      completedToday,
-      upcomingBooked,
-      awaitingCount,
-      attentionTotal: awaitingCount + pendingDisplacedCount,
       totalActiveAppointments: todayQueue + upcomingBooked,
     };
-  }, [groups, pendingDisplacedCount]);
-
-  const tabItems = useMemo(
-    () => [
-      { value: "today", label: `Today (${groups.todayVisits.length})` },
-      { value: "upcoming", label: `Upcoming (${groups.upcoming.length})` },
-      { value: "awaiting", label: `Awaiting (${groups.awaiting.length})` },
-      { value: "earlier", label: `Earlier (${groups.earlier.length})` },
-      { value: "cancelled", label: `Cancelled (${groups.cancelled.length})` },
-      { value: "all", label: `All (${visits.length})` },
-    ],
-    [groups, visits.length],
-  );
-
-  const tabVisits = useMemo(() => {
-    if (activeTab === "today") return groups.todayVisits;
-    if (activeTab === "upcoming") return groups.upcoming;
-    if (activeTab === "awaiting") return groups.awaiting;
-    if (activeTab === "earlier") return groups.earlier;
-    if (activeTab === "cancelled") return groups.cancelled;
-    return [
-      ...groups.todayVisits,
-      ...groups.awaiting,
-      ...groups.upcoming,
-      ...groups.earlier,
-      ...groups.cancelled,
-    ];
-  }, [activeTab, groups]);
-
-  const filteredVisits = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return tabVisits;
-    return tabVisits.filter((visit) => {
-      const doctorName = (doctorNames[visit.doctorId] ?? "").toLowerCase();
-      return (
-        visit.patientName.toLowerCase().includes(q) ||
-        visit.reference.toLowerCase().includes(q) ||
-        visit.patientChi.toLowerCase().includes(q) ||
-        doctorName.includes(q)
-      );
-    });
-  }, [tabVisits, search, doctorNames]);
+  }, [groups]);
 
   // 6-day Mon–Sat calendar grid for Sketch 1 (click any calendar item -> Edit sessions page)
   const monday = weekMonday(today, weekOffset);
@@ -590,93 +468,6 @@ export function ClinicBookView({
         </section>
       ) : null}
 
-      {/* 3. KPI Bento Strip */}
-      <section aria-label="Queue summary" className="mt-6">
-        <MagicBento>
-          <BentoCard spotlightColor="transparent">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-caption font-semibold uppercase tracking-wider text-muted">
-                Today&apos;s Queue
-              </span>
-              <span className="flex size-8 items-center justify-center rounded-full bg-accent-soft text-accent">
-                <ClipboardList size={16} />
-              </span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <CountUp
-                to={kpis.todayQueue}
-                trigger="load"
-                duration={0.6}
-                className="text-title1 font-bold text-ink tabular"
-              />
-            </div>
-            <p className="mt-1 text-caption text-muted">Booked patients in today&apos;s queue</p>
-          </BentoCard>
-
-          <BentoCard spotlightColor="transparent">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-caption font-semibold uppercase tracking-wider text-muted">
-                Completed Today
-              </span>
-              <span className="flex size-8 items-center justify-center rounded-full bg-success-soft text-success">
-                <Check size={16} />
-              </span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <CountUp
-                to={kpis.completedToday}
-                trigger="load"
-                duration={0.6}
-                className="text-title1 font-bold text-ink tabular"
-              />
-            </div>
-            <p className="mt-1 text-caption text-muted">Visits marked complete today</p>
-          </BentoCard>
-
-          <BentoCard spotlightColor="transparent">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-caption font-semibold uppercase tracking-wider text-muted">
-                Upcoming Visits
-              </span>
-              <span className="flex size-8 items-center justify-center rounded-full bg-accent-soft text-accent">
-                <Calendar size={16} />
-              </span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <CountUp
-                to={kpis.upcomingBooked}
-                trigger="load"
-                duration={0.6}
-                className="text-title1 font-bold text-ink tabular"
-              />
-            </div>
-            <p className="mt-1 text-caption text-muted">Booked slots from tomorrow onwards</p>
-          </BentoCard>
-
-          <BentoCard spotlightColor="transparent">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-caption font-semibold uppercase tracking-wider text-muted">
-                Awaiting / Displaced
-              </span>
-              <span className="flex size-8 items-center justify-center rounded-full bg-warn-soft text-warn">
-                <Alert size={16} />
-              </span>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <CountUp
-                to={kpis.attentionTotal}
-                trigger="load"
-                duration={0.6}
-                className="text-title1 font-bold text-ink tabular"
-              />
-            </div>
-            <p className="mt-1 text-caption text-muted tabular">
-              {kpis.awaitingCount} awaiting payment · {pendingDisplacedCount} displaced
-            </p>
-          </BentoCard>
-        </MagicBento>
-      </section>
-
       {/* 4. Onboarding Checklist */}
       {setup && !setup.visible ? (
         <section aria-labelledby="finish-profile" className="mt-6">
@@ -725,299 +516,6 @@ export function ClinicBookView({
       {noticeSlot}
       {displacedSlot}
 
-      {/* 6. Clinic Book Queue & Filters */}
-      <section aria-labelledby="queue-heading" className="mt-8">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 id="queue-heading" className="text-title3 font-semibold text-ink">
-                Patient queue
-              </h2>
-              <p className="mt-0.5 text-callout text-ink-2">
-                Filter by queue window or search by patient name, reference, or CHI.
-              </p>
-            </div>
-            <p className="text-callout text-muted tabular">
-              Showing <span className="font-semibold text-ink">{filteredVisits.length}</span> of{" "}
-              {tabVisits.length}
-            </p>
-          </div>
-
-          {wholeBook ? (
-            <nav aria-label="Filter by doctor" className="flex flex-wrap gap-2">
-              <ButtonLink
-                href="/dashboard"
-                variant={!filterDoctorId ? "primary" : "secondary"}
-                size="md"
-                aria-current={!filterDoctorId ? "page" : undefined}
-              >
-                All doctors
-              </ButtonLink>
-              {doctorOptions.map((item) => (
-                <ButtonLink
-                  key={item.id}
-                  href={`/dashboard?doctor=${item.id}`}
-                  variant={filterDoctorId === item.id ? "primary" : "secondary"}
-                  size="md"
-                  aria-current={filterDoctorId === item.id ? "page" : undefined}
-                >
-                  {item.short}
-                </ButtonLink>
-              ))}
-            </nav>
-          ) : null}
-
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-full overflow-x-auto pb-1">
-              <RubberSegment
-                aria-label="Filter visits by queue status"
-                items={tabItems}
-                value={activeTab}
-                onChange={(val) => setActiveTab(val as QueueTab)}
-                equalSlots={false}
-                size="md"
-                radius={999}
-                trackColor="var(--v-fill)"
-                thumbColor="var(--v-ink)"
-                textColor="var(--v-ink-2)"
-                activeTextColor="var(--v-canvas)"
-              />
-            </div>
-
-            <div className="relative w-full lg:max-w-sm">
-              <label htmlFor={searchId} className="sr-only">
-                Search patients by name, reference, or CHI
-              </label>
-              <Search
-                size={16}
-                className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted"
-              />
-              <input
-                id={searchId}
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search name, reference, or CHI…"
-                className="field pl-10 pr-10"
-              />
-              {search ? (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  aria-label="Clear search"
-                  className="absolute top-1/2 right-2.5 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted transition-colors hover:bg-fill hover:text-ink"
-                >
-                  <Close size={14} />
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {filteredVisits.length === 0 ? (
-          <Card className="mt-6 p-6">
-            <p className="text-body font-medium text-ink">
-              {visits.length === 0
-                ? "No visits on this book yet."
-                : search.trim()
-                  ? "No visits match your search in this tab."
-                  : "No visits in this view."}
-            </p>
-            <p className="mt-1 text-callout text-ink-2">
-              {visits.length === 0
-                ? "Appointments appear here automatically as soon as a patient books."
-                : search.trim()
-                  ? "Try clearing your search or switching to the All tab."
-                  : "Switch tabs above to inspect upcoming, earlier, or awaiting visits."}
-            </p>
-          </Card>
-        ) : (
-          <AnimatedList className="mt-6">
-            {filteredVisits.map((visit, index) => {
-              const doctorDisplay = doctorNames[visit.doctorId] ?? "Your doctor";
-              const visitMoves = moves[visit.id] ?? [];
-              return (
-                <AnimatedListItem key={visit.id} index={index}>
-                  <article
-                    className={`rounded-card border bg-surface p-5 shadow-card ${
-                      visit.date === today && visit.status === "booked"
-                        ? "border-accent/40 ring-1 ring-accent/15"
-                        : "border-hairline"
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <div className="flex flex-wrap items-baseline gap-2.5">
-                        <h3 className="text-body font-semibold text-ink">{visit.patientName}</h3>
-                        {wholeBook && !filterDoctorId ? (
-                          <span className="rounded-full border border-hairline bg-surface-2 px-2.5 py-0.5 text-caption font-medium text-ink-2">
-                            {doctorDisplay}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {visit.token ? (
-                          <span className="tabular inline-flex items-center rounded-full border border-hairline bg-surface-2 px-2.5 py-0.5 text-caption font-semibold text-ink">
-                            {tokenLabel(visit.token)} of {visit.waveCapacity ?? "?"}
-                          </span>
-                        ) : null}
-                        <p
-                          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption font-semibold ${statusPillClass(visit.status)}`}
-                        >
-                          {statusLabel(visit.status)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body text-ink-2">
-                      <span className="inline-flex items-center gap-1.5 tabular font-medium text-ink">
-                        <Clock size={15} className="text-muted" />
-                        {formatWhen({ date: visit.date, time: whenLabel(visit) }, today)}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>{doctorDisplay}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{reasonLabel(visit.reasonId)}</span>
-                    </p>
-
-                    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-callout text-muted">
-                      <span>
-                        Reference <span className="tabular font-medium text-ink">{visit.reference}</span>
-                      </span>
-                      {payments[visit.id] ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="tabular text-ink">{payments[visit.id]}</span>
-                        </>
-                      ) : null}
-                      {visit.patientMobile ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="inline-flex items-center gap-1 tabular">
-                            <Phone size={13} />
-                            {formatPhone(visit.patientMobile)}
-                          </span>
-                        </>
-                      ) : null}
-                      {visit.patientChi ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span>
-                            CHI <span className="tabular text-ink-2">{visit.patientChi}</span>
-                          </span>
-                        </>
-                      ) : null}
-                    </p>
-
-                    {visit.token ? (
-                      <p className="mt-1.5 text-caption text-muted">
-                        Seen in token order within this wave.
-                      </p>
-                    ) : null}
-
-                    {visitMoves.length > 0 ? (
-                      <ul
-                        aria-label="History of moves"
-                        className="mt-2.5 grid gap-1 rounded-xl border border-hairline bg-surface-2 px-3.5 py-2.5 text-callout text-muted"
-                      >
-                        {visitMoves.map((move) => (
-                          <li key={move.id}>
-                            Moved by {move.byName} ({roleLabel(move.byRole)}) from{" "}
-                            <span className="tabular text-ink-2">
-                              {spot(move.fromDate, move.fromTime, move.fromToken)}
-                            </span>{" "}
-                            to{" "}
-                            <span className="tabular text-ink-2">
-                              {spot(move.toDate, move.toTime, move.toToken)}
-                            </span>{" "}
-                            on <span className="tabular">{movedOn(move.at)}</span>
-                            {move.reason ? `. “${move.reason}”` : "."}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-
-                    {visit.note ? (
-                      <p className="mt-3 rounded-xl border border-hairline bg-surface-2 px-3.5 py-2.5 text-callout whitespace-pre-line text-ink-2">
-                        {visit.note}
-                      </p>
-                    ) : null}
-
-                    {visit.status === "pending_payment" ? (
-                      <div className="group mt-4 flex flex-wrap items-center gap-3">
-                        <form action={updateVisit}>
-                          <input type="hidden" name="id" value={visit.id} />
-                          <input type="hidden" name="status" value="cancelled" />
-                          <input type="hidden" name="return" value={returnTo} />
-                          <PendingButton
-                            pendingLabel="Releasing…"
-                            className={buttonClass(
-                              "plain",
-                              "md",
-                              "group-has-[[aria-busy=true]]:pointer-events-none",
-                            )}
-                            aria-label={`Give up the held place, ${formatWhen(visit, today)}`}
-                          >
-                            Give up this place
-                          </PendingButton>
-                        </form>
-                      </div>
-                    ) : null}
-
-                    {visit.status === "booked" ? (
-                      <div className="group mt-4 flex flex-wrap items-center gap-3">
-                        <form action={updateVisit}>
-                          <input type="hidden" name="id" value={visit.id} />
-                          <input type="hidden" name="status" value="completed" />
-                          <input type="hidden" name="return" value={returnTo} />
-                          <PendingButton
-                            pendingLabel="Marking complete…"
-                            className={buttonClass(
-                              "secondary",
-                              "md",
-                              "group-has-[[aria-busy=true]]:pointer-events-none",
-                            )}
-                            aria-label={`Mark complete, ${visit.patientName}, ${formatWhen(visit, today)}`}
-                          >
-                            Mark complete
-                          </PendingButton>
-                        </form>
-
-                        {visit.date >= today ? (
-                          <ButtonLink
-                            href={`/reschedule/${visit.id}?return=${encodeURIComponent(returnTo)}`}
-                            variant="secondary"
-                            size="md"
-                            aria-label={`Reschedule ${visit.patientName}, ${formatWhen(visit, today)}`}
-                          >
-                            Reschedule
-                          </ButtonLink>
-                        ) : null}
-
-                        <form action={updateVisit}>
-                          <input type="hidden" name="id" value={visit.id} />
-                          <input type="hidden" name="status" value="cancelled" />
-                          <input type="hidden" name="return" value={returnTo} />
-                          <PendingButton
-                            pendingLabel="Cancelling…"
-                            className={buttonClass(
-                              "plain",
-                              "md",
-                              "group-has-[[aria-busy=true]]:pointer-events-none",
-                            )}
-                            aria-label={`Cancel ${visit.patientName}, ${formatWhen(visit, today)}`}
-                          >
-                            Cancel visit
-                          </PendingButton>
-                        </form>
-                      </div>
-                    ) : null}
-                  </article>
-                </AnimatedListItem>
-              );
-            })}
-          </AnimatedList>
-        )}
-      </section>
     </div>
   );
 }

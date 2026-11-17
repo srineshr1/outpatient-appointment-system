@@ -23,6 +23,7 @@ import {
   type UserPatch,
 } from "./clinic-types";
 import { hashToken } from "./passwords";
+import { cleanRatingNote, type RatingResult } from "./rating";
 
 export const BLOB_NO_REBOOKING =
   "Displacing patients requires the Supabase or SQLite store. The legacy Blob store cannot safely coordinate this change.";
@@ -390,6 +391,18 @@ export class BlobClinicStore implements ClinicStore {
   async transitionStatus(id: string, from: AppointmentStatus, to: AppointmentStatus): Promise<"ok" | "stale" | "taken"> {
     const result = await updateTagged<AppointmentRecord>(appointmentPath(id), (existing) => (existing.status === from ? { ...existing, status: to } : null));
     return result?.changed ? "ok" : "stale";
+  }
+
+  async saveRating(id: string, score: number, note: string | null, at: string): Promise<RatingResult> {
+    const ratingNote = cleanRatingNote(note);
+    const result = await updateTagged<AppointmentRecord>(appointmentPath(id), (existing) => {
+      if (existing.status !== "completed" || existing.ratingScore != null) return null;
+      return { ...existing, ratingScore: score, ratingNote, ratedAt: at };
+    });
+    if (!result) return "missing";
+    if (result.changed) return "ok";
+    if (result.value.ratingScore != null) return "rated";
+    return "closed";
   }
 
   async putLoginCode(record: LoginCodeRecord): Promise<void> {

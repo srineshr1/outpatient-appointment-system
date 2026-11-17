@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ClinicBookView } from "@/components/dashboard/ClinicBookView";
+import { ReceptionDesk } from "@/components/dashboard/ReceptionDesk";
 import { DisplacedPatients } from "@/components/profile/DisplacedPatients";
 import { Notice } from "@/components/ui/Card";
 import { paymentLabels } from "@/lib/billing";
@@ -101,6 +102,23 @@ export default async function DashboardPage({
 
   const displacedSlot =
     pendingDisplaced.length > 0 ? <DisplacedPatients entries={pendingDisplaced} /> : null;
+
+  if (user.role === "reception") {
+    return (
+      <ReceptionDesk
+        userName={user.name}
+        visits={visits}
+        today={today}
+        doctorNames={doctorNames}
+        doctorOptions={doctorOptions}
+        filterDoctorId={filter}
+        payments={payments}
+        returnTo={returnTo}
+        noticeSlot={noticeSlot}
+        displacedSlot={displacedSlot}
+      />
+    );
+  }
 
   return (
     <ClinicBookView

@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { AppointmentRecord, PublicUser, RebookingOffer, RescheduleRecord } from "@/lib/clinic-types";
 import type { MedicalReport, PatientSummaryData, PrescriptionItem } from "@/lib/patient-reports";
 import { formatPhone, formatShortDate } from "@/lib/format";
+import { queuePath } from "@/lib/queue";
 import { patientPlace, tokenLabel } from "@/lib/sessions";
 import { findDoctor, practice, reasons } from "@/lib/data";
 import { PRACTICE_TZ } from "@/lib/clock";
@@ -86,6 +87,10 @@ export function PatientPortal({
     (v) => v.date >= today && v.status !== "cancelled" && v.status !== "expired",
   );
   const nextVisit = upcomingVisits[0] ?? null;
+  const queueVisit =
+    upcomingVisits.find((visit) => visit.date === today && visit.status === "booked") ??
+    upcomingVisits.find((visit) => visit.status === "booked") ??
+    null;
 
   // Filtered reports
   const filteredReports = useMemo(() => {
@@ -348,12 +353,22 @@ export function PatientPortal({
                 Manage upcoming clinic appointments, reschedule visits, or book new times with your doctor.
               </p>
             </div>
-            <Button asChild size="sm" className="gap-1.5 self-start sm:self-auto">
-              <Link href="/book">
-                <Plus size={16} />
-                <span>Book visit</span>
-              </Link>
-            </Button>
+            <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+              {queueVisit ? (
+                <Button asChild size="sm" className="gap-1.5">
+                  <Link href={queuePath(queueVisit.id)}>
+                    <Clock size={16} />
+                    <span>Your queue</span>
+                  </Link>
+                </Button>
+              ) : null}
+              <Button asChild size="sm" variant={queueVisit ? "secondary" : "default"} className="gap-1.5">
+                <Link href="/book">
+                  <Plus size={16} />
+                  <span>Book visit</span>
+                </Link>
+              </Button>
+            </div>
           </div>
 
           <VisitList

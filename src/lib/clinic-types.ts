@@ -1,3 +1,5 @@
+import type { RatingResult } from "./rating";
+
 export type Role = "patient" | "doctor" | "reception" | "admin";
 
 export const ROLES: readonly Role[] = ["patient", "doctor", "reception", "admin"];
@@ -121,6 +123,12 @@ export interface AppointmentRecord {
   displacedAt?: string | null;
   /** Why the visit was displaced, in the doctor's words or the app's default. */
   displacedReason?: string | null;
+  /** The patient's rating of this visit, 1 to 5. Set once, after the visit is completed. */
+  ratingScore?: number | null;
+  /** Optional short note that goes with the rating. */
+  ratingNote?: string | null;
+  /** When the patient sent the rating (ISO). */
+  ratedAt?: string | null;
 }
 
 /** What changes when a booked visit moves. The reference, patient, doctor and fee stay as they are. */
@@ -377,6 +385,11 @@ export interface ClinicStore {
    * going back to a held status (booked, completed, pending_payment) finds the place held by someone else.
    */
   transitionStatus(id: string, from: AppointmentStatus, to: AppointmentStatus): Promise<"ok" | "stale" | "taken">;
+  /**
+   * Store the patient's rating of a completed visit. The first rating is the one that stays.
+   * "closed" when the visit is not completed; "rated" when a score is already stored; "missing" when there is no such visit.
+   */
+  saveRating(id: string, score: number, note: string | null, at: string): Promise<RatingResult>;
   putLoginCode(record: LoginCodeRecord): Promise<void>;
   getLoginCode(email: string): Promise<LoginCodeRecord | null>;
   deleteLoginCode(email: string): Promise<void>;
