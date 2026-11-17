@@ -34,7 +34,7 @@ describe("renderSms", () => {
       expect(text).toContain("WB-1234");
       expect(text.length).toBeLessThanOrEqual(160);
     }
-    expect(renderSms("appointment_rescheduled", data)).toContain("moved to Sat 7 Nov, 10:20, token 4");
+    expect(renderSms("appointment_rescheduled", data)).toContain("moved to Sat 7 Nov, 10:20, Token #4");
   });
 });
 

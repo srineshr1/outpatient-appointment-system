@@ -1,6 +1,6 @@
 "use client";
 
-import { slotTimeLabel } from "@/lib/sessions";
+import { slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -94,13 +94,30 @@ export function ConfirmedView({ doctors }: { doctors: Doctor[] }) {
             {slot.date === window.today
               ? "today"
               : `on ${weekdayLong(slot.date)} ${dayOfMonth(slot.date)} ${monthLong(slot.date)}`}{" "}
-            at <span className="tabular text-ink">{slotTimeLabel(slot)}</span> with {doctor.short}.
+            {slot.mode === "wave" ? (
+              <>
+                in the <span className="tabular text-ink">{slotTimeLabel(slot)}</span> wave
+              </>
+            ) : (
+              <>
+                at <span className="tabular text-ink">{slotTimeLabel(slot)}</span>
+              </>
+            )}{" "}
+            with {doctor.short}.
           </p>
           {slot.mode === "wave" && booking.token ? (
-            <p className="mt-3 text-callout text-ink-2">
-              Your token is <span className="tabular font-semibold text-ink">{booking.token}</span>. Arrive any time in your
-              wave and you’ll be seen in token order.
-            </p>
+            <div className="mt-5">
+              <p className="text-callout text-muted">Your token</p>
+              <p
+                data-testid="confirmed-token"
+                className="tabular mt-2 inline-block rounded-2xl border border-emerald-400/35 bg-emerald-400/10 px-5 py-2 text-title1 font-bold text-emerald-700 dark:text-emerald-300"
+              >
+                {tokenLabel(booking.token)}
+              </p>
+              <p className="mt-2 text-callout text-ink-2">
+                Arrive any time in your wave. Patients are seen in token order, lowest first.
+              </p>
+            </div>
           ) : null}
           <p className="mt-6 text-callout text-muted">Booking reference</p>
           <p className="tabular mt-2 inline-block rounded-xl border border-accent/25 dark:border-cyan-400/25 bg-accent/10 dark:bg-cyan-400/10 px-4 py-1.5 text-title2 font-bold tracking-wider text-accent dark:text-cyan-300 select-all">

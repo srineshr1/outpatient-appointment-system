@@ -77,7 +77,7 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
     ["Reference", data.reference],
     ["Patient", data.patientName],
     ["Doctor", data.doctorName],
-    ["When", data.token ? `${data.when} (token ${data.token})` : data.when],
+    ["When", data.token ? `${data.when} (Token #${data.token})` : data.when],
   ];
   const link = (path: string) => `${siteUrl()}${path}`;
   const base = { firstName: data.firstName };
@@ -180,7 +180,7 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
           ["Reference", data.reference],
           ["Doctor", data.doctorName],
           ["Was", data.previousWhen ?? ""],
-          ["Now", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ["Now", data.token ? `${data.when} (Token #${data.token})` : data.when],
           ...(data.reason ? [["Reason", data.reason] as [string, string]] : []),
         ],
         footnote: "If the new time does not suit you, you can move it again or cancel it from your appointments.",
@@ -195,7 +195,7 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         rows: [
           ["Reference", data.reference],
           ["Patient", data.patientName],
-          ["When", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ["When", data.token ? `${data.when} (Token #${data.token})` : data.when],
           ...(data.reasonLabel ? [["Visit", data.reasonLabel] as [string, string]] : []),
           ...(data.patientMobile ? [["Mobile", data.patientMobile] as [string, string]] : []),
         ],
@@ -211,7 +211,7 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         rows: [
           ["Reference", data.reference],
           ["Patient", data.patientName],
-          ["Was", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ["Was", data.token ? `${data.when} (Token #${data.token})` : data.when],
           ...(data.reasonLabel ? [["Visit", data.reasonLabel] as [string, string]] : []),
         ],
         footnote: "You can turn these emails off under Notifications on your clinic book.",
@@ -227,7 +227,7 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
           ["Reference", data.reference],
           ["Patient", data.patientName],
           ["Was", data.previousWhen ?? ""],
-          ["Now", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ["Now", data.token ? `${data.when} (Token #${data.token})` : data.when],
           ...(data.reason ? [["Reason", data.reason] as [string, string]] : []),
         ],
         footnote: "You can turn these emails off under Notifications on your clinic book.",
@@ -242,7 +242,7 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
         intro: `here is your schedule for ${data.dateLabel ?? "today"}.`,
         rows: items.map((item): [string, string] => [
           item.time,
-          `${item.patientName}${item.reasonLabel ? ` · ${item.reasonLabel}` : ""}${item.token ? ` (token ${item.token})` : ""} · ${item.reference}`,
+          `${item.patientName}${item.reasonLabel ? ` · ${item.reasonLabel}` : ""}${item.token ? ` (Token #${item.token})` : ""} · ${item.reference}`,
         ]),
         footnote: "Times are practice time. You can turn this email off under Notifications on your clinic book.",
         cta: { label: "Open clinic book", url: link("/dashboard") },
@@ -286,7 +286,7 @@ export function renderNotice(kind: NotificationKind, data: NoticeData): Rendered
           ["Reference", data.reference],
           ["Doctor", data.doctorName],
           ["Was", data.previousWhen ?? ""],
-          ["Now", data.token ? `${data.when} (token ${data.token})` : data.when],
+          ["Now", data.token ? `${data.when} (Token #${data.token})` : data.when],
         ],
         footnote: "Please arrive about ten minutes early. You can still move or cancel the visit from your appointments.",
         cta: { label: "View appointments", url: link("/appointments") },

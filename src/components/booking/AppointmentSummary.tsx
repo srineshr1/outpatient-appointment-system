@@ -1,11 +1,11 @@
 import { DoctorPortrait } from "@/components/doctors/DoctorPortrait";
-import { Calendar, Clock, Pin } from "@/components/icons";
+import { Calendar, Clock, Pin, Users } from "@/components/icons";
 import { Card } from "@/components/ui/Card";
 import { addMinutes } from "@/lib/clock";
 import type { Doctor, Reason, Slot } from "@/lib/data";
 import { practice } from "@/lib/data";
 import { formatFull } from "@/lib/format";
-import { slotTimeLabel } from "@/lib/sessions";
+import { placesLabel, slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import type { ReactNode } from "react";
 
 interface Props {
@@ -38,24 +38,43 @@ export function AppointmentSummary({ doctor, slot, reason, title = "Your appoint
         <Row icon={<Calendar size={20} />} term="Date">
           {formatFull(slot.date)}
         </Row>
-        <Row icon={<Clock size={20} />} term="Time">
-          {slot.mode === "wave" ? (
-            <>
-              <span className="tabular">{slotTimeLabel(slot)}</span>
-              <span className="text-muted">
-                {token ? ` · token ${token}, seen in token order` : " · seen in token order"}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="tabular">
-                {slot.time}
-                {reason ? `–${addMinutes(slot.time, reason.minutes)}` : ""}
-              </span>
-              <span className="text-muted">{reason ? ` · ${reason.minutes} minutes` : " · length depends on the reason"}</span>
-            </>
-          )}
-        </Row>
+        {slot.mode === "wave" ? (
+          <>
+            {/* A wave has no minute of its own: the patient comes in the wave's window and is seen by token. */}
+            <Row icon={<Clock size={20} />} term="Wave">
+              <span className="tabular">Wave {slotTimeLabel(slot)}</span>
+              <span className="text-muted"> · arrive any time in this window</span>
+            </Row>
+            <Row icon={<Users size={20} />} term="Token">
+              {token ? (
+                <>
+                  <span
+                    data-testid="wave-token"
+                    className="tabular inline-flex items-center rounded-lg border border-accent/25 dark:border-cyan-400/25 bg-accent/10 dark:bg-cyan-400/10 px-2.5 py-0.5 text-body font-bold text-accent dark:text-cyan-300"
+                  >
+                    {tokenLabel(token)}
+                  </span>
+                  <span className="mt-1 block text-callout text-muted">Patients are seen in token order, lowest first.</span>
+                </>
+              ) : (
+                <>
+                  <span>You get a token number when you book</span>
+                  <span className="mt-1 block text-callout text-muted">
+                    Seen in token order{placesLabel(slot) ? ` · ${placesLabel(slot)}` : ""}
+                  </span>
+                </>
+              )}
+            </Row>
+          </>
+        ) : (
+          <Row icon={<Clock size={20} />} term="Time">
+            <span className="tabular">
+              {slot.time}
+              {reason ? `–${addMinutes(slot.time, reason.minutes)}` : ""}
+            </span>
+            <span className="text-muted">{reason ? ` · ${reason.minutes} minutes` : " · length depends on the reason"}</span>
+          </Row>
+        )}
         <Row icon={<Pin size={20} />} term="Where">
           {doctor.room}, {practice.name}
         </Row>

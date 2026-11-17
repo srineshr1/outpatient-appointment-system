@@ -113,7 +113,10 @@ export async function proposeBook(user: PublicUser, slotId: string, reasonId: st
   }
   const doctor = findDoctor(slot.doctorId)?.name ?? "the doctor";
   const payLine = fee <= 0 ? "There is no fee." : online ? `Pay ${formatMoney(fee)} online. The time is held until payment finishes.` : `Pay ${formatMoney(fee)} at the desk.`;
-  const summary = `${doctor}, ${when(slot.date, slot.time)}, ${reasonLabel(reasonId)}. ${payLine}`;
+  const place = slot.mode === "wave" && slot.endTime
+    ? `${formatFull(slot.date)}, ${slot.time}–${slot.endTime} wave (you get a token number when you book; seen in token order)`
+    : when(slot.date, slot.time);
+  const summary = `${doctor}, ${place}, ${reasonLabel(reasonId)}. ${payLine}`;
   const pending = await seal(user, { type: "book", slotId: slot.id, reasonId, payOnline: online, note: note.slice(0, 200) }, { title: "Book this visit?", summary, confirmLabel: "Book" });
   if ("error" in pending) return { forModel: { error: pending.error } };
   return {
@@ -286,7 +289,7 @@ async function book(user: PublicUser, action: Extract<PendingAction, { type: "bo
     const pay = fee > 0 ? ` Pay ${formatMoney(fee)} at the desk.` : " There is no fee.";
     return {
       ok: true,
-      summary: `Booked ${result.reference} with ${findDoctor(slot.doctorId)?.name ?? "the doctor"} on ${when(result.visit.date, result.visit.time)}.${result.visit.token ? ` Token ${result.visit.token}.` : ""}${pay}`,
+      summary: `Booked ${result.reference} with ${findDoctor(slot.doctorId)?.name ?? "the doctor"} on ${result.visit.token && result.visit.endTime ? `${formatFull(result.visit.date)}, ${result.visit.time}–${result.visit.endTime} wave` : when(result.visit.date, result.visit.time)}.${result.visit.token ? ` Your token is #${result.visit.token}; patients are seen in token order.` : ""}${pay}`,
     };
   } catch (error) {
     if (error instanceof SlotUnavailableError) {

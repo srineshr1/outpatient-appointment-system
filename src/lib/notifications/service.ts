@@ -23,7 +23,9 @@ import type { ChannelName, NoticeData, NotificationKind } from "./types";
 
 export const REMINDER_KIND: NotificationKind = "reminder";
 
-function whenLabel(visit: Pick<AppointmentRecord, "date" | "time">): string {
+function whenLabel(visit: Pick<AppointmentRecord, "date" | "time"> & Partial<Pick<AppointmentRecord, "endTime" | "token">>): string {
+  // A wave visit has no minute of its own: name the wave's window, and the token says who goes first.
+  if (visit.token && visit.endTime) return `${formatShortDate(visit.date)}, ${visit.time}–${visit.endTime} wave`;
   return `${formatShortDate(visit.date)}, ${visit.time}`;
 }
 

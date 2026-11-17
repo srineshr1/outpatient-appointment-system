@@ -3,7 +3,7 @@ import Link from "next/link";
 import { reasons, findDoctor } from "@/lib/data";
 import type { AppointmentRecord, RescheduleRecord } from "@/lib/clinic-types";
 import { formatPhone, formatShortDate, formatWhen } from "@/lib/format";
-import { slotTimeLabel } from "@/lib/sessions";
+import { slotTimeLabel, tokenLabel } from "@/lib/sessions";
 import { updateVisit } from "@/server/booking-actions";
 import { ButtonLink } from "@/components/ui/Button";
 import { buttonClass } from "@/components/ui/button-styles";
@@ -38,11 +38,11 @@ function statusPillClass(status: AppointmentRecord["status"]): string {
 }
 
 function whenLabel(visit: AppointmentRecord): string {
-  return visit.endTime && visit.token ? slotTimeLabel({ time: visit.time, endTime: visit.endTime, mode: "wave" }) : visit.time;
+  return visit.endTime && visit.token ? `${slotTimeLabel({ time: visit.time, endTime: visit.endTime, mode: "wave" })} wave` : visit.time;
 }
 
 function spot(date: string, time: string, token: number | null): string {
-  return `${formatShortDate(date)}, ${time}${token ? ` (token ${token})` : ""}`;
+  return `${formatShortDate(date)}, ${time}${token ? ` (${tokenLabel(token)})` : ""}`;
 }
 
 function roleLabel(role: string): string {
@@ -59,7 +59,10 @@ export function groupVisits(visits: readonly AppointmentRecord[], today: string)
   const earlier: AppointmentRecord[] = [];
   const cancelled: AppointmentRecord[] = [];
   const awaiting: AppointmentRecord[] = [];
-  const ordered = [...visits].sort((a, b) => (a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)));
+  // Same wave: token order, which is the order the doctor sees them.
+  const ordered = [...visits].sort((a, b) =>
+    a.date === b.date ? a.time.localeCompare(b.time) || (a.token ?? 0) - (b.token ?? 0) : a.date.localeCompare(b.date),
+  );
   for (const visit of ordered) {
     if (visit.status === "pending_payment") awaiting.push(visit);
     else if (visit.status === "cancelled" || visit.status === "expired" || visit.status === "displaced") cancelled.push(visit);
@@ -179,9 +182,13 @@ export function VisitList({
                       ) : null}
                     </p>
                     {visit.token ? (
-                      <p className="mt-1 text-callout text-ink-2">
-                        Token <span className="tabular font-semibold text-ink">{visit.token}</span> of {visit.waveCapacity ?? "?"} in
-                        this wave. Seen in token order.
+                      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-callout text-ink-2">
+                        <span className="tabular inline-flex items-center rounded-lg border border-accent/25 dark:border-cyan-400/25 bg-accent/10 dark:bg-cyan-400/10 px-2 py-0.5 font-bold text-accent dark:text-cyan-300">
+                          {tokenLabel(visit.token)}
+                        </span>
+                        <span>
+                          of {visit.waveCapacity ?? "?"} in this wave. Seen in token order.
+                        </span>
                       </p>
                     ) : null}
                     {(moves[visit.id] ?? []).length > 0 ? (

@@ -110,6 +110,10 @@ describe("wave capacity", () => {
   it("hands out the lowest free token and none once full", () => {
     const id = slots[0]!.id;
     expect(freeToken(id, 3, [])).toBe(1);
+    // Booking order: the next token follows the highest one held, even past a cancelled gap…
+    expect(freeToken(id, 3, [heldId(id, 1)])).toBe(2);
+    expect(freeToken(id, 4, [heldId(id, 1), heldId(id, 3)])).toBe(4);
+    // …and the gap is reused only once the wave's last token is taken.
     expect(freeToken(id, 3, [heldId(id, 1), heldId(id, 3)])).toBe(2);
     expect(freeToken(id, 3, [1, 2, 3].map((token) => heldId(id, token)))).toBeNull();
     // Tokens held in another wave don't count.
