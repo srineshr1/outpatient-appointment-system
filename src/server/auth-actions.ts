@@ -1,12 +1,12 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { authenticate, createDoctorSelfSignup, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
 import { ensureDemoLogin } from "@/lib/demo-login";
-import { clearFailures, consumeResetToken, isEmail, issueResetToken, lockedFor, recordFailure } from "@/lib/login-codes";
+import { clearFailures, consumeEmailLookup, consumeResetToken, isEmail, issueResetToken, lockedFor, recordFailure } from "@/lib/login-codes";
 import { isDeliverableEmail, sendPasswordReset } from "@/lib/mailer";
 import { normalisePhone, PHONE_INVALID_MESSAGE } from "@/lib/phone";
 import { hashPassword, normaliseEmail, passwordError } from "@/lib/passwords";
@@ -17,11 +17,13 @@ import { createSupabase, isAuthCookie, supabaseConfigured } from "@/lib/supabase
 
 export type SignInMode = "patient" | "staff";
 export type AuthResult = { ok: false; error: string } | { ok: true; message: string };
+export type EmailLookupResult = { ok: false; error: string } | { ok: true; exists: boolean };
 
 /** One message for a wrong email or a wrong password, so the form never says which accounts exist. */
 const WRONG_CREDENTIALS = "That email and password don’t match. Check them, or reset your password.";
 const LOCKED_MESSAGE = "Too many wrong tries. Wait 15 minutes, or reset your password.";
 const RESET_SENT = "If there’s an account for that email, we’ve sent a link to reset the password. It works for 30 minutes.";
+const LOOKUP_LIMIT_MESSAGE = "Too many tries. Wait a few minutes and try again.";
 
 /** Where links in emails point. NEXT_PUBLIC_SITE_URL wins; on Vercel, fall back to the production domain. */
 function siteUrl(): string {
@@ -32,13 +34,39 @@ function siteUrl(): string {
   return "http://localhost:3000";
 }
 
-async function guarded(work: () => Promise<AuthResult>): Promise<AuthResult> {
+async function guarded<T extends { ok: false; error: string } | { ok: true }>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (error) {
-    if (error instanceof StoreUnavailableError) return { ok: false, error: STORE_UNAVAILABLE_MESSAGE };
+    if (error instanceof StoreUnavailableError) return { ok: false, error: STORE_UNAVAILABLE_MESSAGE } as T;
     throw error;
   }
+}
+
+/** First public IP on the request, used only to rate-limit email lookups. */
+function requestIp(headerList: Headers): string {
+  const forwarded = headerList.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first.slice(0, 128);
+  }
+  const direct = headerList.get("x-real-ip")?.trim() || headerList.get("cf-connecting-ip")?.trim();
+  return (direct || "unknown").slice(0, 128);
+}
+
+/**
+ * Whether this email already has an account, so the sign-in form can ask for a password or
+ * create a new one. This reveals that the email is registered (an enumeration tradeoff);
+ * consumeEmailLookup caps how quickly anyone can probe many addresses.
+ */
+export async function lookupEmailAccount(input: { email: string }): Promise<EmailLookupResult> {
+  const email = normaliseEmail(String(input.email ?? ""));
+  return guarded(async () => {
+    if (!isEmail(email)) return { ok: false, error: "Enter a valid email address, like name@example.com." };
+    const allowed = await consumeEmailLookup(email, requestIp(await headers()));
+    if (!allowed.ok) return { ok: false, error: LOOKUP_LIMIT_MESSAGE };
+    return { ok: true, exists: Boolean(await findUserByEmail(email)) };
+  });
 }
 
 /** Email and password. Signs in and redirects, or says what went wrong without naming accounts. */

@@ -1,12 +1,17 @@
 /**
- * Password sign-in limits and password-reset links.
+ * Password sign-in limits, password-reset links, and email-lookup rate limits.
  *
- * Both are kept in the store's short-lived sign-in records (clinic_login_codes), keyed by a prefix
- * and the email, so every backend (Supabase, Blob, SQLite) supports them without a new table:
+ * All are kept in the store's short-lived sign-in records (clinic_login_codes), keyed by a prefix
+ * and the email (or a hashed IP), so every backend (Supabase, Blob, SQLite) supports them without
+ * a new table:
  *   - `lock:<email>` counts wrong passwords. After MAX_ATTEMPTS wrong tries within LOCK_WINDOW_MS
  *     the account is locked for LOCK_MS. A right password clears it.
  *   - `reset:<email>` holds the SHA-256 of a one-time reset token, valid for RESET_TTL_MS. At most
  *     one link a minute is sent. Using the link deletes it.
+ *   - `lookup:<email>` and `lookup-ip:<hash>` count "does this email have an account?" checks.
+ *     After LOOKUP_EMAIL_MAX (per email) or LOOKUP_IP_MAX (per IP) within LOOKUP_WINDOW_MS, further
+ *     lookups are refused until the window ends. This slows account enumeration; it cannot hide it,
+ *     because a successful check still says whether the email is registered.
  * Nothing secret is stored: only hashes and counters.
  */
 import { timingSafeEqual } from "node:crypto";
@@ -18,6 +23,11 @@ export const LOCK_WINDOW_MS = 15 * 60 * 1000;
 export const LOCK_MS = 15 * 60 * 1000;
 export const RESET_TTL_MS = 30 * 60 * 1000;
 export const RESEND_AFTER_MS = 60 * 1000;
+/** Lookups allowed for one email in LOOKUP_WINDOW_MS. */
+export const LOOKUP_EMAIL_MAX = 10;
+/** Lookups allowed from one IP in LOOKUP_WINDOW_MS. */
+export const LOOKUP_IP_MAX = 30;
+export const LOOKUP_WINDOW_MS = 15 * 60 * 1000;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -28,11 +38,15 @@ export function isEmail(value: string): boolean {
 
 export const lockKey = (email: string) => `lock:${normaliseEmail(email)}`;
 export const resetKey = (email: string) => `reset:${normaliseEmail(email)}`;
+export const lookupEmailKey = (email: string) => `lookup:${normaliseEmail(email)}`;
+export const lookupIpKey = (ip: string) => `lookup-ip:${hashToken((ip || "unknown").trim() || "unknown")}`;
 
 /** What a stored sign-in record is for, and the email it belongs to. */
-export function recordKind(key: string): { kind: "lock" | "reset" | "other"; email: string } {
+export function recordKind(key: string): { kind: "lock" | "reset" | "lookup" | "other"; email: string } {
   if (key.startsWith("lock:")) return { kind: "lock", email: key.slice(5) };
   if (key.startsWith("reset:")) return { kind: "reset", email: key.slice(6) };
+  if (key.startsWith("lookup-ip:")) return { kind: "lookup", email: key.slice(10) };
+  if (key.startsWith("lookup:")) return { kind: "lookup", email: key.slice(7) };
   return { kind: "other", email: key };
 }
 
@@ -106,4 +120,40 @@ export async function consumeResetToken(rawEmail: string, token: string, at = ne
   if (!(await resetTokenValid(rawEmail, token, at))) return false;
   await (await getStore()).deleteLoginCode(resetKey(rawEmail));
   return true;
+}
+
+export type LookupAllowance = { ok: true } | { ok: false };
+
+/**
+ * Count one "does this email have an account?" check against the per-email and per-IP
+ * windows. False when either bucket is already at its cap for this window.
+ */
+export async function consumeEmailLookup(rawEmail: string, ip: string, at = new Date()): Promise<LookupAllowance> {
+  const store = await getStore();
+  const buckets: Array<{ key: string; max: number }> = [
+    { key: lookupEmailKey(rawEmail), max: LOOKUP_EMAIL_MAX },
+    { key: lookupIpKey(ip), max: LOOKUP_IP_MAX },
+  ];
+  const states = await Promise.all(
+    buckets.map(async (bucket) => {
+      const existing = await store.getLoginCode(bucket.key);
+      const fresh = !existing || new Date(existing.expiresAt).getTime() <= at.getTime();
+      const attempts = fresh ? 1 : existing.attempts + 1;
+      return { bucket, existing, fresh, attempts, blocked: !fresh && existing.attempts >= bucket.max };
+    }),
+  );
+  if (states.some((state) => state.blocked)) return { ok: false };
+  await Promise.all(
+    states.map((state) =>
+      store.putLoginCode({
+        email: state.bucket.key,
+        codeHash: "",
+        sentAt: state.fresh ? at.toISOString() : state.existing!.sentAt,
+        expiresAt: state.fresh ? new Date(at.getTime() + LOOKUP_WINDOW_MS).toISOString() : state.existing!.expiresAt,
+        attempts: state.attempts,
+        signupTokenHash: null,
+      }),
+    ),
+  );
+  return { ok: true };
 }

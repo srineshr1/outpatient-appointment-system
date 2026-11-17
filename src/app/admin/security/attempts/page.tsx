@@ -22,6 +22,7 @@ function codeState(code: LoginCodeRecord, at: number): { label: string; tone: To
   const { kind } = recordKind(code.email);
   if (new Date(code.expiresAt).getTime() <= at) return { label: "Expired", tone: "neutral" };
   if (kind === "reset") return { label: "Reset link sent", tone: "info" };
+  if (kind === "lookup") return { label: "Email lookup", tone: "info" };
   if (kind === "lock" && code.attempts >= MAX_ATTEMPTS) return { label: "Locked", tone: "danger" };
   if (kind === "lock") return { label: "Wrong passwords", tone: "warn" };
   return { label: "Old sign-in code", tone: "neutral" };

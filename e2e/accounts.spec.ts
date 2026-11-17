@@ -12,9 +12,10 @@ async function signInWithEmail(page: Page, email: string, name = "Sam Patel") {
     await page.locator("#password").fill(DEMO_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
   } else {
-    await page.getByRole("button", { name: "Create an account" }).click();
-    await page.locator("#name").fill(name);
     await page.locator("#email").fill(email);
+    await page.locator("#email").press("Enter");
+    await expect(page.getByRole("heading", { name: "New here? Set a password to create your account" })).toBeVisible();
+    await page.locator("#name").fill(name);
     await page.locator("#password").fill(NEW_PASSWORD);
     await page.locator("#confirm").fill(NEW_PASSWORD);
     await page.getByRole("button", { name: "Create account", exact: true }).click();
