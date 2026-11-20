@@ -105,7 +105,7 @@ describe("assistant consulting sessions", () => {
     expect(await sessions()).toHaveLength(1);
   });
 
-  it("refuses patients, and doctors whose book the practice manages", async () => {
+  it("refuses patients, and lets a practice doctor change the book they work from", async () => {
     expect(toolSpecs(patient).map((tool) => tool.name)).not.toContain("propose_add_session");
     const asPatient = await runTool(patient, "propose_add_session", { date: TODAY, startTime: "12:00", endTime: "14:00" });
     expect(asPatient.pending).toBeUndefined();
@@ -114,8 +114,8 @@ describe("assistant consulting sessions", () => {
     expect(edit.pending).toBeUndefined();
 
     const managed: PublicUser = { ...doctor, id: "user-doom", doctorId: "doom" };
-    const refused = await runTool(managed, "propose_add_session", { date: TODAY, startTime: "12:00", endTime: "14:00" });
-    expect(refused.forModel).toMatchObject({ error: expect.stringContaining("their own consulting sessions") });
+    const offered = await runTool(managed, "propose_add_session", { date: TODAY, startTime: "12:00", endTime: "14:00" });
+    expect(offered.pending).toBeDefined();
     expect(await sessions()).toHaveLength(1);
   });
 

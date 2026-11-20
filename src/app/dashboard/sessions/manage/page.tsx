@@ -32,18 +32,19 @@ export default async function ManageSessionsPage({
 }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!user) redirect("/sign-in?as=staff&next=/dashboard/sessions/manage");
-  if (user.role !== "doctor" || user.doctorId !== user.id) redirect("/dashboard");
+  if (user.role !== "doctor" || !user.doctorId) redirect("/dashboard");
 
   const store = await getStore();
   const current = now();
   const today = todayIso(current);
   const wall = practiceWallClock(current);
+  const bookId = user.doctorId;
 
   const [status, record, appointments, trims] = await Promise.all([
     doctorStatus(store, user),
     store.getProfile(user.id),
-    store.listAppointments({ doctorId: user.id }),
-    store.listSessionTrims(user.id),
+    store.listAppointments({ doctorId: bookId }),
+    store.listSessionTrims(bookId),
   ]);
 
   const room = readDoctorProfile(record).room || user.doctorRoom || "Clinic";
@@ -128,7 +129,7 @@ export default async function ManageSessionsPage({
   return (
     <SessionStudio
       key={query.v ?? `${query.session ?? ""}|${requestedDate ?? ""}`}
-      doctorId={user.id}
+      doctorId={bookId}
       doctorName={user.name}
       sessions={status.sessions}
       visits={studioVisits}
@@ -140,7 +141,7 @@ export default async function ManageSessionsPage({
       initialDate={initialDate}
       startInCreateMode={startInCreateMode}
       profileComplete={Boolean(status.steps[0]?.done)}
-      verificationPending={!user.verifiedAt}
+      verificationPending={user.doctorId === user.id && !user.verifiedAt}
       notice={notice}
       noticeTone={noticeTone}
       removingSession={removing}

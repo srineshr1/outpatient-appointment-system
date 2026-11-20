@@ -43,6 +43,16 @@ export function doctorStatusOf(account: Pick<UserAccount, "name">, record: Profi
 }
 
 export async function doctorStatus(store: ClinicStore, account: UserAccount): Promise<DoctorStatus> {
-  const [record, sessions] = await Promise.all([store.getProfile(account.id), store.listConsultSessions(account.id)]);
-  return doctorStatusOf(account, record, sessions);
+  const bookId = account.doctorId ?? account.id;
+  const [record, sessions] = await Promise.all([store.getProfile(account.id), store.listConsultSessions(bookId)]);
+  const status = doctorStatusOf(account, record, sessions);
+  // Practice doctors are already on the public directory; they do not finish a self-signup profile.
+  if (account.doctorId && account.doctorId !== account.id) {
+    return {
+      sessions: status.sessions,
+      visible: status.sessions.length > 0,
+      steps: status.steps.map((step) => (step.id === "profile" ? { ...step, done: true, detail: "" } : step)),
+    };
+  }
+  return status;
 }

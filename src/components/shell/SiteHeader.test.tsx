@@ -223,6 +223,7 @@ describe("header helpers", () => {
       { href: "/dashboard/sessions", label: "View sessions" },
       { href: "/dashboard/sessions/manage", label: "Edit sessions" },
     ]);
+    expect(navLinks({ role: "doctor", id: "user-rahman", doctorId: "rahman" })).toEqual(navLinks(ownDoctor));
     expect(currentFor("/dashboard/sessions", "/dashboard/sessions")).toBe("page");
     expect(currentFor("/dashboard/sessions", "/dashboard/sessions/manage")).toBeUndefined();
     expect(currentFor("/dashboard/sessions/manage", "/dashboard/sessions/manage")).toBe("page");

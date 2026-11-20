@@ -76,21 +76,27 @@ export function legacyBlobStore(): boolean {
   return process.env.DATA_STORE !== "supabase" && Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 }
 
-/** Only a doctor who owns their own book may change its sessions. */
+/** The clinic book this doctor works from: their practice id, or their own account id. */
+export function bookIdOf(user: Pick<PublicUser, "role" | "doctorId">): string | null {
+  return user.role === "doctor" ? user.doctorId : null;
+}
+
+/** A signed-in doctor with a clinic book may change that book's sessions. */
 export function ownsBook(user: PublicUser): boolean {
-  return user.role === "doctor" && user.doctorId === user.id;
+  return Boolean(bookIdOf(user));
 }
 
 export async function saveDoctorSession(user: PublicUser, request: SessionSaveRequest): Promise<SessionSaveOutcome> {
-  if (!ownsBook(user)) return { ok: false, message: "Only a doctor can change their own consulting sessions." };
+  const bookId = bookIdOf(user);
+  if (!bookId) return { ok: false, message: "Only a doctor can change their own consulting sessions." };
   const store = await getStore();
   const id = request.id ?? "";
   const input: SessionInput = { ...request.input };
   const fail = (message: string): Extract<SessionSaveOutcome, { ok: false }> => ({ ok: false, message });
 
-  const mine = (await store.listConsultSessions(user.id)).filter((session) => !session.archivedAt);
+  const mine = (await store.listConsultSessions(bookId)).filter((session) => !session.archivedAt);
   const existing = id ? await store.getConsultSession(id) : null;
-  if (id && (!existing || existing.doctorId !== user.id || existing.archivedAt)) return fail("That session no longer exists. Reload the page.");
+  if (id && (!existing || existing.doctorId !== bookId || existing.archivedAt)) return fail("That session no longer exists. Reload the page.");
 
   // Old multi-wave sessions have no duration control in today's form; retain their saved step.
   if (existing?.mode === "wave" && input.mode === "wave" && request.waveMinutesOmitted) {
@@ -112,14 +118,14 @@ export async function saveDoctorSession(user: PublicUser, request: SessionSaveRe
   const at = now().toISOString();
   const session: ConsultSession = existing
     ? { ...existing, ...checked.value, updatedAt: at }
-    : { id: `s${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`, doctorId: user.id, ...checked.value, archivedAt: null, createdAt: at, updatedAt: at };
+    : { id: `s${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`, doctorId: bookId, ...checked.value, archivedAt: null, createdAt: at, updatedAt: at };
 
   // Recurrence, mode, step and capacity may change while reservations exist only when every one of
   // them still fits; the rest must be moved first or, once the doctor confirms, displaced and offered
   // new times (below). The legacy Blob store cannot displace, so it keeps the old rule.
   const structural = Boolean(existing && sessionStructureChanged(existing, session));
   if (existing && structural && legacyBlobStore()) {
-    const upcoming = await upcomingIn(user.id, existing.id);
+    const upcoming = await upcomingIn(bookId, existing.id);
     if (upcoming > 0) {
       return fail(
         `${upcoming} reserved ${upcoming === 1 ? "visit uses" : "visits use"} this session. Move or cancel ${upcoming === 1 ? "it" : "them"} first, or add a new session instead. You can still change its hours, name or room. Existing visits and payment holds keep their original times.`,
@@ -128,8 +134,8 @@ export async function saveDoctorSession(user: PublicUser, request: SessionSaveRe
   }
 
   const [appointments, storedTrims] = await Promise.all([
-    store.listAppointments({ doctorId: user.id }),
-    store.listSessionTrims(user.id),
+    store.listAppointments({ doctorId: bookId }),
+    store.listSessionTrims(bookId),
   ]);
 
   // Elastic scheduling: hour changes must not strand booked visits. Expansion is always safe; a
