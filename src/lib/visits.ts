@@ -112,10 +112,12 @@ export type QueueStep = "check_in" | "start_consult" | "no_show";
 /** "already": that step was done before (a second check-in changes nothing). "not_today": only on the day. */
 export type QueueStepResult = "ok" | "already" | "missing" | "forbidden" | "closed" | "not_today";
 
-/** Reception and admins work every clinic; a doctor works only their own. Patients never do. */
-export function canRunQueue(actor: Pick<PublicUser, "role" | "doctorId">, visit: Pick<AppointmentRecord, "doctorId">): boolean {
-  if (seesWholeBook(actor)) return true;
-  return actor.role === "doctor" && Boolean(actor.doctorId) && actor.doctorId === visit.doctorId;
+/**
+ * Checking in, calling in, and no-shows are the front desk's job: reception and admins only.
+ * Doctors (even on their own clinic) and patients are refused; a doctor still marks their visit completed.
+ */
+export function canRunQueue(actor: Pick<PublicUser, "role" | "doctorId">, _visit?: Pick<AppointmentRecord, "doctorId">): boolean {
+  return seesWholeBook(actor);
 }
 
 const STEP_ACTIONS: Record<QueueStep, string> = {

@@ -117,7 +117,7 @@ export function ReceptionDesk({
       {noticeSlot}
       {displacedSlot}
 
-      <QueueBoard visits={visits} today={today} doctorNames={doctorNames} returnTo={returnTo} showDoctor />
+      <QueueBoard visits={visits} today={today} doctorNames={doctorNames} returnTo={returnTo} showDoctor deskActions />
 
       {doctorOptions.length > 0 ? (
         <nav aria-label="Filter by doctor" className="mt-6 flex flex-wrap gap-2">

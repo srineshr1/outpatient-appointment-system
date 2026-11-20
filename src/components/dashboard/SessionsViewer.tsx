@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Calendar, Check, ClipboardList } from "@/components/icons";
+import { PatientHistoryPanel, SessionPatientList } from "./PatientHistoryPanel";
 import { Card } from "@/components/ui/Card";
 import { holdsPlace, type ScheduleVisit } from "@/components/doctors/schedule-model";
 import type { ConsultSession, SessionTrim } from "@/lib/clinic-types";
+import type { PatientDetails } from "@/lib/patient-history";
 import { addDays, now, practiceWallClock } from "@/lib/clock";
 import { relativeDay } from "@/lib/format";
 import { hoursOnDate, toMinutes } from "@/lib/sessions";
@@ -16,6 +18,8 @@ export interface SessionsViewerProps {
   sessions: ConsultSession[];
   visits: ScheduleVisit[];
   trims: SessionTrim[];
+  /** Details and earlier visits for each booked patient, keyed by visit id. Built on the server. */
+  patients?: Record<string, PatientDetails>;
   room: string;
   visible: boolean;
 }
@@ -30,6 +34,8 @@ export interface SessionFocus {
   date: string | null;
   startTime: string | null;
   endTime: string | null;
+  /** The visits holding a place in this session, in queue order (token, then time). */
+  visitIds: string[];
 }
 
 interface Occurrence {
@@ -67,12 +73,14 @@ function occurrencesOn(
   return items;
 }
 
-function patientCount(item: Occurrence, visits: readonly ScheduleVisit[]): number {
-  return visits.filter((visit) => {
-    if (visit.date !== item.date || !holdsPlace(visit.status)) return false;
-    if (visit.sessionId) return visit.sessionId === item.session.id;
-    return visit.time >= item.startTime && visit.time < item.endTime;
-  }).length;
+function sessionVisits(item: Occurrence, visits: readonly ScheduleVisit[]): ScheduleVisit[] {
+  return visits
+    .filter((visit) => {
+      if (visit.date !== item.date || !holdsPlace(visit.status)) return false;
+      if (visit.sessionId) return visit.sessionId === item.session.id;
+      return visit.time >= item.startTime && visit.time < item.endTime;
+    })
+    .sort((a, b) => a.time.localeCompare(b.time) || (a.token ?? 0) - (b.token ?? 0) || a.id.localeCompare(b.id));
 }
 
 /** Latest date worth scanning: the sessions' own end, and never more than eight weeks out. */
@@ -93,9 +101,11 @@ function searchEnd(sessions: readonly ConsultSession[], today: string): string {
 }
 
 function asFocus(kind: "now" | "next", item: Occurrence, visits: readonly ScheduleVisit[]): SessionFocus {
+  const held = sessionVisits(item, visits);
   return {
     kind,
-    patients: patientCount(item, visits),
+    patients: held.length,
+    visitIds: held.map((visit) => visit.id),
     label: item.session.label || "Consulting session",
     date: item.date,
     startTime: item.startTime,
@@ -110,6 +120,7 @@ const NONE: SessionFocus = {
   date: null,
   startTime: null,
   endTime: null,
+  visitIds: [],
 };
 
 /**
@@ -177,6 +188,7 @@ export function SessionsViewer({
   sessions,
   visits,
   trims,
+  patients = {},
   room: _room,
   visible: _visible,
 }: SessionsViewerProps) {
@@ -200,6 +212,20 @@ export function SessionsViewer({
     [sessions, visits, trims, clock],
   );
   const stats = useMemo(() => sessionStats(visits, clock.date), [visits, clock.date]);
+
+  // The session's patients the server sent details for (it leaves out anyone the viewer may not see).
+  const roster = useMemo(
+    () => focus.visitIds.map((id) => patients[id]).filter((item): item is PatientDetails => Boolean(item)),
+    [focus.visitIds, patients],
+  );
+  const [picked, setPicked] = useState<string | null>(null);
+  // Default to the patient with the doctor, then the first still waiting, then the first on the list.
+  const fallback =
+    roster.find((item) => item.status === "booked" && item.consultStartedLabel) ??
+    roster.find((item) => item.status === "booked") ??
+    roster[0] ??
+    null;
+  const selected = roster.find((item) => item.visitId === picked) ?? fallback;
 
   const when =
     focus.date && focus.startTime && focus.endTime
@@ -264,7 +290,15 @@ export function SessionsViewer({
         </Card>
       </section>
 
-      <section aria-labelledby="session-focus-heading" className="mx-auto mt-6 max-w-xl">
+      <div
+        className={
+          roster.length > 0
+            ? "mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:items-start"
+            : "mt-6"
+        }
+      >
+        <div className={roster.length > 0 ? "grid gap-6" : ""}>
+      <section aria-labelledby="session-focus-heading" className={roster.length > 0 ? "" : "mx-auto max-w-xl"}>
         <Card className="rounded-sheet px-6 py-10 text-center md:px-10">
           {focus.kind === "none" ? (
             <>
@@ -296,6 +330,12 @@ export function SessionsViewer({
           )}
         </Card>
       </section>
+          {roster.length > 0 ? (
+            <SessionPatientList patients={roster} selectedId={selected?.visitId ?? null} onSelect={setPicked} />
+          ) : null}
+        </div>
+        {roster.length > 0 && selected ? <PatientHistoryPanel details={selected} /> : null}
+      </div>
     </div>
   );
 }

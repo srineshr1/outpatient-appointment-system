@@ -161,7 +161,7 @@ export async function updateVisit(formData: FormData): Promise<void> {
 
 const QUEUE_STEPS: readonly QueueStep[] = ["check_in", "start_consult", "no_show"];
 
-/** Check in, call in, or mark a no-show. Reception, admins, and the visit's own doctor only. */
+/** Check in, call in, or mark a no-show. Reception and admins only; doctors are refused. */
 export async function queueVisit(formData: FormData): Promise<void> {
   const returnTo = safeNext(String(formData.get("return") ?? "/dashboard"));
   const user = await getCurrentUser();
