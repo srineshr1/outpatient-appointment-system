@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { buttonClass } from "@/components/ui/button-styles";
 import { PendingButton } from "@/components/ui/PendingButton";
@@ -8,7 +9,7 @@ import { reasons } from "@/lib/data";
 import { clinicQueues, queueClock as clockLabel, type ClinicQueue } from "@/lib/queue";
 import { tokenLabel } from "@/lib/sessions";
 import { queueVisit, updateVisit } from "@/server/booking-actions";
-import { PatientDetailsButton } from "./PatientDetailsButton";
+import { PatientDetailsSidebar, ShowDetailsButton } from "./PatientDetailsSidebar";
 
 export interface QueueBoardProps {
   visits: readonly AppointmentRecord[];
@@ -69,7 +70,19 @@ function PatientLine({ visit, place }: { visit: AppointmentRecord; place?: numbe
   );
 }
 
-function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctorName: string | null; returnTo: string }) {
+function QueueCard({
+  queue,
+  doctorName,
+  returnTo,
+  selectedId,
+  onSelect,
+}: {
+  queue: ClinicQueue;
+  doctorName: string | null;
+  returnTo: string;
+  selectedId: string | null;
+  onSelect: (visitId: string) => void;
+}) {
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -95,7 +108,7 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
                     With the doctor since <time dateTime={visit.consultStartedAt ?? ""}>{visit.consultStartedAt ? clockLabel(visit.consultStartedAt) : ""}</time>
                   </p>
                 </div>
-                <PatientDetailsButton visitId={visit.id} patientName={visit.patientName} />
+                <ShowDetailsButton patientName={visit.patientName} selected={selectedId === visit.id} onClick={() => onSelect(visit.id)} />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <form action={updateVisit}>
@@ -130,7 +143,7 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
                     <p className="mt-1 text-caption text-muted">Not checked in yet</p>
                   )}
                 </div>
-                <PatientDetailsButton visitId={visit.id} patientName={visit.patientName} />
+                <ShowDetailsButton patientName={visit.patientName} selected={selectedId === visit.id} onClick={() => onSelect(visit.id)} />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {visit.checkedInAt ? null : (
@@ -159,6 +172,17 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
 /** Today's clinics as the room runs them: who is with the doctor now, and who is up next. */
 export function QueueBoard({ visits, today, doctorNames, returnTo, showDoctor }: QueueBoardProps) {
   const queues = clinicQueues(visits, today);
+  // The patient with the doctor opens in the sidebar to begin with; Show details picks someone else.
+  const [selectedId, setSelectedId] = useState<string | null>(() => queues.flatMap((queue) => queue.seeing)[0]?.id ?? null);
+  const inQueue = selectedId !== null && queues.some((queue) => [...queue.seeing, ...queue.upNext].some((visit) => visit.id === selectedId));
+  const shownId = inQueue ? selectedId : null;
+  function select(visitId: string) {
+    setSelectedId(visitId);
+    // Below the wide layout the sidebar sits above the queue: bring it into view.
+    if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 1023px)").matches) {
+      document.getElementById("patient-details-sidebar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
   return (
     <section aria-labelledby="queue-board-heading" className="mt-6">
       <h2 id="queue-board-heading" className="text-title3 font-semibold text-ink">
@@ -172,15 +196,23 @@ export function QueueBoard({ visits, today, doctorNames, returnTo, showDoctor }:
           <p className="text-body text-ink-2">No patients are booked today.</p>
         </Card>
       ) : (
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          {queues.map((queue) => (
-            <QueueCard
-              key={queue.key}
-              queue={queue}
-              doctorName={showDoctor ? (doctorNames[queue.doctorId] ?? "Doctor") : null}
-              returnTo={returnTo}
-            />
-          ))}
+        <div className="mt-4 grid gap-6 lg:grid-cols-12 lg:gap-10">
+          {/* Same layout as the patient's appointment summary: a sticky sidebar on the right on wide screens. */}
+          <aside className="lg:sticky lg:top-[calc(var(--header-h)+1.5rem)] lg:order-2 lg:col-span-5 lg:self-start">
+            <PatientDetailsSidebar visitId={shownId} onClose={() => setSelectedId(null)} />
+          </aside>
+          <div className="grid gap-4 lg:order-1 lg:col-span-7 lg:self-start">
+            {queues.map((queue) => (
+              <QueueCard
+                key={queue.key}
+                queue={queue}
+                doctorName={showDoctor ? (doctorNames[queue.doctorId] ?? "Doctor") : null}
+                returnTo={returnTo}
+                selectedId={shownId}
+                onSelect={select}
+              />
+            ))}
+          </div>
         </div>
       )}
     </section>
