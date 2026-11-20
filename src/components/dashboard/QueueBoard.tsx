@@ -16,6 +16,11 @@ export interface QueueBoardProps {
   returnTo: string;
   /** Show whose clinic each queue is (reception and admins see every doctor). */
   showDoctor: boolean;
+  /**
+   * Check in, Start consult, and No-show buttons. The front desk (reception and admins) only:
+   * a doctor's board is read-only apart from Mark completed for the patient with them.
+   */
+  deskActions?: boolean;
 }
 
 
@@ -68,7 +73,17 @@ function PatientLine({ visit, place }: { visit: AppointmentRecord; place?: numbe
   );
 }
 
-function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctorName: string | null; returnTo: string }) {
+function QueueCard({
+  queue,
+  doctorName,
+  returnTo,
+  deskActions,
+}: {
+  queue: ClinicQueue;
+  doctorName: string | null;
+  returnTo: string;
+  deskActions: boolean;
+}) {
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -82,7 +97,11 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
 
       <h4 className="mt-4 text-caption font-semibold tracking-wider text-muted uppercase">Now seeing</h4>
       {queue.seeing.length === 0 ? (
-        <p className="mt-2 text-callout text-ink-2">Nobody is with the doctor. Start the consultation for the next patient.</p>
+        <p className="mt-2 text-callout text-ink-2">
+          {deskActions
+            ? "Nobody is with the doctor. Start the consultation for the next patient."
+            : "Nobody is with you yet. Reception calls the next patient in."}
+        </p>
       ) : (
         <ul className="mt-2 grid gap-2">
           {queue.seeing.map((visit) => (
@@ -123,6 +142,7 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
                   <p className="mt-1 text-caption text-muted">Not checked in yet</p>
                 )}
               </div>
+              {deskActions ? (
               <div className="flex flex-wrap gap-2">
                 {visit.checkedInAt ? null : (
                   <StepForm visit={visit} step="check_in" label="Check in" pending="Checking in…" returnTo={returnTo} variant="primary" />
@@ -139,6 +159,7 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
                   <StepForm visit={visit} step="no_show" label="No-show" pending="Updating…" returnTo={returnTo} variant="secondary" />
                 )}
               </div>
+              ) : null}
             </li>
           ))}
         </ol>
@@ -148,7 +169,7 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
 }
 
 /** Today's clinics as the room runs them: who is with the doctor now, and who is up next. */
-export function QueueBoard({ visits, today, doctorNames, returnTo, showDoctor }: QueueBoardProps) {
+export function QueueBoard({ visits, today, doctorNames, returnTo, showDoctor, deskActions = false }: QueueBoardProps) {
   const queues = clinicQueues(visits, today);
   return (
     <section aria-labelledby="queue-board-heading" className="mt-6">
@@ -170,6 +191,7 @@ export function QueueBoard({ visits, today, doctorNames, returnTo, showDoctor }:
               queue={queue}
               doctorName={showDoctor ? (doctorNames[queue.doctorId] ?? "Doctor") : null}
               returnTo={returnTo}
+              deskActions={deskActions}
             />
           ))}
         </div>

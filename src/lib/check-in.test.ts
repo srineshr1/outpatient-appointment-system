@@ -32,9 +32,13 @@ describe("check-in and the day's queue", () => {
     }
     setNow(visitDay);
 
-    // Patients and other doctors cannot run the queue.
+    // Only the front desk runs the queue: patients, other doctors, and the visit's own doctor are refused.
     expect(await runQueueStep(patient, visitA.id, "check_in")).toBe("forbidden");
     expect(await runQueueStep(otherDoctor, visitA.id, "check_in")).toBe("forbidden");
+    expect(await runQueueStep(doctor, visitA.id, "check_in")).toBe("forbidden");
+    expect(await runQueueStep(doctor, visitA.id, "start_consult")).toBe("forbidden");
+    expect(await runQueueStep(doctor, visitA.id, "no_show")).toBe("forbidden");
+    expect((await store.getAppointment(visitA.id))?.checkedInAt ?? null).toBeNull();
 
     // Check-in records the time once; a second check-in changes nothing.
     expect(await runQueueStep(desk, visitC.id, "check_in")).toBe("ok");
@@ -42,7 +46,7 @@ describe("check-in and the day's queue", () => {
     expect(checked?.status).toBe("booked");
     expect(checked?.checkedInAt).toBe(new Date(visitDay).toISOString());
     setNow(visitDay + 60_000);
-    expect(await runQueueStep(doctor, visitC.id, "check_in")).toBe("already");
+    expect(await runQueueStep(desk, visitC.id, "check_in")).toBe("already");
     expect((await store.getAppointment(visitC.id))?.checkedInAt).toBe(new Date(visitDay).toISOString());
 
     // Checked-in Cat goes ahead of Ann and Ben, who have not arrived yet.
@@ -62,15 +66,15 @@ describe("check-in and the day's queue", () => {
     roster = await store.listAppointments({ doctorId: "cho" });
     expect(queuePlace(visitB, roster)).toMatchObject({ ahead: 1, position: 2 });
 
-    // The doctor calls Cat in; Ben (called in without checking in) is checked in at the same time.
-    expect(await runQueueStep(doctor, visitC.id, "start_consult")).toBe("ok");
-    expect(await runQueueStep(doctor, visitC.id, "start_consult")).toBe("already");
+    // The desk calls Cat in; Ben (called in without checking in) is checked in at the same time.
+    expect(await runQueueStep(desk, visitC.id, "start_consult")).toBe("ok");
+    expect(await runQueueStep(desk, visitC.id, "start_consult")).toBe("already");
     roster = await store.listAppointments({ doctorId: "cho" });
     expect(queuePlace((await store.getAppointment(visitC.id))!, roster)).toMatchObject({ stage: "seeing", position: 1 });
     expect(queuePlace(visitB, roster)).toMatchObject({ ahead: 1, stage: "expected" });
 
     expect(await store.transitionStatus(visitC.id, "booked", "completed")).toBe("ok");
-    expect(await runQueueStep(doctor, visitB.id, "start_consult")).toBe("ok");
+    expect(await runQueueStep(desk, visitB.id, "start_consult")).toBe("ok");
     const ben = (await store.getAppointment(visitB.id))!;
     expect(ben.checkedInAt).toBeTruthy();
     expect(ben.consultStartedAt).toBeTruthy();

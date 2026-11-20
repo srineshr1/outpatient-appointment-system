@@ -237,7 +237,14 @@ export function ClinicBookView({
 
       {noticeSlot}
 
-      <QueueBoard visits={visits} today={today} doctorNames={doctorNames} returnTo={returnTo} showDoctor={wholeBook} />
+      <QueueBoard
+        visits={visits}
+        today={today}
+        doctorNames={doctorNames}
+        returnTo={returnTo}
+        showDoctor={wholeBook}
+        deskActions={userRole === "reception" || userRole === "admin"}
+      />
 
       {/* 2. Sketch 1 Main Grid: Left = Calendar (click item -> Edit sessions), Right = Notifications */}
       {isOwnDoctor ? (

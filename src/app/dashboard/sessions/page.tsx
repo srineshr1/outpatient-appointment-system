@@ -5,9 +5,11 @@ import { SessionsViewer } from "@/components/dashboard/SessionsViewer";
 import { toScheduleVisit } from "@/components/doctors/schedule-model";
 import { DisplacedPatients } from "@/components/profile/DisplacedPatients";
 import { Notice } from "@/components/ui/Card";
+import { paymentLabels } from "@/lib/billing";
 import { now, practiceWallClock, todayIso } from "@/lib/clock";
 import { reasons } from "@/lib/data";
 import { doctorStatus } from "@/lib/doctor-status";
+import { sessionPatientDetails } from "@/lib/patient-history";
 import { readDoctorProfile } from "@/lib/profiles";
 import { displacedFor } from "@/lib/rebooking";
 import { getCurrentUser } from "@/lib/session";
@@ -44,6 +46,10 @@ export default async function SessionsPage({
     store.listSessionTrims(user.id),
     displacedFor(user.id),
   ]);
+
+  // Payment lines are a nicety: the page still opens when charges can't be read.
+  const payments = await paymentLabels(appointments).catch(() => ({}) as Record<string, string>);
+  const patients = sessionPatientDetails(user, appointments, status.sessions, payments, today);
 
   const room = readDoctorProfile(record).room || user.doctorRoom || "Clinic";
   const saved = SAVED[query.saved ?? ""];
@@ -91,6 +97,7 @@ export default async function SessionsPage({
         sessions={status.sessions}
         visits={appointments.map((visit) => toScheduleVisit(visit, reasonLabel(visit.reasonId)))}
         trims={trims}
+        patients={patients}
         room={room}
         visible={status.visible}
       />
