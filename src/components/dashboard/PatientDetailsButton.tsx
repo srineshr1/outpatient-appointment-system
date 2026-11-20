@@ -155,7 +155,7 @@ export function PatientDetailsButton({ visitId, patientName }: { visitId: string
         ref={trigger}
         type="button"
         onClick={show}
-        className={buttonClass("secondary", "sm")}
+        className={buttonClass("secondary", "sm", "shrink-0")}
         aria-haspopup="dialog"
         aria-label={`Show details: ${patientName}`}
       >

@@ -87,15 +87,17 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
       ) : (
         <ul className="mt-2 grid gap-2">
           {queue.seeing.map((visit) => (
-            <li key={visit.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-success/30 bg-success-soft p-3">
-              <div>
-                <PatientLine visit={visit} />
-                <p className="mt-1 text-caption font-semibold text-success">
-                  With the doctor since <time dateTime={visit.consultStartedAt ?? ""}>{visit.consultStartedAt ? clockLabel(visit.consultStartedAt) : ""}</time>
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <li key={visit.id} className="rounded-[10px] border border-success/30 bg-success-soft p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <PatientLine visit={visit} />
+                  <p className="mt-1 text-caption font-semibold text-success">
+                    With the doctor since <time dateTime={visit.consultStartedAt ?? ""}>{visit.consultStartedAt ? clockLabel(visit.consultStartedAt) : ""}</time>
+                  </p>
+                </div>
                 <PatientDetailsButton visitId={visit.id} patientName={visit.patientName} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
                 <form action={updateVisit}>
                   <input type="hidden" name="id" value={visit.id} />
                   <input type="hidden" name="status" value="completed" />
@@ -116,19 +118,21 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
       ) : (
         <ol className="mt-2 grid gap-2">
           {queue.upNext.map((visit, index) => (
-            <li key={visit.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-hairline bg-surface-2 p-3">
-              <div>
-                <PatientLine visit={visit} place={index + 1} />
-                {visit.checkedInAt ? (
-                  <p className="mt-1 text-caption font-semibold text-accent">
-                    Checked in at <time dateTime={visit.checkedInAt}>{clockLabel(visit.checkedInAt)}</time>
-                  </p>
-                ) : (
-                  <p className="mt-1 text-caption text-muted">Not checked in yet</p>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <li key={visit.id} className="rounded-[10px] border border-hairline bg-surface-2 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <PatientLine visit={visit} place={index + 1} />
+                  {visit.checkedInAt ? (
+                    <p className="mt-1 text-caption font-semibold text-accent">
+                      Checked in at <time dateTime={visit.checkedInAt}>{clockLabel(visit.checkedInAt)}</time>
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-caption text-muted">Not checked in yet</p>
+                  )}
+                </div>
                 <PatientDetailsButton visitId={visit.id} patientName={visit.patientName} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
                 {visit.checkedInAt ? null : (
                   <StepForm visit={visit} step="check_in" label="Check in" pending="Checking in…" returnTo={returnTo} variant="primary" />
                 )}
