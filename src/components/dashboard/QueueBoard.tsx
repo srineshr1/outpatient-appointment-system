@@ -8,6 +8,7 @@ import { reasons } from "@/lib/data";
 import { clinicQueues, queueClock as clockLabel, type ClinicQueue } from "@/lib/queue";
 import { tokenLabel } from "@/lib/sessions";
 import { queueVisit, updateVisit } from "@/server/booking-actions";
+import { PatientDetailsButton } from "./PatientDetailsButton";
 
 export interface QueueBoardProps {
   visits: readonly AppointmentRecord[];
@@ -93,14 +94,17 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
                   With the doctor since <time dateTime={visit.consultStartedAt ?? ""}>{visit.consultStartedAt ? clockLabel(visit.consultStartedAt) : ""}</time>
                 </p>
               </div>
-              <form action={updateVisit}>
-                <input type="hidden" name="id" value={visit.id} />
-                <input type="hidden" name="status" value="completed" />
-                <input type="hidden" name="return" value={returnTo} />
-                <PendingButton pendingLabel="Updating…" className={buttonClass("primary", "sm")} aria-label={`Mark ${visit.patientName} completed`}>
-                  Mark completed
-                </PendingButton>
-              </form>
+              <div className="flex flex-wrap gap-2">
+                <PatientDetailsButton visitId={visit.id} patientName={visit.patientName} />
+                <form action={updateVisit}>
+                  <input type="hidden" name="id" value={visit.id} />
+                  <input type="hidden" name="status" value="completed" />
+                  <input type="hidden" name="return" value={returnTo} />
+                  <PendingButton pendingLabel="Updating…" className={buttonClass("primary", "sm")} aria-label={`Mark ${visit.patientName} completed`}>
+                    Mark completed
+                  </PendingButton>
+                </form>
+              </div>
             </li>
           ))}
         </ul>
@@ -124,6 +128,7 @@ function QueueCard({ queue, doctorName, returnTo }: { queue: ClinicQueue; doctor
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
+                <PatientDetailsButton visitId={visit.id} patientName={visit.patientName} />
                 {visit.checkedInAt ? null : (
                   <StepForm visit={visit} step="check_in" label="Check in" pending="Checking in…" returnTo={returnTo} variant="primary" />
                 )}
