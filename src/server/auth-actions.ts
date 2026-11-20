@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { authenticate, createDoctorSelfSignup, createPatient, findUserByEmail, nameError } from "@/lib/accounts";
 import { destinationFor } from "@/lib/auth-routing";
-import { ensureDemoLogin } from "@/lib/demo-login";
+import { ensureDemoLogin, isDemoWho, type DemoWho } from "@/lib/demo-login";
 import { clearFailures, consumeEmailLookup, consumeResetToken, isEmail, issueResetToken, lockedFor, recordFailure } from "@/lib/login-codes";
 import { isDeliverableEmail, sendPasswordReset } from "@/lib/mailer";
 import { normalisePhone, PHONE_INVALID_MESSAGE } from "@/lib/phone";
@@ -102,8 +102,8 @@ export async function signInWithPassword(input: { email: string; password: strin
  * One-click demo sign-in. Each button has its own demo account (made on first use), so it never
  * signs anyone in to the owner's or an admin's account. The shared password stays on the server.
  */
-export async function signInAsDemo(input: { who: "patient" | "doctor"; next: string }): Promise<AuthResult> {
-  const who = input.who === "doctor" ? "doctor" : "patient";
+export async function signInAsDemo(input: { who: DemoWho; next: string }): Promise<AuthResult> {
+  const who: DemoWho = isDemoWho(input.who) ? input.who : "patient";
   const nextPath = safeNext(String(input.next ?? "/"));
   const result = await guarded(async () => {
     const account = await ensureDemoLogin(await getStore(), who);

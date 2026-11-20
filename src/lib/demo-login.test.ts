@@ -1,7 +1,8 @@
+import { destinationFor } from "./auth-routing";
 import { describe, expect, it } from "vitest";
 import type { ClinicStore } from "./clinic-types";
 import { DEMO_PASSWORD } from "./demo-accounts";
-import { DEMO_LOGINS, ensureDemoLogin } from "./demo-login";
+import { DEMO_LOGINS, ensureDemoLogin, isDemoWho } from "./demo-login";
 import { hashPassword, verifyPassword } from "./passwords";
 
 type Row = { id: string; email: string; role: string; doctorId: string | null; name: string; passwordHash: string; mobile?: string; disabledAt?: string | null };
@@ -50,6 +51,28 @@ describe("one-click demo accounts", () => {
     expect(account).toMatchObject({ id: "user-patient-demo", email: "ann.lee@halden.example", role: "patient", doctorId: null, mobile: "07700 900123", dob: "1980-03-14" });
     expect(verifyPassword(DEMO_PASSWORD, rows.find((row) => row.id === "user-patient-demo")!.passwordHash)).toBe(true);
     expect(rows.find((row) => row.id === "user-rudraksha")).toEqual(OWNER);
+  });
+
+  it("creates a fictional demo reception desk account, separate from every other account", async () => {
+    const { store, rows, sessions } = fakeStore([{ ...OWNER }]);
+    const account = await ensureDemoLogin(store, "reception");
+    expect(account).toMatchObject({ id: "user-demo-reception", email: "demo.reception@halden.example", role: "reception", doctorId: null });
+    expect(verifyPassword(DEMO_PASSWORD, rows.find((row) => row.id === "user-demo-reception")!.passwordHash)).toBe(true);
+    expect([...sessions.values()]).toHaveLength(0);
+    expect(rows.find((row) => row.id === "user-rudraksha")).toEqual(OWNER);
+    // A second tap signs in to the same account rather than making another.
+    await ensureDemoLogin(store, "reception");
+    expect(rows.filter((row) => row.email === DEMO_LOGINS.reception.email)).toHaveLength(1);
+    expect(destinationFor("reception", "/")).toBe("/dashboard");
+  });
+
+  it("accepts only the three one-click demo roles", () => {
+    expect(isDemoWho("patient")).toBe(true);
+    expect(isDemoWho("doctor")).toBe(true);
+    expect(isDemoWho("reception")).toBe(true);
+    expect(isDemoWho("admin")).toBe(false);
+    expect(isDemoWho("receptionist")).toBe(false);
+    expect(isDemoWho("")).toBe(false);
   });
 
   it("gives the demo doctor its own book with a profile and one session, once", async () => {

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { buttonClass } from "@/components/ui/button-styles";
+import type { DemoWho } from "@/lib/demo-login";
 import { signInAsDemo } from "@/server/auth-actions";
 
 /** Small one-click demo sign-in, pinned to the bottom of the page. */
@@ -17,7 +18,7 @@ export function DemoLoginButtons({
   const [error, setError] = useState<string | null>(null);
   const minimal = appearance === "minimal";
 
-  function signIn(who: "patient" | "doctor") {
+  function signIn(who: DemoWho) {
     setError(null);
     startTransition(async () => {
       const result = await signInAsDemo({ who, next: nextPath });
@@ -47,6 +48,14 @@ export function DemoLoginButtons({
             onClick={() => signIn("doctor")}
           >
             Doctor
+          </button>
+          <button
+            type="button"
+            className={minimal ? quiet : buttonClass("secondary", "sm")}
+            disabled={pending}
+            onClick={() => signIn("reception")}
+          >
+            Receptionist
           </button>
         </div>
         {error ? (
