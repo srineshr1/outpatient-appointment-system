@@ -1085,7 +1085,7 @@ export function demoSessions(
   doctors: readonly { id: string; room: string }[],
   now = "2026-01-01T00:00:00.000Z",
 ): ConsultSession[] {
-  const plan: Record<string, { weekdays: number[]; start: string; end: string; slot: number }[]> = {
+  const plan: Record<string, { weekdays: number[]; start: string; end: string; slot?: number; wave?: number }[]> = {
     adeyemi: [
       { weekdays: [1, 2, 3, 4, 5], start: "09:00", end: "12:00", slot: 20 },
       { weekdays: [1, 2, 3, 4, 5], start: "14:00", end: "17:00", slot: 20 },
@@ -1099,8 +1099,8 @@ export function demoSessions(
       { weekdays: [1, 2, 3, 5], start: "14:00", end: "16:00", slot: 20 },
     ],
     rahman: [
-      { weekdays: [2, 4], start: "09:30", end: "12:30", slot: 30 },
-      { weekdays: [2, 4], start: "14:00", end: "16:30", slot: 30 },
+      { weekdays: [2, 4], start: "09:00", end: "12:00", wave: 6 },
+      { weekdays: [2, 4], start: "12:00", end: "15:00", wave: 6 },
     ],
     macleod: [
       { weekdays: [1, 2, 3, 5], start: "09:30", end: "12:00", slot: 20 },
@@ -1113,15 +1113,21 @@ export function demoSessions(
       sessions.push({
         id: `demo-${doctor.id}-${index + 1}`,
         doctorId: doctor.id,
-        label: index === 0 ? "Morning surgery" : "Afternoon surgery",
+        label: part.wave
+          ? index === 0
+            ? "Morning wave"
+            : "Afternoon wave"
+          : index === 0
+            ? "Morning surgery"
+            : "Afternoon surgery",
         weekdays: part.weekdays,
         startTime: part.start,
         endTime: part.end,
         room: doctor.room,
-        mode: "stream",
-        slotMinutes: part.slot,
+        mode: part.wave ? "wave" : "stream",
+        slotMinutes: part.wave ? null : (part.slot ?? null),
         waveMinutes: null,
-        waveCapacity: null,
+        waveCapacity: part.wave ?? null,
         archivedAt: null,
         createdAt: now,
         updatedAt: now,

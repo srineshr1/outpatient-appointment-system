@@ -91,7 +91,7 @@ describe("rescheduling", () => {
   });
 
   it("lets the doctor move a visit, and not another doctor", async () => {
-    const [a, b] = await open("rahman", "stream");
+    const [a, b] = await open("rahman", "wave");
     const mine = await confirmBooking({ slot: a!, reasonId: "follow", patientName: "Ann Lee", patientUserId: "user-patient-demo" });
     const store = await getStore();
     const visit = (await store.listAppointments()).find((item) => item.reference === mine.reference)!;

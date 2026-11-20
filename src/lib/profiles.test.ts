@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDoctorSelfSignup } from "./accounts";
 import { createStaff } from "./admin";
 import { allDoctors, findDoctor } from "./data";
-import { doctorStatusOf } from "./doctor-status";
+import { doctorStatus, doctorStatusOf } from "./doctor-status";
 import { loadDoctors } from "./doctors";
 import { checkDoctorProfile, checkPatientProfile, doctorProfileRecord, parseFee } from "./profiles";
 import { defaultSession } from "./sessions";
@@ -70,6 +70,34 @@ describe("who patients can see", () => {
     expect(doctorStatusOf({ name: "Asha Rao" }, empty, [session]).visible).toBe(false);
     expect(doctorStatusOf({ name: "Asha Rao" }, done, [session]).visible).toBe(true);
     expect(doctorStatusOf({ name: "Asha Rao" }, done, [{ ...session, archivedAt: "2026-10-28T01:00:00.000Z" }]).visible).toBe(false);
+  });
+
+  it("loads a practice doctor's sessions from their clinic book id", async () => {
+    const session = defaultSession("rahman", "Room 4", "2026-10-28T00:00:00.000Z");
+    const store = {
+      async getProfile() {
+        return null;
+      },
+      async listConsultSessions(doctorId?: string) {
+        return doctorId === "rahman" ? [session] : [];
+      },
+    };
+    const status = await doctorStatus(store as never, {
+      id: "user-rahman",
+      email: "yusuf.rahman@halden.example",
+      name: "Dr Yusuf Rahman",
+      role: "doctor",
+      doctorId: "rahman",
+      mobile: "",
+      dob: "",
+      createdAt: "2026-10-28T00:00:00.000Z",
+      disabledAt: null,
+      sessionsRevokedAt: null,
+      verifiedAt: "2026-10-28T00:00:00.000Z",
+    });
+    expect(status.sessions).toEqual([session]);
+    expect(status.visible).toBe(true);
+    expect(status.steps[0]!.done).toBe(true);
   });
 
   it("keeps a self-signed-up doctor off the patient list until they finish, then lists them", async () => {

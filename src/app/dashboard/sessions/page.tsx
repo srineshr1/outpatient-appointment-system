@@ -32,17 +32,18 @@ export default async function SessionsPage({
 }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!user) redirect("/sign-in?as=staff&next=/dashboard/sessions");
-  if (user.role !== "doctor" || user.doctorId !== user.id) redirect("/dashboard");
+  if (user.role !== "doctor" || !user.doctorId) redirect("/dashboard");
 
   const store = await getStore();
   const today = todayIso();
   const wall = practiceWallClock(now());
+  const bookId = user.doctorId;
   const [status, record, appointments, trims, displaced] = await Promise.all([
     doctorStatus(store, user),
     store.getProfile(user.id),
-    store.listAppointments({ doctorId: user.id }),
-    store.listSessionTrims(user.id),
-    displacedFor(user.id),
+    store.listAppointments({ doctorId: bookId }),
+    store.listSessionTrims(bookId),
+    displacedFor(bookId),
   ]);
 
   const room = readDoctorProfile(record).room || user.doctorRoom || "Clinic";
@@ -66,7 +67,7 @@ export default async function SessionsPage({
 
   return (
     <div>
-      {!status.steps[0]!.done ? (
+      {user.doctorId === user.id && !status.steps[0]!.done ? (
         <div className="mx-auto max-w-[92rem] px-4 pt-6 md:px-8 xl:px-10">
           <Notice tone="info">
             Patients can’t see you yet.{" "}

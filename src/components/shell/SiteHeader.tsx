@@ -31,6 +31,11 @@ import { signOutAction } from "@/server/auth-actions";
 type HeaderUser = Pick<PublicUser, "name" | "email" | "role" | "doctorId"> & Partial<Pick<PublicUser, "id">>;
 type LinkUser = Pick<PublicUser, "role"> & Partial<Pick<PublicUser, "id" | "doctorId">>;
 
+/** A doctor with a clinic book they can view and edit (practice doctors and self-signup). */
+function hasClinicBook(user: LinkUser): boolean {
+  return user.role === "doctor" && Boolean(user.doctorId);
+}
+
 /** A doctor with their own clinic book: they set up their own profile and sessions. */
 function keepsOwnBook(user: LinkUser): boolean {
   return user.role === "doctor" && Boolean(user.id) && user.doctorId === user.id;
@@ -62,7 +67,7 @@ export function navLinks(user: LinkUser | null): NavLink[] {
       { href: "/dashboard", label: "Clinic book" },
     ];
   }
-  if (keepsOwnBook(user)) {
+  if (hasClinicBook(user)) {
     return [
       { href: "/dashboard", label: "Clinic book" },
       { href: "/dashboard/sessions", label: "View sessions" },

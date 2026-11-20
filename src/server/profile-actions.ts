@@ -18,7 +18,7 @@ import {
 } from "@/lib/profiles";
 import { forgetBlockedSlots } from "@/lib/blocked-slots";
 import { displaceAndSave, displacedBy } from "@/lib/rebooking";
-import { legacyBlobStore, saveDoctorSession, upcomingIn } from "@/lib/session-save";
+import { bookIdOf, legacyBlobStore, saveDoctorSession, upcomingIn } from "@/lib/session-save";
 import { studioDateAfterSave, type SessionInput } from "@/lib/sessions";
 import { getCurrentUser, safeNext } from "@/lib/session";
 import { getStore } from "@/lib/store";
@@ -50,6 +50,13 @@ async function signedIn(next: string): Promise<PublicUser> {
 async function ownDoctor(next: string): Promise<PublicUser> {
   const user = await signedIn(next);
   if (user.role !== "doctor" || user.doctorId !== user.id) redirect("/dashboard");
+  return user;
+}
+
+/** Any signed-in doctor with a clinic book may add or change its consulting sessions. */
+async function sessionDoctor(next: string): Promise<PublicUser> {
+  const user = await signedIn(next);
+  if (!bookIdOf(user)) redirect("/dashboard");
   return user;
 }
 
@@ -165,7 +172,7 @@ function displaceConfirmed(formData: FormData): { expected: number; reason: stri
 
 export async function saveSession(_previous: FormState, formData: FormData): Promise<FormState> {
   const returnBase = sessionReturnBase(formData);
-  const user = await ownDoctor(returnBase);
+  const user = await sessionDoctor(returnBase);
   const typed = values(formData, SESSION_KEYS);
   const outcome = await saveDoctorSession(user, {
     id: text(formData, "id") || null,
@@ -191,16 +198,17 @@ export async function saveSession(_previous: FormState, formData: FormData): Pro
 
 export async function archiveSession(formData: FormData): Promise<void> {
   const returnBase = sessionReturnBase(formData);
-  const user = await ownDoctor(returnBase);
+  const user = await sessionDoctor(returnBase);
   const store = await getStore();
+  const bookId = bookIdOf(user)!;
   const session = await store.getConsultSession(text(formData, "id"));
-  if (!session || session.doctorId !== user.id || session.archivedAt) redirect(`${returnBase}?notice=missing`);
+  if (!session || session.doctorId !== bookId || session.archivedAt) redirect(`${returnBase}?notice=missing`);
   const removed = { ...session, archivedAt: now().toISOString(), updatedAt: now().toISOString() };
-  const upcoming = await upcomingIn(user.id, session.id);
+  const upcoming = await upcomingIn(bookId, session.id);
   let displaced = 0;
   if (upcoming > 0) {
     // Only an explicit "Notify them and offer new times" may remove a session that has reservations.
-    const stranded = displacedBy(await store.listAppointments({ doctorId: user.id }), session, removed, todayIso(now()));
+    const stranded = displacedBy(await store.listAppointments({ doctorId: bookId }), session, removed, todayIso(now()));
     const offerable = stranded.length === upcoming && !legacyBlobStore();
     const ask = `${returnBase}?notice=busy&n=${upcoming}${offerable ? `&displace=${encodeURIComponent(session.id)}` : ""}`;
     const confirmed = displaceConfirmed(formData);

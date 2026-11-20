@@ -10,7 +10,7 @@ import type { ConsultSession, PublicUser } from "../clinic-types";
 import { todayIso, now } from "../clock";
 import { formatFull } from "../format";
 import { readDoctorProfile } from "../profiles";
-import { ownsBook, saveDoctorSession, type SessionSaveOutcome } from "../session-save";
+import { bookIdOf, ownsBook, saveDoctorSession, type SessionSaveOutcome } from "../session-save";
 import { daysLabel, overriddenDates, sessionRunsOn, toMinutes, type SessionInput } from "../sessions";
 import { getStore } from "../store";
 import { issueConfirmation, type PendingAction, type PendingCard } from "./confirm-token";
@@ -149,7 +149,7 @@ export async function proposeAddSession(user: PublicUser, args: SessionArgs): Pr
     waveCapacity: mode === "wave" ? (args.waveCapacity ?? NEW_SESSION.waveCapacity) : null,
   };
   const action: SessionAction = { type: "session", sessionId: null, expectUpdatedAt: null, keepWaveMinutes: false, input };
-  const sessions = (await (await getStore()).listConsultSessions(user.id)).filter((session) => !session.archivedAt);
+  const sessions = (await (await getStore()).listConsultSessions(bookIdOf(user) ?? user.id)).filter((session) => !session.archivedAt);
   return prepare(user, action, "Add this session?", "Add session", async (session) => {
     const base = `Add a ${session.mode} ${when(session)}, ${session.startTime}–${session.endTime}, ${session.room}, ${places(session)}. Patients can book it once it is added.`;
     if (!session.onDate) return base;
@@ -178,7 +178,7 @@ function describeChanges(before: ConsultSession, after: ConsultSession): string[
 export async function proposeUpdateSession(user: PublicUser, sessionId: string, args: SessionArgs): Promise<{ forModel: unknown; pending?: PendingCard }> {
   if (!ownsBook(user)) return { forModel: { error: NOT_YOURS } };
   const existing = sessionId ? await (await getStore()).getConsultSession(sessionId) : null;
-  if (!existing || existing.doctorId !== user.id || existing.archivedAt) {
+  if (!existing || existing.doctorId !== (bookIdOf(user) ?? user.id) || existing.archivedAt) {
     return { forModel: { error: "That session is not on your schedule. Call working_hours for the session ids." } };
   }
   const startTime = timeArg(args.startTime, existing.startTime, "start");
@@ -251,7 +251,7 @@ export async function saveConfirmedSession(user: PublicUser, action: SessionActi
   if (!ownsBook(user)) return { ok: false, summary: `${NOT_YOURS} ${CLOSED}` };
   if (action.sessionId) {
     const current = await (await getStore()).getConsultSession(action.sessionId);
-    if (!current || current.archivedAt || current.doctorId !== user.id) return { ok: false, summary: `That session is no longer on your schedule. ${CLOSED}` };
+    if (!current || current.archivedAt || current.doctorId !== (bookIdOf(user) ?? user.id)) return { ok: false, summary: `That session is no longer on your schedule. ${CLOSED}` };
     if (action.expectUpdatedAt && current.updatedAt !== action.expectUpdatedAt) {
       return { ok: false, summary: `That session was changed after I prepared this. ${CLOSED} Ask again to see the new details.` };
     }

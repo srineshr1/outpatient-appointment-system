@@ -12,6 +12,7 @@ import { loadDoctors } from "@/lib/doctors";
 import { getOps } from "@/lib/ops";
 import type { InboxItem } from "@/lib/ops/types";
 import { displacedFor } from "@/lib/rebooking";
+import { bookIdOf } from "@/lib/session-save";
 import { getCurrentUser } from "@/lib/session";
 import { getStore } from "@/lib/store";
 import { reschedulesFor, seesWholeBook, visitsFor } from "@/lib/visits";
@@ -51,7 +52,8 @@ export default async function DashboardPage({
   await loadDoctors();
   const store = await getStore();
   const ownBook = user.role === "doctor" && user.doctorId === user.id;
-  const setup = ownBook ? await doctorStatus(store, user) : null;
+  const bookId = bookIdOf(user);
+  const setup = bookId ? await doctorStatus(store, user) : null;
   const requested = typeof query.doctor === "string" ? query.doctor : "";
   const wholeBook = seesWholeBook(user);
   const filter = wholeBook && Boolean(findDoctor(requested)) ? requested : "";
@@ -63,8 +65,8 @@ export default async function DashboardPage({
     all,
     paymentLabels(all),
     reschedulesFor(user),
-    ownBook ? displacedFor(user.id) : Promise.resolve([]),
-    ownBook ? store.listSessionTrims(user.id) : Promise.resolve([]),
+    bookId ? displacedFor(bookId) : Promise.resolve([]),
+    bookId ? store.listSessionTrims(bookId) : Promise.resolve([]),
     safeInbox(user.id),
   ]);
 
