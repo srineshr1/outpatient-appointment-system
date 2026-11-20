@@ -27,21 +27,26 @@ export function PrescriptionModal({ prescription, patientName, patientDob, onClo
   const patientId = `PT-${patientName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 5).toUpperCase() || "78201"}`;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="rx-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm overflow-y-auto animate-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="relative w-full max-w-xl my-auto rounded-2xl bg-card border border-hairline shadow-2xl overflow-hidden text-ink">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 print:static print:p-0">
+      <div
+        aria-hidden="true"
+        data-testid="prescription-modal-backdrop"
+        className="absolute inset-0 z-0 bg-black/60 dark:bg-black/70 print:hidden"
+        onClick={onClose}
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rx-modal-title"
+        data-testid="prescription-modal-panel"
+        className="relative z-10 flex max-h-[min(92vh,calc(100dvh-1.5rem))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-hairline bg-surface text-ink shadow-2xl print:max-h-none print:overflow-visible print:shadow-none"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-hairline px-6 py-4 bg-canvas/80 print:hidden">
+        <div className="flex shrink-0 items-center justify-between border-b border-hairline bg-surface px-6 py-4 print:hidden">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-ink">Prescription Order</span>
-            <span className="text-xs text-muted font-mono">#{prescription.id}</span>
+            <span className="text-xs text-ink-2 font-mono">#{prescription.id}</span>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -63,7 +68,7 @@ export function PrescriptionModal({ prescription, patientName, patientDob, onClo
         </div>
 
         {/* Prescription Slip */}
-        <div className="p-6 sm:p-8 space-y-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-surface p-6 sm:p-8 print:max-h-none print:overflow-visible">
           <div className="border-b border-hairline pb-4 flex justify-between items-start">
             <div>
               <h2 className="text-base font-bold text-ink">{practice.name}</h2>
@@ -74,12 +79,12 @@ export function PrescriptionModal({ prescription, patientName, patientDob, onClo
             </div>
             <div className="text-right">
               <span className="text-2xl font-serif font-black text-accent">℞</span>
-              <p className="text-[11px] text-muted font-mono mt-0.5">Date: {prescription.date}</p>
+              <p className="text-[11px] text-ink-2 font-mono mt-0.5">Date: {prescription.date}</p>
             </div>
           </div>
 
           {/* Patient Details */}
-          <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-fill/40 border border-hairline text-xs">
+          <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-fill border border-hairline text-xs">
             <div>
               <span className="text-muted">Patient:</span> <span className="font-semibold text-ink">{patientName}</span>
             </div>
@@ -112,14 +117,14 @@ export function PrescriptionModal({ prescription, patientName, patientDob, onClo
 
             <div className="space-y-1 text-xs">
               <p className="font-semibold text-ink">Directions & Frequency:</p>
-              <p className="text-ink-2 bg-card p-2.5 rounded-lg border border-hairline">
+              <p className="text-ink-2 bg-surface p-2.5 rounded-lg border border-hairline">
                 {prescription.frequency} ({prescription.duration})
               </p>
             </div>
 
             <div className="space-y-1 text-xs">
               <p className="font-semibold text-ink">Special Instructions:</p>
-              <p className="text-ink-2 bg-card p-2.5 rounded-lg border border-hairline">
+              <p className="text-ink-2 bg-surface p-2.5 rounded-lg border border-hairline">
                 {prescription.instructions}
               </p>
             </div>
@@ -146,7 +151,7 @@ export function PrescriptionModal({ prescription, patientName, patientDob, onClo
         </div>
 
         {/* Footer */}
-        <div className="border-t border-hairline px-6 py-3 bg-canvas/60 flex justify-end print:hidden">
+        <div className="flex shrink-0 justify-end border-t border-hairline bg-surface px-6 py-3 print:hidden">
           <Button
             type="button"
             variant="secondary"

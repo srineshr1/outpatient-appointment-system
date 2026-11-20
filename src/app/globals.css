@@ -109,6 +109,10 @@ html.dark {
   --color-destructive-foreground: #ffffff;
   --color-background: var(--v-canvas);
   --color-foreground: var(--v-ink);
+  /* Patient report/prescription cards used bg-card with no token, so the
+     modal surface was transparent and the dimmed page showed through. */
+  --color-card: var(--v-surface);
+  --color-card-foreground: var(--v-ink);
   --color-input: var(--v-hairline);
   --color-ring: var(--v-accent);
   --color-accent-foreground: var(--v-ink);
