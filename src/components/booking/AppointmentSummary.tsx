@@ -43,14 +43,14 @@ export function AppointmentSummary({ doctor, slot, title = "Your appointment", f
         </div>
       </div>
       <dl className="mt-5 grid gap-3 border-t border-hairline pt-5 text-body">
-        <Row icon={<Calendar size={20} />} term="Date">
+        <SummaryRow icon={<Calendar size={20} />} term="Date">
           {formatFull(slot.date)}
-        </Row>
-        <Row icon={<Clock size={20} />} term={isWave ? "Wave" : "Session"}>
+        </SummaryRow>
+        <SummaryRow icon={<Clock size={20} />} term={isWave ? "Wave" : "Session"}>
           <span className="tabular">{window}</span>
           <span className="text-muted"> · arrive any time in this window</span>
-        </Row>
-        <Row icon={<Users size={20} />} term="Token">
+        </SummaryRow>
+        <SummaryRow icon={<Users size={20} />} term="Token">
           {shownToken ? (
             <>
               <span
@@ -69,17 +69,18 @@ export function AppointmentSummary({ doctor, slot, title = "Your appointment", f
               </span>
             </>
           )}
-        </Row>
-        <Row icon={<Pin size={20} />} term="Where">
+        </SummaryRow>
+        <SummaryRow icon={<Pin size={20} />} term="Where">
           {doctor.room}, {practice.name}
-        </Row>
+        </SummaryRow>
       </dl>
       {footer ? <div className="mt-5 border-t border-hairline pt-4">{footer}</div> : null}
     </Card>
   );
 }
 
-function Row({ icon, term, children }: { icon: ReactNode; term: string; children: ReactNode }) {
+/** One line of a summary card: an accent icon (naming the term for screen readers) and its value. Shared with the doctor's patient details. */
+export function SummaryRow({ icon, term, children }: { icon: ReactNode; term: string; children: ReactNode }) {
   return (
     <div className="flex gap-3">
       <dt className="mt-0.5 shrink-0 text-accent/80 dark:text-cyan-400/80">
